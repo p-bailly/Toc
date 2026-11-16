@@ -49,14 +49,20 @@ export function trierMain(main) {
 const nomDe = (joueurs, siege) => joueurs?.[siege]?.pseudo || `Joueur ${siege + 1}`;
 
 /** « 2 pions de Léa », « le pion de Léa », pour une liste de pions capturés. */
-function decrireCaptures(captures, joueurs, siege) {
+function decrireCaptures(captures, joueurs, siege, siegeLocal = -1) {
   const parSiege = new Map();
   for (const q of captures) parSiege.set(q >> 2, (parSiege.get(q >> 2) || 0) + 1);
   const morceaux = [];
   for (const [o, n] of parSiege) {
-    const qui = o === siege ? 'son propre pion' : `un pion de ${nomDe(joueurs, o)}`;
+    // Ton pion (joueur local) : « renvoie ton pion à la base ».
+    if (o === siegeLocal && o !== siege) {
+      morceaux.push(n === 1 ? 'ton pion' : `${n} de tes pions`);
+      continue;
+    }
+    const proprePion = siege === siegeLocal ? 'ton propre pion' : 'son propre pion';
+    const qui = o === siege ? proprePion : `un pion de ${nomDe(joueurs, o)}`;
     if (n === 1) morceaux.push(qui);
-    else morceaux.push(o === siege ? `${n} de ses propres pions` : `${n} pions de ${nomDe(joueurs, o)}`);
+    else morceaux.push(o === siege ? `${n} de ${siege === siegeLocal ? 'tes' : 'ses'} propres pions` : `${n} pions de ${nomDe(joueurs, o)}`);
   }
   return morceaux.join(' et ');
 }
@@ -110,7 +116,7 @@ export function ligneJournal(entree, joueurs, siegeLocal = -1) {
   if (coup.t === 'defausse') return estJoker(coup.carte) ? `${qui} ${defausseV} un joker (aucune carte jouable).` : `${qui} ${defausseV} le ${carte} (aucune carte jouable).`;
   const joue = estJoker(coup.carte) ? `un joker comme ${rangAvecArticle(coup.comme)}` : `${articleCarte(coup.carte)}${carte}`;
   let texte = `${qui} ${joueV} ${joue} : ${decrireAction(coup, siege, joueurs)}`;
-  if (captures.length) texte += ` et renvoie ${decrireCaptures(captures, joueurs, siege)} à la base`;
+  if (captures.length) texte += ` et renvoie ${decrireCaptures(captures, joueurs, siege, siegeLocal)} à la base`;
   return texte + '.';
 }
 

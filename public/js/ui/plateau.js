@@ -264,7 +264,9 @@ export class Plateau {
    * @param {Object} [o.choix]         { candidats: Set<pion>, choisi, cibles: [{ pion, pos, libelle }], fantome: { pion, pos }, captures: number[] }
    * @param {string[]} [o.sousTitres]  texte sous chaque pseudo (par siège)
    */
-  maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue }) {
+  maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue, suivant = -1 }) {
+    // Joueur qui jouera ensuite (repère discret sur son nom) : -1 s'il n'y en a pas.
+    this.suivant = suivant;
     const n = etat.pions.length >> 2;
     this.preparer(n, siegeVue);
     this.etat = etat;
@@ -321,7 +323,7 @@ export class Plateau {
       const emoji = j.ia ? EMOJI_IA : emojiIcone(j.icone);
       const nom = siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
       const g = s('g', {
-        class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : ''),
+        class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === this.suivant ? ' suivant' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
         'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}${actif ? ', à son tour' : ''}`,
@@ -371,7 +373,7 @@ export class Plateau {
       if (j.ia) morceaux.push(nomNiveau(j.niveau));
       if (etatJoueur) morceaux.push(etatJoueur);
       const g = s('g', {
-        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : ''),
+        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : '') + (siege === this.suivant ? ' suivant' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
         'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}, ${nb} carte${nb > 1 ? 's' : ''}${actif ? ', à son tour' : ''}`,
@@ -408,14 +410,17 @@ export class Plateau {
     const { x: cx, y: cy } = this.geo.centre;
     const triangle = this.geo.forme === 'triangle';
     // Dans le triangle, la donne est écrite sous la carte (au-dessus, il n'y a pas la place).
-    const yDonne = triangle ? cy + 23 : cy - 21;
-    const yQui = triangle ? cy + 28.5 : cy + 24;
+    const yDonne = triangle ? cy + 23 : cy - 24;
+    const yQui = triangle ? cy + 28.5 : cy + 28;
     c.append(s('text', { class: 'texte-donne', x: cx, y: yDonne }, `Donne ${etat.donne + 1}`));
     const carte = etat.pile?.[etat.pile.length - 1];
     const x0 = cx - 11;
     const y0 = cy - 15.5 - (triangle ? 2 : 0);
+    // Sur le carré, le centre est dégagé (noms autour) : la dernière carte y est un peu plus grande.
+    const echelle = triangle ? 1 : 1.25;
+    const zoom = (el) => (echelle === 1 ? el : s('g', { transform: `translate(${cx} ${cy}) scale(${echelle}) translate(${-cx} ${-cy})` }, el));
     if (!carte) {
-      c.append(s('rect', { class: 'emplacement-carte', x: x0, y: y0, width: 22, height: 31, rx: 2.4 }));
+      c.append(zoom(s('rect', { class: 'emplacement-carte', x: x0, y: y0, width: 22, height: 31, rx: 2.4 })));
       return;
     }
     const joker = estJoker(carte);
@@ -438,7 +443,9 @@ export class Plateau {
     } else {
       g.append(s('text', { class: 'rang-carte', x: x0 + 2.5, y: y0 + 7.5 }, rangAffiche(carte)), s('text', { class: 'symbole-carte', x: cx, y: y0 + 22 }, symbole(carte)));
     }
-    c.append(g);
+    // Groupe extérieur sans transformation : c'est lui que l'animation de la carte jouée déplace.
+    this.carteCentre = s('g', { class: 'carte-centre' }, zoom(g));
+    c.append(this.carteCentre);
     const d = etat.dernierCoup;
     if (d && !triangle) {
       const qui = joueurs?.[d.siege]?.pseudo || '';
@@ -484,25 +491,68 @@ export class Plateau {
    * Anime le dernier coup à partir de ses déplacements : chaque pion suit son chemin case par case,
    * les pions renvoyés à la base y retournent d'un trait. Les positions finales sont déjà posées par maj().
    */
-  animer(dernierCoup, siegeVue) {
+  /**
+   * @param {Object} [rythme]  { pas: ms par case, max: ms au plus pour un déplacement, saut: ms d'un saut direct,
+   *                           carte: ms du trajet de la carte jouée } ; renvoie la durée totale (ms).
+   */
+  animer(dernierCoup, siegeVue, rythme = {}) {
     this.arreterAnimations();
-    if (!dernierCoup?.deplacements?.length || !this.geo) return;
+    if (!dernierCoup || !this.geo) return 0;
+    const { pas = 110, max = 1100, saut = 380, carte: dureeCarte = 380 } = rythme;
+    // La carte jouée part de son joueur vers le centre, puis les pions bougent.
+    let depart = 0;
+    if (this.carteCentre && dernierCoup.siege !== undefined) {
+      const cote = this.geo.coteDe(dernierCoup.siege, siegeVue);
+      const origine = this.geo.etiquettesAutour
+        ? this.geo.placeEtiquette(cote)
+        : (({ x, y, l, h }) => ({ x: x + l / 2, y: y + h / 2 }))(this.geo.boiteEtiquette(cote));
+      const dx = origine.x - this.geo.centre.x;
+      const dy = origine.y - this.geo.centre.y;
+      try {
+        this.animations.push(
+          this.carteCentre.animate(
+            [
+              { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(0.45)`, opacity: 0.4 },
+              { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+            ],
+            { duration: dureeCarte, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' },
+          ),
+        );
+        depart = Math.round(dureeCarte * 0.7);
+      } catch {
+        depart = 0;
+      }
+    }
+    if (!dernierCoup.deplacements?.length) return depart;
     const t = dernierCoup.coup?.t;
     const sens = t === 'recul' ? 'arriere' : t === 'echange' || t === 'sortie' ? 'direct' : 'avant';
     const lignes = new Map(); // pion → [{ temps, pos }]
-    let temps = 0;
+    const poser = (pion, de, etapes, debut, duree) => {
+      if (!lignes.has(pion)) lignes.set(pion, [{ temps: 0, pos: de }]);
+      const l = lignes.get(pion);
+      l.push({ temps: debut, pos: de });
+      etapes.forEach((pos, i) => i > 0 && l.push({ temps: debut + (duree * i) / (etapes.length - 1), pos }));
+    };
+    let temps = depart;
+    let captures = []; // le moteur liste les captures juste avant le déplacement qui les provoque
     for (const d of dernierCoup.deplacements) {
-      const etapes = d.capture ? [d.de, d.vers] : chemin(d.pion, d.de, d.vers, sens, this.geo.nbJoueurs);
-      const direct = etapes.length <= 2;
-      const duree = direct ? 320 : Math.min(90 * (etapes.length - 1), 900);
-      if (!lignes.has(d.pion)) lignes.set(d.pion, [{ temps: 0, pos: d.de }]);
-      const l = lignes.get(d.pion);
-      l.push({ temps, pos: d.de });
-      etapes.forEach((pos, i) => i > 0 && l.push({ temps: temps + (duree * i) / (etapes.length - 1), pos }));
-      // Une capture part avec le déplacement suivant (en même temps que le pion qui la provoque).
-      if (!d.capture) temps += duree;
+      if (d.capture) {
+        captures.push(d);
+        continue;
+      }
+      const etapes = chemin(d.pion, d.de, d.vers, sens, this.geo.nbJoueurs);
+      const duree = etapes.length <= 2 ? saut : Math.min(pas * (etapes.length - 1), max);
+      // Valet : les deux pions se croisent en même temps.
+      const debut = t === 'echange' ? depart : temps;
+      poser(d.pion, d.de, etapes, debut, duree);
+      let fin = debut + duree;
+      // Le pion capturé retourne à sa base une fois le pion qui le prend arrivé.
+      for (const c of captures) poser(c.pion, c.de, [c.de, c.vers], fin, saut);
+      if (captures.length) fin += saut;
+      captures = [];
+      temps = Math.max(temps, fin);
     }
-    const total = Math.max(temps, 320);
+    const total = Math.max(temps, saut);
     for (const [pion, l] of lignes) {
       if (!this.pions[pion]) continue;
       const fin = l[l.length - 1];
@@ -514,6 +564,7 @@ export class Plateau {
         /* animations indisponibles : position finale directement */
       }
     }
+    return total;
   }
 }
 

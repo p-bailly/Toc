@@ -2219,3 +2219,15 @@ details > .reglage:first-of-type {
   background: radial-gradient(circle at 50% 42%, var(--bois), var(--bois-2));
   border-color: var(--bois-cadre);
 }
+/* Joueur suivant : repère discret (pointillés) */
+.plateau-toc .etiquette-autour.suivant .fond-etiquette {
+  fill: transparent;
+  stroke: var(--muted);
+  stroke-width: 0.5;
+  stroke-dasharray: 1.4 1;
+}
+.plateau-toc .etiquette.suivant:not(.etiquette-autour) .boite {
+  stroke: var(--muted);
+  stroke-width: 0.8;
+  stroke-dasharray: 1.6 1.1;
+}

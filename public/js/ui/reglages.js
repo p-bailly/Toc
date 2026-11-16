@@ -16,6 +16,19 @@ export const TAILLES = [
   { taille: 'tres-grand', nom: 'Très grand' },
 ];
 
+/**
+ * Vitesse du jeu : rythme des animations (ms par case, plafond d'un déplacement, saut direct, trajet de la carte),
+ * temps de lecture après le coup d'un autre joueur, et délai des IA de l'entraînement.
+ */
+export const VITESSES = [
+  { vitesse: 'posee', nom: 'Posée', pas: 170, max: 1500, saut: 480, carte: 520, lecture: 950, delaiIA: 1300, avantAuto: 1300 },
+  { vitesse: 'normale', nom: 'Normale', pas: 110, max: 1000, saut: 360, carte: 380, lecture: 550, delaiIA: 900, avantAuto: 1000 },
+  { vitesse: 'rapide', nom: 'Rapide', pas: 55, max: 550, saut: 220, carte: 230, lecture: 220, delaiIA: 450, avantAuto: 700 },
+];
+/** Rythme des essais automatisés (URL avec « rapide ») : presque instantané. */
+export const VITESSE_ESSAIS = { vitesse: 'essais', nom: 'Essais', pas: 4, max: 40, saut: 15, carte: 15, lecture: 10, delaiIA: 40, avantAuto: 60 };
+export const rythme = (id) => VITESSES.find((v) => v.vitesse === id) || VITESSES[0];
+
 const CLE = 'toc.reglages';
 const DEFAUT = {
   theme: 'clair', // clair par défaut ; « Auto » (suivre le téléphone) et « Sombre » se choisissent dans les Réglages
@@ -29,6 +42,10 @@ const DEFAUT = {
   confirmerCoup: false,
   /** Animer les déplacements des pions. */
   animations: true,
+  /** Rythme de présentation des coups des autres joueurs : 'posee' (défaut), 'normale' ou 'rapide'. */
+  vitesse: 'posee',
+  /** Jouer tout seul le seul coup possible (après l'avoir montré). */
+  coupUniqueAuto: true,
   /** Conseils de l'IA (entraînement et analyse de fin de partie) : désactivés par défaut. */
   conseilsIA: false,
   /** Entraînement : après chaque coup, dire si l'IA aurait joué pareil (seulement avec conseilsIA). */
@@ -50,6 +67,8 @@ export function lireReglages() {
     notifFin: booleen('notifFin'),
     confirmerCoup: booleen('confirmerCoup'),
     animations: booleen('animations'),
+    vitesse: VITESSES.some((v) => v.vitesse === r.vitesse) ? r.vitesse : DEFAUT.vitesse,
+    coupUniqueAuto: booleen('coupUniqueAuto'),
     conseilsIA: booleen('conseilsIA'),
     commenterCoups: booleen('commenterCoups'),
   };

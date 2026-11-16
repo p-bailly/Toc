@@ -3,7 +3,7 @@
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
 import { entete, rangee, interrupteur, segments, toast, retenirIcone } from './composants.js';
-import { TAILLES, THEMES, lireReglages, modifierReglages } from './reglages.js';
+import { TAILLES, THEMES, VITESSES, lireReglages, modifierReglages } from './reglages.js';
 import { demanderPermission, notificationsAutorisees, notifier } from './notifications.js';
 import { ICONES } from './icones.js';
 import { SessionLocale } from '../session-locale.js';
@@ -65,6 +65,23 @@ export function afficher(racine, app) {
           texte: 'Après le choix d’un coup, un bouton « Jouer » l’envoie ; sinon le coup part dès qu’on touche la destination.',
           actif: r.confirmerCoup,
           surChange: (confirmerCoup) => maj({ confirmerCoup }),
+        }),
+        h(
+          'div',
+          { class: 'champ', style: { padding: '12px 0', borderTop: '1px solid var(--line)' } },
+          'Vitesse du jeu',
+          segments(
+            VITESSES.map((v) => ({ valeur: v.vitesse, nom: v.nom })),
+            r.vitesse,
+            (vitesse) => maj({ vitesse }),
+          ),
+          h('span', { class: 'note' }, 'Le rythme des coups des autres joueurs : chacun est montré, animé, avec le temps de le lire.'),
+        ),
+        interrupteur({
+          titre: 'Jouer tout seul le seul coup possible',
+          texte: 'Quand ta main ne permet qu’un seul coup, il est montré une seconde puis joué pour toi, avec un message.',
+          actif: r.coupUniqueAuto,
+          surChange: (coupUniqueAuto) => maj({ coupUniqueAuto }),
         }),
         interrupteur({
           titre: 'Animations',
