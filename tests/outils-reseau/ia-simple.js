@@ -12,3 +12,7 @@ export function choisirCoup(etat, siege, main, options = {}) {
   const coups = coupsLegauxMain(etat, siege, main);
   return coups[Math.floor(rng() * coups.length)];
 }
+
+// Mode à 3 : même stratégie au hasard.
+export const choisirDon3 = choisirDon;
+export const choisirCoup3 = choisirCoup;

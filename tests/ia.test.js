@@ -68,6 +68,8 @@ test('respect du budget de temps (5 ms et 60 ms)', () => {
   const rng = generateurAleatoire(3);
   let p = nouvellePartie({}, rng);
   let mesures = 0;
+  const petits = [];
+  const grands = [];
   while (p.etat.phase !== 'fini' && mesures < 120) {
     if (p.etat.phase === 'echange') {
       for (let s = 0; s < 4; s++) p = donnerCarte(p, s, choisirDon(p.etat, s, p.mains[s], { rng }));
@@ -78,10 +80,15 @@ test('respect du budget de temps (5 ms et 60 ms)', () => {
     const t0 = performance.now();
     const coup = choisirCoup(p.etat, s, p.mains[s], { rng, budgetMs: budget, carteDonnee: p.dons[s], carteRecue: p.dons[partenaire(s)] });
     const duree = performance.now() - t0;
-    assert.ok(duree < budget + 15, `coup en ${duree.toFixed(1)} ms pour un budget de ${budget} ms`);
+    // marge large par coup : npm test exécute les fichiers en parallèle (machine chargée)
+    assert.ok(duree < budget + 50, `coup en ${duree.toFixed(1)} ms pour un budget de ${budget} ms`);
+    (budget === 5 ? petits : grands).push(duree);
     p = jouerCoup(p, s, coup, rng);
     mesures++;
   }
+  const mediane = (t) => t.sort((x, y) => x - y)[t.length >> 1];
+  assert.ok(mediane(petits) <= 5 + 2, `médiane ${mediane(petits)} ms pour 5 ms`);
+  assert.ok(mediane(grands) <= 60 + 5, `médiane ${mediane(grands)} ms pour 60 ms`);
 });
 
 test('reproductible avec un rng et un nombre d’itérations fixés', () => {

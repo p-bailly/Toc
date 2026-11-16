@@ -21,12 +21,15 @@
 //     id, nom, code,     id === code (le code d'invitation identifie la partie)
 //     statut,            'attente' | 'encours' | 'finie'
 //     hote,              uid du créateur
-//     reglages,          { cinqAdverse }
-//     joueurs,           Place[4], indexé par siège (0 et 2 contre 1 et 3)
+//     reglages,          { cinqAdverse } à 4 joueurs, { cinqAdverse, nbJoueurs: 3 } à 3
+//     nbJoueurs,         3 ou 4
+//     joueurs,           Place[nbJoueurs], indexé par siège (à 4 : 0 et 2 contre 1 et 3 ;
+//                        à 3 : chacun pour soi)
 //     monSiege,          siège de l'utilisateur connecté (ou -1)
 //     aMoiDeJouer,       true si la partie attend une action de l'utilisateur
 //                        (carte à donner pendant l'échange, ou coup à jouer)
-//     gagnant,           null | 0 | 1 (équipe)
+//     gagnant,           null | équipe 0 ou 1 à 4 joueurs | siège 0, 1 ou 2 à 3 joueurs (etat.gagnant)
+//     gagnants,          sièges gagnants ([] tant que la partie n'est pas finie)
 //     majLe,             Date de la dernière action
 //     invites,           [{ uid, pseudo }] joueurs invités directement (partie en attente)
 //     refus,             [{ uid, pseudo }] invités qui ont refusé (information pour l'hôte)
@@ -34,6 +37,7 @@
 
 import { firebaseConfig } from '../firebase-config.js';
 import { choisirCoup, choisirDon } from '../ia/ia.js';
+import { choisirCoup3, choisirDon3 } from '../ia/ia3.js';
 import { creerClient } from './client.js';
 
 /** Firebase est-il configuré (js/firebase-config.js rempli) ? Sinon : mode hors ligne seulement. */
@@ -48,7 +52,7 @@ const client = creerClient({
     const { demarrer } = await import('./firebase.js');
     return demarrer(firebaseConfig);
   },
-  ia: { choisirDon, choisirCoup },
+  ia: { choisirDon, choisirCoup, choisirDon3, choisirCoup3 },
 });
 
 const nonConfigure = () => Promise.reject(new Error('Réseau non configuré.'));
@@ -113,10 +117,13 @@ export function surMesParties(cb) {
   return client.surMesParties(cb);
 }
 
-/** Crée une partie (le créateur prend le siège 0). → { id, code } */
-export async function creerPartie({ nom, cinqAdverse } = {}) {
+/**
+ * Crée une partie (le créateur prend le siège 0). nbJoueurs : 4 (défaut, deux équipes) ou 3
+ * (chacun pour soi). → { id, code }
+ */
+export async function creerPartie({ nom, cinqAdverse, nbJoueurs } = {}) {
   if (!reseauDisponible()) return nonConfigure();
-  return client.creerPartie({ nom, cinqAdverse });
+  return client.creerPartie({ nom, cinqAdverse, nbJoueurs });
 }
 
 /** Rejoint une partie en attente avec son code d'invitation (premier siège libre). → { id } */
@@ -156,7 +163,7 @@ export async function quitterPartie(id) {
   return client.quitterPartie(id);
 }
 
-/** Hôte : lance la partie. Les 4 sièges doivent être occupés (humains ou IA). Distribue les cartes. */
+/** Hôte : lance la partie. Tous les sièges (3 ou 4) doivent être occupés (humains ou IA). Distribue les cartes. */
 export async function lancerPartie(id) {
   if (!reseauDisponible()) return nonConfigure();
   return client.lancerPartie(id);
@@ -203,7 +210,8 @@ export async function refuserInvitation(id) {
  * Ouvre une partie en cours (ou terminée) pour y jouer.
  * → Session, même interface que SessionLocale (voir js/session-locale.js) :
  *   abonner(cb), donner(carte), jouer(coup), fermer(), avec vue.enLigne = true
- *   (la vue a en plus `statut`).
+ *   (la vue a en plus `statut`), et donneesAnalyse() (analyse de fin de partie).
+ *   À 3 joueurs, `vue.recu` est la carte reçue du voisin de la donne (donneurDon).
  * La session fait aussi jouer les IA de la partie.
  */
 export async function ouvrirSession(id) {

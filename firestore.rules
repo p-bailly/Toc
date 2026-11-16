@@ -43,7 +43,7 @@ service cloud.firestore {
         return (j[0] != null && j[0].uid == u) ? 0
           : (j[1] != null && j[1].uid == u) ? 1
           : (j[2] != null && j[2].uid == u) ? 2
-          : (j[3] != null && j[3].uid == u) ? 3 : -1;
+          : (j.size() > 3 && j[3] != null && j[3].uid == u) ? 3 : -1;
       }
       // Compter une partie terminée : une seule fois (liste `comptees`), avec le bon résultat.
       function partieComptee(av, ap) {
@@ -56,7 +56,8 @@ service cloud.firestore {
           && av.comptees.concat([id]) == ap.comptees
           && p.statut == 'finie' && s >= 0
           && ap.stats.jouees == av.stats.jouees + 1
-          && ap.stats.gagnees == av.stats.gagnees + un(s % 2 == p.etat.gagnant);
+          // Gagné : son équipe (siège % 2) à 4 joueurs, son siège à 3 (chacun pour soi).
+          && ap.stats.gagnees == av.stats.gagnees + un((p.reglages.get('nbJoueurs', 4) == 3 ? s : s % 2) == p.etat.gagnant);
       }
 
       allow get: if connecte();
@@ -103,6 +104,27 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys();
       }
 
+      // ── Nombre de joueurs : 4 (deux équipes ; réglages { cinqAdverse }, forme d'origine) ou 3
+      // (chacun pour soi ; réglages { cinqAdverse, nbJoueurs: 3 }, jokers). Figé à la création. ──
+      function nbJ(d) {
+        return d.reglages.get('nbJoueurs', 4);
+      }
+      // Donnes par cycle avant remélange : 3 (5-4-4) à 4 joueurs, 4 (5-4-4-5) à 3.
+      function longueurCycle(n) {
+        return n == 3 ? 4 : 3;
+      }
+      function tailleDonne(donne, n) {
+        return n == 3 ? ((donne % 4 == 0 || donne % 4 == 3) ? 5 : 4) : (donne % 3 == 0 ? 5 : 4);
+      }
+      // Destinataire d'un don : le partenaire à 4 ; à 3, le voisin de gauche (siège suivant) les
+      // donnes paires, de droite les donnes impaires (moteur : destinataireDon).
+      function destinataire(donne, de, n) {
+        return n == 3 ? (donne % 2 == 0 ? (de + 1) % 3 : (de + 2) % 3) : (de + 2) % 4;
+      }
+      function tousFaux(n) {
+        return n == 3 ? [false, false, false] : [false, false, false, false];
+      }
+
       // ── Places ──
       function pseudoFiche() {
         return get(/databases/$(base)/documents/joueurs/$(moi())).data.pseudo;
@@ -126,7 +148,7 @@ service cloud.firestore {
           || (hote && estIA(a) && b == null);
       }
       function nbMoi(j) {
-        return un(aMoi(j[0])) + un(aMoi(j[1])) + un(aMoi(j[2])) + un(aMoi(j[3]));
+        return un(aMoi(j[0])) + un(aMoi(j[1])) + un(aMoi(j[2])) + (j.size() > 3 ? un(aMoi(j[3])) : 0);
       }
 
       // ── Lecture ──
@@ -145,9 +167,11 @@ service cloud.firestore {
           && d.code == id && id.matches('^[A-HJKMNP-Z2-9]{6}$')
           && d.hote == moi() && d.statut == 'attente'
           && d.nom is string && d.nom.size() > 0 && d.nom.size() <= 40
-          && d.reglages is map && d.reglages.keys().hasOnly(['cinqAdverse']) && d.reglages.cinqAdverse is bool
-          && d.joueurs is list && d.joueurs.size() == 4
-          && estMoi(d.joueurs[0]) && d.joueurs[1] == null && d.joueurs[2] == null && d.joueurs[3] == null
+          && d.reglages is map && d.reglages.keys().hasOnly(['cinqAdverse', 'nbJoueurs']) && d.reglages.cinqAdverse is bool
+          && (!('nbJoueurs' in d.reglages) || d.reglages.nbJoueurs == 3)
+          && d.joueurs is list && d.joueurs.size() == nbJ(d)
+          && estMoi(d.joueurs[0]) && d.joueurs[1] == null && d.joueurs[2] == null
+          && (nbJ(d) == 3 || d.joueurs[3] == null)
           && d.uids == [moi()]
           && d.invites == [] && d.pseudosInvites == {} && d.refus == []
           && d.historique == [] && d.enAttente == []
@@ -161,9 +185,9 @@ service cloud.firestore {
         let n = nbMoi(j);
         return av.statut == 'attente' && ap.statut == 'attente'
           && affecte().hasOnly(['joueurs', 'uids', 'invites', 'majLe'])
-          && j is list && j.size() == 4
+          && j is list && j.size() == av.joueurs.size()
           && siegeOk(av.joueurs[0], j[0], hote) && siegeOk(av.joueurs[1], j[1], hote)
-          && siegeOk(av.joueurs[2], j[2], hote) && siegeOk(av.joueurs[3], j[3], hote)
+          && siegeOk(av.joueurs[2], j[2], hote) && (j.size() == 3 || siegeOk(av.joueurs[3], j[3], hote))
           && n <= 1
           && (!hote || n == 1) // l'hôte ne part qu'en supprimant la partie
           && ap.uids == (n == 1 ? (membre(av) ? av.uids : av.uids.concat([moi()])) : av.uids.removeAll([moi()]))
@@ -194,16 +218,25 @@ service cloud.firestore {
       // ── Lancement : l'hôte, 4 sièges occupés, état initial, premier cycle de mains écrit ──
       function lancement(av, ap) {
         let e = ap.etat;
+        let n = nbJ(av);
         return av.statut == 'attente' && av.hote == moi() && ap.statut == 'encours'
           && affecte().hasOnly(['statut', 'etat', 'historique', 'enAttente', 'invites', 'majLe'])
-          && av.joueurs[0] != null && av.joueurs[1] != null && av.joueurs[2] != null && av.joueurs[3] != null
+          && av.joueurs[0] != null && av.joueurs[1] != null && av.joueurs[2] != null && (n == 3 || av.joueurs[3] != null)
           && ap.invites == [] && ap.historique == []
-          && e.keys().hasOnly(['v', 'reglages', 'pions', 'phase', 'donne', 'tour', 'echanges', 'cartesRestantes',
-              'pile', 'numCoup', 'gagnant', 'dernierCoup'])
+          // À 4 joueurs, exactement l'état d'origine (sans `jokers`) ; à 3, `jokers` vide.
+          && (n == 3
+            ? e.keys().hasOnly(['v', 'reglages', 'pions', 'phase', 'donne', 'tour', 'echanges', 'cartesRestantes',
+                'pile', 'numCoup', 'gagnant', 'dernierCoup', 'jokers'])
+              && e.jokers == {}
+              && e.pions == [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+              && e.cartesRestantes == [5, 5, 5]
+            : e.keys().hasOnly(['v', 'reglages', 'pions', 'phase', 'donne', 'tour', 'echanges', 'cartesRestantes',
+                'pile', 'numCoup', 'gagnant', 'dernierCoup'])
+              && e.pions == [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+              && e.cartesRestantes == [5, 5, 5, 5])
           && e.reglages == av.reglages
-          && e.pions == [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
           && e.phase == 'echange' && e.donne == 0 && e.tour == 0 && e.numCoup == 0
-          && e.echanges == [false, false, false, false] && e.cartesRestantes == [5, 5, 5, 5]
+          && e.echanges == tousFaux(n)
           && e.pile == [] && e.gagnant == null && e.dernierCoup == null
           && ap.enAttente.hasOnly(av.uids) && av.uids.hasOnly(ap.enAttente)
           && existsAfter(/databases/$(base)/documents/parties/$(id)/donnes/0_0)
@@ -219,11 +252,14 @@ service cloud.firestore {
       }
       // Don d'une carte au partenaire : un seul siège passe à « a donné », le reste ne bouge pas,
       // et le don est écrit dans le même lot.
-      function echange(av, ea, en) {
+      function echange(av, ea, en, n) {
         let s = aDonne(ea, en, 0) ? 0 : aDonne(ea, en, 1) ? 1 : aDonne(ea, en, 2) ? 2 : 3;
-        return ea.phase == 'echange' && aDonne(ea, en, s)
+        return ea.phase == 'echange' && s < n && aDonne(ea, en, s)
           && peutAgir(av, s)
-          && en.echanges == [s == 0 || ea.echanges[0], s == 1 || ea.echanges[1], s == 2 || ea.echanges[2], s == 3 || ea.echanges[3]]
+          && en.echanges == (n == 3
+            ? [s == 0 || ea.echanges[0], s == 1 || ea.echanges[1], s == 2 || ea.echanges[2]]
+            : [s == 0 || ea.echanges[0], s == 1 || ea.echanges[1], s == 2 || ea.echanges[2], s == 3 || ea.echanges[3]])
+          && en.get('jokers', null) == ea.get('jokers', null)
           && en.phase == (false in en.echanges ? 'echange' : 'jeu')
           && en.pions == ea.pions && en.pile == ea.pile && en.donne == ea.donne && en.tour == ea.tour
           && en.cartesRestantes == ea.cartesRestantes && en.gagnant == null
@@ -231,7 +267,7 @@ service cloud.firestore {
           && existsAfter(/databases/$(base)/documents/parties/$(id)/dons/$(string(ea.donne) + '_' + string(s)));
       }
       // Coup joué par le siège dont c'est le tour ; l'historique ne fait que s'allonger d'une entrée.
-      function coup(av, ap, ea, en) {
+      function coup(av, ap, ea, en, nb) {
         let s = ea.tour;
         let h = ap.historique;
         let n = h.size();
@@ -241,24 +277,30 @@ service cloud.firestore {
           && av.historique.concat([h[n - 1]]) == h
           && h[n - 1].siege == s && h[n - 1].n == en.numCoup
           && en.dernierCoup.siege == s
+          // Gagnant : équipe 0 ou 1 à 4 joueurs, siège 0 à 2 à 3.
           && (en.phase == 'fini'
-            ? (en.gagnant == 0 || en.gagnant == 1) && !nouvelleDonne
+            ? en.gagnant is int && en.gagnant >= 0 && en.gagnant < (nb == 3 ? 3 : 2) && !nouvelleDonne
             : en.gagnant == null)
+          // Jokers (à 3 seulement) : au plus J1 et J2, chacun copiant un rang.
+          && (nb == 3 ? en.jokers is map && en.jokers.keys().hasOnly(['J1', 'J2']) : !('jokers' in en))
           && (nouvelleDonne
-            // Fin de donne : nouvel échange ; au début d'un cycle, la pile est vidée et les 12 mains écrites.
-            ? en.donne == ea.donne + 1 && en.phase == 'echange' && en.tour == en.donne % 4
-              && en.echanges == [false, false, false, false]
-              && (en.donne % 3 != 0
+            // Fin de donne : nouvel échange ; au début d'un cycle, la pile (et les jokers) sont vidés
+            // et les 12 mains du cycle écrites.
+            ? en.donne == ea.donne + 1 && en.phase == 'echange' && en.tour == en.donne % nb
+              && en.echanges == tousFaux(nb)
+              && (en.donne % longueurCycle(nb) != 0
                 ? en.pile.size() == ea.pile.size() + 1
-                : en.pile == [] && existsAfter(/databases/$(base)/documents/parties/$(id)/donnes/$(string(en.donne) + '_0')))
+                : en.pile == [] && (nb == 4 || en.jokers == {})
+                  && existsAfter(/databases/$(base)/documents/parties/$(id)/donnes/$(string(en.donne) + '_0')))
             : en.donne == ea.donne && en.echanges == ea.echanges
               && en.pile.size() == ea.pile.size() + 1
               && en.cartesRestantes[s] == ea.cartesRestantes[s] - 1
-              && (en.phase == 'fini' || (en.phase == 'jeu' && en.tour == (s + 1) % 4)));
+              && (en.phase == 'fini' || (en.phase == 'jeu' && en.tour == (s + 1) % nb)));
       }
       function majJeu(av, ap) {
         let ea = av.etat;
         let en = ap.etat;
+        let n = nbJ(av);
         return av.statut == 'encours' && membre(av)
           && affecte().hasOnly(['etat', 'historique', 'enAttente', 'statut', 'majLe'])
           && en.numCoup == ea.numCoup + 1
@@ -267,7 +309,7 @@ service cloud.firestore {
           && ap.enAttente is list && ap.enAttente.hasOnly(av.uids)
           && ap.majLe == request.time
           // Une seule branche évaluée, choisie par la phase (évite la limite de 1000 expressions).
-          && (ea.phase == 'echange' ? echange(av, ea, en) : coup(av, ap, ea, en));
+          && (ea.phase == 'echange' ? echange(av, ea, en, n) : coup(av, ap, ea, en, n));
       }
 
       allow update: if connecte() && (
@@ -296,23 +338,26 @@ service cloud.firestore {
         }
         allow get: if connecte() && lireMain(partie());
         function lireMain(p) {
-          return p.statut != 'attente' && membre(p) && s() >= 0 && s() < 4 && p.etat.donne >= d() && titulaire(p, s());
+          return p.statut != 'attente' && membre(p) && s() >= 0 && s() < nbJ(p) && p.etat.donne >= d() && titulaire(p, s());
         }
-        // Écrites d'un coup (12 documents) par la transaction qui lance la partie ou commence un cycle.
+        // Écrites d'un coup (12 documents : 3 donnes × 4 sièges, ou 4 donnes × 3 sièges) par la
+        // transaction qui lance la partie ou commence un cycle.
         allow create: if connecte() && creationMain(partie(), partieApres(), request.resource.data);
         function creationMain(av, ap, n) {
           let d0 = ap.etat.donne;
+          let nb = nbJ(av);
+          let L = longueurCycle(nb);
           return membre(av) && ap.statut == 'encours'
             && (av.statut == 'attente' || av.etat.donne != d0)
-            && d0 % 3 == 0 && d() >= d0 && d() < d0 + 3 && s() >= 0 && s() < 4
+            && d0 % L == 0 && d() >= d0 && d() < d0 + L && s() >= 0 && s() < nb
             && cle == string(d()) + '_' + string(s())
             && n.keys().hasOnly(['donne', 'siege', 'cartes']) && n.donne == d() && n.siege == s()
-            && n.cartes is list && n.cartes.size() == (d() % 3 == 0 ? 5 : 4);
+            && n.cartes is list && n.cartes.size() == tailleDonne(d(), nb);
         }
         allow list, update, delete: if false;
       }
 
-      // ── Dons au partenaire, immuables : parties/{id}/dons/{donne}_{siege du donneur} ──
+      // ── Dons (au partenaire ; au voisin à 3), immuables : parties/{id}/dons/{donne}_{siege du donneur} ──
       // Lisible par le donneur à tout moment ; par le destinataire une fois l'échange de cette donne
       // terminé ; par tout membre (même condition) si le donneur ou le destinataire est une IA.
       match /dons/{cle} {
@@ -327,8 +372,9 @@ service cloud.firestore {
         }
         allow get: if connecte() && lireDon(partie());
         function lireDon(p) {
-          let pour = (s() + 2) % 4;
-          return p.statut != 'attente' && membre(p) && s() >= 0 && s() < 4 && p.etat.donne >= d()
+          let nb = nbJ(p);
+          let pour = destinataire(d(), s(), nb);
+          return p.statut != 'attente' && membre(p) && s() >= 0 && s() < nb && p.etat.donne >= d()
             && (p.joueurs[s()].uid == moi()
               || (echangeFini(p) && (p.joueurs[pour].uid == moi() || p.joueurs[s()].ia == true || p.joueurs[pour].ia == true)));
         }
@@ -337,14 +383,15 @@ service cloud.firestore {
         allow create: if connecte() && creationDon(partie(), partieApres(), request.resource.data);
         function creationDon(av, ap, n) {
           let de = s();
+          let nb = nbJ(av);
           return av.statut == 'encours' && membre(av)
-            && de >= 0 && de < 4 && cle == string(d()) + '_' + string(de)
+            && de >= 0 && de < nb && cle == string(d()) + '_' + string(de)
             && av.etat.phase == 'echange' && av.etat.donne == d()
             && av.etat.echanges[de] == false && ap.etat.echanges[de] == true
             && ap.etat.numCoup == av.etat.numCoup + 1
             && (av.joueurs[de].uid == moi() || av.joueurs[de].ia == true)
             && n.keys().hasOnly(['donne', 'de', 'pour', 'carte'])
-            && n.donne == d() && n.de == de && n.pour == (de + 2) % 4
+            && n.donne == d() && n.de == de && n.pour == destinataire(d(), de, nb)
             && n.carte in get(/databases/$(base)/documents/parties/$(id)/donnes/$(cle)).data.cartes;
         }
         allow list, update, delete: if false;

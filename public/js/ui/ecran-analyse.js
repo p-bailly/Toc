@@ -46,6 +46,10 @@ export function afficher(racine, app, { reste }) {
       message(donnees);
       return;
     }
+    if (donnees?.reglages?.nbJoueurs === 3) {
+      message('L’analyse n’est pas encore disponible pour les parties à 3 joueurs : l’IA ne sait pas encore les juger.');
+      return;
+    }
     if (!donnees || !Array.isArray(donnees.donnes) || !donnees.donnes.length || !Array.isArray(donnees.historique)) {
       message('Cette partie date d’avant l’analyse : les cartes de chaque donne n’ont pas été gardées, on ne peut pas revoir tes coups. Les parties suivantes seront analysables.');
       return;
@@ -375,7 +379,12 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
           { class: 'principal' },
           h('div', { class: 'note' }, it.type === 'don' ? 'Carte donnée' : 'Coup joué'),
           h('div', { class: 'mot' }, descriptionItem(it)),
-          joueCand?.raisons?.length ? h('ul', { class: 'raisons' }, joueCand.raisons.map((x) => h('li', {}, x))) : null,
+          // Le coût du coup joué (écart avec le choix de l'IA), et ses raisons seulement s'il est bon : une
+          // « Erreur » n'apparaît jamais à côté de phrases qui le décrivent comme un bon coup.
+          joueCand && qualif && qualif !== 'meilleur' && typeof joueCand.ecart === 'number'
+            ? h('div', { class: 'note ecart-neg cout-coup' }, `Coûte ${fmt(joueCand.ecart)} case${joueCand.ecart >= 2 ? 's' : ''} par rapport au choix de l’IA`)
+            : null,
+          joueCand?.raisons?.length && (qualif === 'meilleur' || qualif === 'bon') ? h('ul', { class: 'raisons' }, joueCand.raisons.map((x) => h('li', {}, x))) : null,
         ),
         qualif ? h('span', { class: 'badge qualif-' + QUALIFICATIFS[qualif].classe }, QUALIFICATIFS[qualif].nom) : null,
       ),
@@ -392,7 +401,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
             h('div', { class: 'mot' }, descriptionCandidat(it, meilleur)),
             meilleur.raisons?.length ? h('ul', { class: 'raisons' }, meilleur.raisons.map((x) => h('li', {}, x))) : null,
           ),
-          joueCand && typeof joueCand.ecart === 'number' ? h('span', { class: 'pts ecart-neg' }, '−' + fmt(joueCand.ecart)) : null,
+          null,
         ),
       );
     } else if (meilleur && qualif === 'meilleur') {

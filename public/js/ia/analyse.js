@@ -119,10 +119,15 @@ class AnalyseBase {
     return this.resultat();
   }
 
-  /** Comme avancer, sans construire le résultat (utilisé par choisirCoup). */
-  progresser(budgetMs = 0) {
+  /**
+   * Comme avancer, sans construire le résultat (utilisé par choisirCoup) ; avec
+   * choixSeulement, s'arrête dès qu'un seul candidat reste en lice.
+   */
+  progresser(budgetMs = 0, choixSeulement = false) {
     const limite = maintenant() + Math.max(0, budgetMs);
     while (this.iterations < this.iterMax && this.actifs.length > 0) {
+      // pour choisir un coup, inutile de continuer quand un seul candidat reste en lice
+      if (choixSeulement && this.actifs.length <= 1) break;
       if (maintenant() >= limite) break;
       if (!this.encours) this.encours = { tirage: this.tirage(), i: 0, res: [] };
       const e = this.encours;

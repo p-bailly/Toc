@@ -120,13 +120,16 @@ export function afficher(racine, app, { reste }) {
     const hote = p.hote === moi;
     const places = p.joueurs || [];
     const monSiege = places.findIndex((x) => x && x.uid === moi);
-    const libres = [0, 1, 2, 3].filter((si) => !places[si]);
+    const n = p.nbJoueurs === 3 || places.length === 3 ? 3 : 4;
+    const libres = Array.from({ length: n }, (_, si) => si).filter((si) => !places[si]);
     const complet = libres.length === 0;
     const vue = monSiege >= 0 ? monSiege : 0;
+    // À 3 : pas d'équipe ; on indique l'ordre de jeu (1er, 2e, 3e à partir du siège 0).
+    const rangJeu = (si) => ['1er à jouer', '2e à jouer', '3e à jouer'][si];
 
     const siege = (si) => {
       const place = places[si];
-      const equipe = si % 2 === vue % 2 ? 'Mon équipe' : 'Adversaires';
+      const equipe = n === 3 ? rangJeu(si) : si % 2 === vue % 2 ? 'Mon équipe' : 'Adversaires';
       const actions = [];
       if (!place) {
         if (monSiege >= 0) actions.push(h('button', { type: 'button', class: 'bouton petit', disabled: occupe, onclick: () => agir(() => api.choisirSiege(p.id, si)) }, 'M’asseoir ici'));
@@ -144,8 +147,26 @@ export function afficher(racine, app, { reste }) {
         actions.length ? h('div', { class: 'actions-siege' }, actions) : null,
       );
     };
-    const pos = (c) => (vue + c) % 4;
-    const table = h(
+    const pos = (c) => (vue + c) % n;
+    const ordre = Array.from({ length: n }, (_, k) => {
+      const pl = places[k];
+      return pl ? (pl.uid === moi ? 'toi' : pl.pseudo) : 'place libre';
+    });
+    const table =
+      n === 3
+        ? h(
+            'div',
+            { class: 'table-attente table-3', 'aria-label': 'Places autour de la table' },
+            h('div', { class: 'place-haut-gauche' }, siege(pos(1))),
+            h('div', { class: 'place-haut-droite' }, siege(pos(2))),
+            h(
+              'div',
+              { class: 'tapis-table tapis-triangle-attente' },
+              h('span', {}, 'Chacun pour soi'),
+            ),
+            h('div', { class: 'place-bas' }, siege(pos(0))),
+          )
+        : h(
       'div',
       { class: 'table-attente', 'aria-label': 'Places autour de la table' },
       h('div', { class: 'place-haut' }, siege(pos(2))),
@@ -155,13 +176,16 @@ export function afficher(racine, app, { reste }) {
       h('div', { class: 'place-bas' }, siege(pos(0))),
     );
 
+    const options = [n === 3 ? '3 joueurs' : '2 contre 2'];
+    if (p.reglages?.cinqAdverse) options.push('« 5 adverse »');
     const blocs = [
       enteteRetour(p.nom || 'Salle d’attente', '#/parties'),
       h(
         'div',
         { class: 'carte' },
-        h('div', { class: 'titre-carte' }, h('b', {}, 'Salle d’attente'), h('span', { class: 'note' }, `${p.reglages?.cinqAdverse ? 'Option « 5 adverse »' : '5 normal'} · ${complet ? '4 joueurs : prêt' : pluriel(libres.length, 'place libre', 'places libres')}`)),
+        h('div', { class: 'titre-carte' }, h('b', {}, 'Salle d’attente'), h('span', { class: 'note' }, `${options.join(' · ')} · ${complet ? 'prêt à lancer' : pluriel(libres.length, 'place libre', 'places libres')}`)),
         table,
+        n === 3 ? h('p', { class: 'note ordre-jeu' }, `Ordre de jeu (sens des aiguilles d’une montre) : ${ordre.join(' → ')}`) : null,
       ),
     ];
     if (erreurAttente) blocs.push(h('div', { class: 'apercu erreur' }, erreurAttente));

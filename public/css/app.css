@@ -740,27 +740,20 @@ details > .reglage:first-of-type {
 }
 
 .toast {
-  position: fixed;
-  left: 50%;
-  top: calc(10px + env(safe-area-inset-top));
-  transform: translateX(-50%);
+  margin: 8px 16px 0;
   background: var(--text);
   color: var(--bg);
   padding: 10px 16px;
   border-radius: var(--rayon);
   font-size: calc(14px * var(--texte));
   font-weight: 600;
-  z-index: 60;
-  max-width: 90vw;
-  width: max-content;
   text-align: center;
   box-shadow: var(--ombre);
   animation: descente 0.18s ease-out;
-  pointer-events: none;
 }
 @keyframes descente {
   from {
-    transform: translate(-50%, -12px);
+    transform: translateY(-8px);
     opacity: 0;
   }
 }
@@ -1348,9 +1341,6 @@ details > .reglage:first-of-type {
 }
 .panneau-bas {
   margin-top: auto;
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
   background: var(--bg);
   padding-top: 10px;
   display: flex;
@@ -1819,4 +1809,137 @@ details > .reglage:first-of-type {
 }
 .bilan-analyse .stat .etiquette {
   white-space: normal;
+}
+
+/* Plateau triangulaire (jeu à 3) : liseré bleu nuit et tapis aux coins arrondis. */
+.plateau-toc .cadre-triangle {
+  fill: var(--cadre);
+  stroke: var(--cadre);
+  stroke-width: 21;
+  stroke-linejoin: round;
+}
+.plateau-toc .tapis-triangle {
+  fill: var(--tapis);
+  stroke: var(--tapis);
+  stroke-width: 14;
+  stroke-linejoin: round;
+}
+.plateau-toc .carte-plateau.joker text {
+  fill: #6b4bb5;
+}
+.plateau-toc .rang-carte.joker {
+  font-size: 4.2px;
+  text-anchor: middle;
+  letter-spacing: 0.04em;
+}
+.plateau-toc .copie-joker {
+  font-size: 4px;
+  font-weight: 700;
+  text-anchor: middle;
+  font-family: system-ui, sans-serif !important;
+}
+.carte-jeu.joker {
+  color: #6b4bb5;
+}
+.carte-jeu .titre-joker {
+  position: absolute;
+  top: 7%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 800 max(9px, 17cqw) / 1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.04em;
+}
+:root[data-theme='dark'] .carte-jeu.joker {
+  color: #5a3da3;
+}
+
+/* Message bref de l'écran de jeu (carte reçue, commentaire, erreur), dans la consigne : il ne couvre rien. */
+.avis-jeu {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--chip);
+  color: var(--chip-text);
+  font-size: calc(13px * var(--texte));
+  font-weight: 700;
+  animation: fondu 0.2s ease-out;
+}
+.avis-jeu.erreur {
+  background: var(--err);
+  color: #fff;
+}
+/* Joker : cartes posées pendant la donne, et choix de la carte copiée. */
+.cartes-posees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.cartes-posees .carte-jeu.petite {
+  width: 32px;
+}
+.carte-jeu.petite .coin {
+  font-size: 10px;
+}
+.carte-jeu.petite .coin b {
+  font-size: 12px;
+}
+.choix-coup .bouton.choix-comme {
+  flex: 1 0 96px;
+}
+.carte-jeu .marque-carte {
+  font-size: 9px;
+  line-height: 1.25;
+  padding: 1px 2px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* Avancement des 3 joueurs (jeu à 3) */
+.avancement-3 {
+  gap: 2px;
+}
+.ligne-avancement {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40%;
+  align-items: center;
+  gap: 8px;
+}
+.puce-pion.grande {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
+/* Salle d'attente à 3 : deux places en haut, une en bas, autour d'un tapis en triangle. */
+.table-attente.table-3 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    'hg hd'
+    'tapis tapis'
+    'bas bas';
+}
+.table-3 .place-haut-gauche {
+  grid-area: hg;
+}
+.table-3 .place-haut-droite {
+  grid-area: hd;
+}
+.table-3 .place-bas {
+  grid-area: bas;
+  justify-content: center;
+}
+.table-3 .place-bas .siege {
+  flex: 0 1 50%;
+}
+.tapis-triangle-attente {
+  min-height: 110px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  border: 0;
+  padding-top: 34px;
+  background: var(--tapis);
+  box-shadow: inset 0 0 0 3px var(--cadre);
+}
+.ordre-jeu {
+  margin: 10px 0 0;
+  text-align: center;
 }

@@ -91,8 +91,10 @@ function signalerParties(parties) {
       if (p.aMoiDeJouer && !avant?.aMoi && p.statut === 'encours') {
         prevenir('tour-' + p.id, 'À toi de jouer', `${nom} : c’est à toi de jouer.`, '#/partie/' + p.id, 'tour', p.id);
       } else if (p.statut === 'finie' && avant && avant.statut !== 'finie') {
-        const gagne = p.monSiege >= 0 && p.gagnant === p.monSiege % 2;
-        prevenir('fin-' + p.id, 'Partie terminée', `${nom} : ${gagne ? 'ton équipe a gagné !' : 'ton équipe a perdu.'}`, '#/partie/' + p.id, 'fin', p.id);
+        const a3 = (p.nbJoueurs || p.joueurs?.length) === 3;
+        const gagne = p.monSiege >= 0 && p.gagnant === (a3 ? p.monSiege : p.monSiege % 2);
+        const texte = a3 ? (gagne ? 'tu as gagné !' : 'tu as perdu.') : gagne ? 'ton équipe a gagné !' : 'ton équipe a perdu.';
+        prevenir('fin-' + p.id, 'Partie terminée', `${nom} : ${texte}`, '#/partie/' + p.id, 'fin', p.id);
       }
     }
   }

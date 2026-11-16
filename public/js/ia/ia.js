@@ -57,7 +57,7 @@ export function choisirCoup(etat, siege, main, options = {}) {
     const analyse = new AnalyseCoup(etat, siege, main, options);
     if (analyse.candidats.length > 1 && analyse.actifs.length > 1) {
       // marge pour la validation finale et les imprévus
-      analyse.progresser(debut + budget * 0.92 - 1 - maintenant());
+      analyse.progresser(debut + budget * 0.92 - 1 - maintenant(), true);
     }
     coup = analyse.meilleurCoup();
   } catch (e) {

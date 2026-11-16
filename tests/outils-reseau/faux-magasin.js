@@ -13,6 +13,8 @@
 //    voient le document déjà modifié) ;
 //  - un client hors ligne (transactions et lectures non en cache refusées, code « unavailable »).
 
+import { destinataireDon } from '../../public/js/moteur/index.js';
+
 const HEURE = Object.freeze({ __faux: 'heure' });
 const SUPPRIMER = Object.freeze({ __faux: 'supprimer' });
 
@@ -85,8 +87,9 @@ export class FauxServeur {
     const e = p.etat;
     if (e.donne < d) return false;
     if (m[2] === 'donnes') return p.joueurs[s].uid === uid || p.joueurs[s].ia === true;
+    if (s < 0 || s >= p.joueurs.length) return false;
     if (m[2] === 'dons') {
-      const pour = (s + 2) % 4;
+      const pour = destinataireDon(d, s, p.joueurs.length);
       const fini = e.donne > d || (e.donne === d && e.phase !== 'echange');
       return p.joueurs[s].uid === uid || (fini && (p.joueurs[pour].uid === uid || p.joueurs[s].ia || p.joueurs[pour].ia));
     }

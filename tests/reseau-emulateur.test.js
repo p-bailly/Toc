@@ -17,8 +17,8 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { creerClient } from '../public/js/reseau/client.js';
 import { initialiser } from '../public/js/reseau/firebase.js';
-import { choisirCoup, choisirDon } from './outils-reseau/ia-simple.js';
-import { coupsLegauxMain, generateurAleatoire, appliquerCoup, marquerEchange, etatInitial } from '../public/js/moteur/index.js';
+import { choisirCoup, choisirCoup3, choisirDon, choisirDon3 } from './outils-reseau/ia-simple.js';
+import { coupsLegauxMain, generateurAleatoire, appliquerCoup, marquerEchange, etatInitial, rejouerPartie } from '../public/js/moteur/index.js';
 import { attendre } from './outils-reseau/faux-magasin.js';
 
 const actif = !!(process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST && process.env.TOC_MODULES);
@@ -49,7 +49,7 @@ function nouveauClient(graine) {
   const rng = generateurAleatoire(graine);
   const client = creerClient({
     services: async () => services,
-    ia: { choisirDon, choisirCoup },
+    ia: { choisirDon, choisirCoup, choisirDon3, choisirCoup3 },
     rng,
     session: { delaiIA: 0, attenteAutres: [50, 200], budgetIA: 5 },
   });
@@ -319,6 +319,160 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertSucceeds(updateDoc(doc(db(B), 'joueurs', B), { stats: { jouees: 1, gagnees: 1 }, comptees: [id] }));
   await assertFails(updateDoc(ref(A), { statut: 'encours', majLe: serverTimestamp() })); // partie finie : figée
   await assertFails(deleteDoc(ref(A)));
+});
+
+test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !actif && 'émulateur absent', timeout: 600000 }, async () => {
+  const e = await environnement();
+  await e.clearFirestore();
+  const { rut, fs } = modules();
+  const { assertFails, assertSucceeds } = rut;
+  const { doc, getDoc, updateDoc, setDoc, writeBatch, serverTimestamp } = fs;
+
+  // 1. Partie complète 2 humains + 1 IA avec le vrai client.
+  const clients = [];
+  for (const nom of ['Alice', 'Bruno']) {
+    const c = nouveauClient(40 + clients.length);
+    c.joueur = await c.client.connecter(nom);
+    clients.push(c);
+  }
+  const [a, b] = clients;
+  const { id } = await a.client.creerPartie({ nom: 'Trio', nbJoueurs: 3 });
+  await a.client.ajouterIA(id, 1);
+  await b.client.rejoindrePartie(id);
+  await a.client.lancerPartie(id);
+  const sessions = [];
+  const vues = [];
+  for (let i = 0; i < 2; i++) {
+    const s = await clients[i].client.ouvrirSession(id);
+    sessions.push(s);
+    s.abonner((v) => (vues[i] = v));
+  }
+  const debut = Date.now();
+  while (!vues.every((v) => v.etat.phase === 'fini')) {
+    assert.ok(Date.now() - debut < 580000, 'partie trop longue');
+    let agi = false;
+    for (let i = 0; i < 2 && !agi; i++) {
+      const v = vues[i];
+      const { etat } = v;
+      try {
+        if (etat.phase === 'echange' && !etat.echanges[v.siege] && !v.don) {
+          await sessions[i].donner(v.main[0]);
+          agi = true;
+        } else if (etat.phase === 'jeu' && etat.tour === v.siege) {
+          const coups = coupsLegauxMain(etat, v.siege, v.main);
+          const joker = coups.find((c) => /^J[12]$/.test(c.carte) && c.t !== 'defausse');
+          await sessions[i].jouer(joker || coups[Math.floor(clients[i].rng() * coups.length)]);
+          agi = true;
+        }
+      } catch (err) {
+        if (!/pas ton tour|déjà donné|pas le moment|terminée/.test(err.message)) throw err;
+      }
+    }
+    if (!agi) await new Promise((r) => setTimeout(r, 5));
+  }
+  const fin = vues[0].etat;
+  assert.ok([0, 1, 2].includes(fin.gagnant));
+  assert.ok(fin.donne >= 4, 'au moins un remélange');
+  const an = await sessions[0].donneesAnalyse();
+  assert.equal(an.donnes.length, fin.donne + 1);
+  assert.ok(an.donnes.every((x) => x.donnee && x.recue));
+  const rejeu = rejouerPartie(an.reglages, an.historique);
+  assert.deepEqual(rejeu.etat.pions, fin.pions);
+  for (const x of clients) {
+    let stats = null;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 20000) {
+      stats = (await fs.getDoc(fs.doc(x.services.db, 'joueurs', x.joueur.uid))).data().stats;
+      if (stats.jouees === 1) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(stats.jouees, 1);
+  }
+  sessions.forEach((s) => s.fermer());
+  console.log(`# émulateur à 3 : partie ${id} finie, donne ${fin.donne}, coup ${fin.numCoup}, gagnant ${fin.gagnant}`);
+
+  // 2. Triche à 3.
+  const contextes = new Map();
+  const db = (uid) => {
+    if (!contextes.has(uid)) contextes.set(uid, e.authenticatedContext(uid).firestore());
+    return contextes.get(uid);
+  };
+  const A = 'alice3', B = 'bruno3', C = 'chloe3';
+  for (const [u, p] of [[A, 'Alice'], [B, 'Bruno'], [C, 'Chloé']]) {
+    await assertSucceeds(setDoc(doc(db(u), 'joueurs', u), { pseudo: p, visible: true, recherche: p.toLowerCase(), stats: { jouees: 0, gagnees: 0 }, comptees: [], creeLe: serverTimestamp() }));
+  }
+  const code = 'TRIXYZ';
+  const pA = { uid: A, pseudo: 'Alice', ia: false };
+  const base = {
+    nom: 'Triche à 3', code, hote: A, statut: 'attente', reglages: { cinqAdverse: false, nbJoueurs: 3 },
+    joueurs: [pA, null, null], uids: [A], invites: [], pseudosInvites: {}, refus: [], historique: [], enAttente: [],
+    creeLe: serverTimestamp(), majLe: serverTimestamp(),
+  };
+  await assertFails(setDoc(doc(db(A), 'parties', code), { ...base, reglages: { cinqAdverse: false, nbJoueurs: 4 } }));
+  await assertFails(setDoc(doc(db(A), 'parties', code), { ...base, reglages: { cinqAdverse: false, nbJoueurs: 5 } }));
+  await assertFails(setDoc(doc(db(A), 'parties', code), { ...base, joueurs: [pA, null, null, null] }));
+  await assertFails(setDoc(doc(db(A), 'parties', code), { ...base, reglages: { cinqAdverse: false }, joueurs: [pA, null, null] }));
+  await assertSucceeds(setDoc(doc(db(A), 'parties', code), base));
+  const ref = (u) => doc(db(u), 'parties', code);
+  const pB = { uid: B, pseudo: 'Bruno', ia: false };
+  const pC = { uid: C, pseudo: 'Chloé', ia: false };
+  const ia4 = { uid: null, pseudo: 'IA 4', ia: true };
+  await assertFails(updateDoc(ref(A), { joueurs: [pA, null, null, ia4], majLe: serverTimestamp() })); // 4e siège
+  await assertSucceeds(updateDoc(ref(B), { joueurs: [pA, pB, null], uids: [A, B], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(C), { joueurs: [pA, pB, pC], uids: [A, B, C], majLe: serverTimestamp() }));
+
+  const { distribuerCycle } = await import('../public/js/moteur/index.js');
+  const etat0 = etatInitial({ nbJoueurs: 3 });
+  const cycle = distribuerCycle(generateurAleatoire(9), 3);
+  const lancerAvec = (etat) => {
+    const lot = writeBatch(db(A));
+    for (let d = 0; d < 4; d++) for (let s = 0; s < 3; s++) lot.set(doc(db(A), 'parties', code, 'donnes', `${d}_${s}`), { donne: d, siege: s, cartes: cycle[d][s] });
+    lot.update(ref(A), { statut: 'encours', etat, historique: [], enAttente: [A, B, C], invites: [], majLe: serverTimestamp() });
+    return lot.commit();
+  };
+  await assertFails(lancerAvec(etatInitial({}))); // état à 4 dans une partie à 3
+  await assertSucceeds(lancerAvec(etat0));
+  await assertFails(updateDoc(ref(A), { 'etat.reglages.nbJoueurs': 4, majLe: serverTimestamp() }));
+
+  // Don : au voisin de gauche à la donne 0 (siège 0 → 1), pas au « partenaire ».
+  const donner = (u, s, pour, carte) => {
+    const lot = writeBatch(db(u));
+    lot.set(doc(db(u), 'parties', code, 'dons', `0_${s}`), { donne: 0, de: s, pour, carte });
+    lot.update(ref(u), { etat: marquerEchange(etat0, s), enAttente: [B, C], majLe: serverTimestamp() });
+    return lot.commit();
+  };
+  await assertFails(donner(A, 0, 2, cycle[0][0][0]));
+  await assertSucceeds(donner(A, 0, 1, cycle[0][0][0]));
+  await assertFails(getDoc(doc(db(B), 'parties', code, 'dons', '0_0'))); // échange pas fini
+  let etat = marquerEchange(etat0, 0);
+  for (const [u, s, pour] of [[B, 1, 2], [C, 2, 0]]) {
+    const lot = writeBatch(db(u));
+    lot.set(doc(db(u), 'parties', code, 'dons', `0_${s}`), { donne: 0, de: s, pour, carte: cycle[0][s][0] });
+    lot.update(ref(u), { etat: marquerEchange(etat, s), enAttente: [], majLe: serverTimestamp() });
+    await assertSucceeds(lot.commit());
+    etat = marquerEchange(etat, s);
+  }
+  assert.equal(etat.phase, 'jeu');
+  await assertSucceeds(getDoc(doc(db(B), 'parties', code, 'dons', '0_0'))); // destinataire
+  await assertFails(getDoc(doc(db(C), 'parties', code, 'dons', '0_0'))); // le troisième
+  await assertFails(getDoc(doc(db(A), 'parties', code, 'donnes', '0_1')));
+  await assertFails(getDoc(doc(db(A), 'parties', code, 'donnes', '1_0'))); // donne future
+  await assertFails(setDoc(doc(db(A), 'parties', code, 'donnes', '4_0'), { donne: 4, siege: 0, cartes: cycle[0][0] }));
+
+  // Coup du siège 0 (défausse fabriquée) : tour suivant = 1 (modulo 3), jokers conservés.
+  const c0 = { t: 'defausse', carte: cycle[0][0][1] };
+  const apres = { ...etat, pile: [c0.carte], cartesRestantes: [4, 5, 5], numCoup: etat.numCoup + 1, tour: 1, dernierCoup: { siege: 0, coup: c0, captures: [], deplacements: [] } };
+  const hist = [{ n: apres.numCoup, siege: 0, coup: c0, captures: [] }];
+  await assertFails(updateDoc(ref(A), { etat: { ...apres, tour: 2 }, historique: hist, enAttente: [B], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(A), { etat: { ...apres, jokers: { J3: '9' } }, historique: hist, enAttente: [B], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { etat: apres, historique: hist, enAttente: [B], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(A), { etat: apres, historique: hist, enAttente: [B], majLe: serverTimestamp() }));
+
+  // Statistiques à 3 : seul le siège gagnant compte une victoire.
+  await e.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'parties', code), { statut: 'finie', 'etat.phase': 'fini', 'etat.gagnant': 2 }));
+  await assertFails(updateDoc(doc(db(A), 'joueurs', A), { stats: { jouees: 1, gagnees: 1 }, comptees: [code] }));
+  await assertSucceeds(updateDoc(doc(db(A), 'joueurs', A), { stats: { jouees: 1, gagnees: 0 }, comptees: [code] }));
+  await assertSucceeds(updateDoc(doc(db(C), 'joueurs', C), { stats: { jouees: 1, gagnees: 1 }, comptees: [code] }));
 });
 
 test.after(async () => {

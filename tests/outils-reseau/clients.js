@@ -1,7 +1,7 @@
 // Fabrique des clients réseau branchés sur le faux serveur.
 
 import { creerClient } from '../../public/js/reseau/client.js';
-import { choisirCoup, choisirDon } from './ia-simple.js';
+import { choisirCoup, choisirCoup3, choisirDon, choisirDon3 } from './ia-simple.js';
 import { generateurAleatoire } from '../../public/js/moteur/index.js';
 
 export function nouveauClient(serveur, { graine = 1, session = {}, ...autres } = {}) {
@@ -10,7 +10,7 @@ export function nouveauClient(serveur, { graine = 1, session = {}, ...autres } =
   const rng = generateurAleatoire(graine);
   const client = creerClient({
     services: async () => ({ magasin, auth }),
-    ia: { choisirDon, choisirCoup },
+    ia: { choisirDon, choisirCoup, choisirDon3, choisirCoup3 },
     rng,
     delaiReseau: 5000,
     pauseRelance: 2,

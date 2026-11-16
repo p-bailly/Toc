@@ -6,10 +6,11 @@
 // leurs parties et jouent (avec l'IA) quand c'est leur tour. L'état est gardé dans sessionStorage (onglet courant)
 // pour survivre à un rechargement. « &rapide » dans l'URL accélère tout (tests automatisés).
 
-import { nouvellePartie, donnerCarte, jouerCoup, partenaire, coupsLegauxMain } from '../moteur/index.js';
+import { nouvellePartie, donnerCarte, jouerCoup, coupsLegauxMain, donneurDon, nombreJoueurs } from '../moteur/index.js';
 import { choisirCoup, choisirDon } from '../ia/ia.js';
+import { choisirCoup3, choisirDon3 } from '../ia/ia3.js';
 
-const CLE = 'toc.demo2';
+const CLE = 'toc.demo3';
 let vitesse = 1;
 
 /** Multiplie tous les délais des faux joueurs (0.1 : dix fois plus vite). */
@@ -122,6 +123,7 @@ function resumeDe(p) {
     statut: p.statut,
     hote: p.hote,
     reglages: { ...p.reglages },
+    nbJoueurs: p.joueurs.length,
     joueurs: p.joueurs.map((j) => (j ? { uid: j.uid, pseudo: j.pseudo, ia: !!j.ia } : null)),
     invites: (p.invites || []).map((i) => ({ ...i })),
     refus: (p.refus || []).map((i) => ({ ...i })),
@@ -263,7 +265,8 @@ function placeDe(uid) {
   return { uid, pseudo: c.pseudo, ia: false };
 }
 
-function creer({ nom, cinqAdverse, hote, code }) {
+function creer({ nom, cinqAdverse, hote, code, nbJoueurs = 4 }) {
+  const n = nbJoueurs === 3 ? 3 : 4;
   // Comme dans la vraie couche réseau, l'identifiant d'une partie est son code d'invitation.
   const id = code || nouveauCode();
   db.seq++;
@@ -273,8 +276,8 @@ function creer({ nom, cinqAdverse, hote, code }) {
     code: id,
     statut: 'attente',
     hote,
-    reglages: { cinqAdverse: !!cinqAdverse },
-    joueurs: [placeDe(hote), null, null, null],
+    reglages: n === 3 ? { cinqAdverse: !!cinqAdverse, nbJoueurs: 3 } : { cinqAdverse: !!cinqAdverse },
+    joueurs: [placeDe(hote), ...Array(n - 1).fill(null)],
     invites: [],
     partie: null,
     gagnant: null,
@@ -284,10 +287,10 @@ function creer({ nom, cinqAdverse, hote, code }) {
   return p;
 }
 
-export async function creerPartie({ nom, cinqAdverse } = {}) {
+export async function creerPartie({ nom, cinqAdverse, nbJoueurs } = {}) {
   await attendre();
   const c = exigerConnexion();
-  const p = creer({ nom: String(nom || '').trim().slice(0, 40), cinqAdverse, hote: c.uid });
+  const p = creer({ nom: String(nom || '').trim().slice(0, 40), cinqAdverse, hote: c.uid, nbJoueurs });
   changer();
   return { id: p.id, code: p.code };
 }
@@ -391,7 +394,7 @@ export async function lancerPartie(id) {
   await attendre();
   const p = exigerPartie(id);
   exigerHote(p);
-  if (p.joueurs.some((j) => !j)) throw new Error('Il faut 4 joueurs (ou IA) pour lancer la partie.');
+  if (p.joueurs.some((j) => !j)) throw new Error(`Il faut ${p.joueurs.length} joueurs (ou IA) pour lancer la partie.`);
   lancer(p);
   changer();
 }
@@ -497,6 +500,11 @@ function peupler(uid) {
   simulerJusquALaFin(finie);
   finie.majLe = Date.now() - 2 * 86400e3;
 
+  const aTrois = creer({ nom: 'Toc à trois', hote: uid, nbJoueurs: 3 });
+  aTrois.joueurs = [placeDe(uid), placeDe('f-malo'), { uid: null, pseudo: 'IA Droite', ia: true }];
+  lancer(aTrois);
+  aTrois.majLe = Date.now() - 3 * 60e3;
+
   const aCode = creer({ nom: 'Partie de Jules', hote: 'f-jules', code: 'TOC42A' });
   aCode.joueurs[2] = placeDe('f-ines');
   aCode.majLe = Date.now() - 20 * 60e3;
@@ -508,7 +516,7 @@ function simulerJusquALaFin(p) {
   for (let n = 0; n < 5000 && partie.etat.phase !== 'fini'; n++) {
     const e = partie.etat;
     if (e.phase === 'echange') {
-      for (let s = 0; s < 4; s++) if (!partie.etat.echanges[s]) partie = donnerCarte(partie, s, partie.mains[s][0]);
+      for (let s = 0; s < partie.etat.echanges.length; s++) if (!partie.etat.echanges[s]) partie = donnerCarte(partie, s, partie.mains[s][0]);
       p.partie = partie;
       suivreDonnes(p);
     } else {
@@ -530,7 +538,7 @@ function terminerSiFini(p) {
     const c = j && j.uid ? db.comptes[j.uid] : null;
     if (!c) return;
     c.stats.jouees += 1;
-    if (s % 2 === p.gagnant) c.stats.gagnees += 1;
+    if (p.joueurs.length === 3 ? s === p.gagnant : s % 2 === p.gagnant) c.stats.gagnees += 1;
   });
 }
 
@@ -561,12 +569,12 @@ function trouverAction() {
     const e = p.partie.etat;
     const automatique = (s) => p.joueurs[s] && p.joueurs[s].uid !== db.moi && (p.joueurs[s].ia || db.comptes[p.joueurs[s].uid]?.faux || !db.comptes[p.joueurs[s].uid]);
     if (e.phase === 'echange') {
-      const s = [0, 1, 2, 3].find((x) => !e.echanges[x] && automatique(x));
-      if (s === undefined) continue;
+      const s = e.echanges.findIndex((fait, x) => !fait && automatique(x));
+      if (s < 0) continue;
       return {
         ia: !!p.joueurs[s].ia,
         faire: () => {
-          const carte = choisirDon(p.partie.etat, s, p.partie.mains[s]);
+          const carte = (p.joueurs.length === 3 ? choisirDon3 : choisirDon)(p.partie.etat, s, p.partie.mains[s]);
           p.partie = donnerCarte(p.partie, s, carte);
           suivreDonnes(p);
           p.majLe = Date.now();
@@ -578,10 +586,11 @@ function trouverAction() {
       return {
         ia: !!p.joueurs[s].ia,
         faire: () => {
-          const coup = choisirCoup(p.partie.etat, s, p.partie.mains[s], {
+          const n = p.joueurs.length;
+          const coup = (n === 3 ? choisirCoup3 : choisirCoup)(p.partie.etat, s, p.partie.mains[s], {
             budgetMs: Math.max(10, 250 * vitesse),
             carteDonnee: p.partie.dons[s],
-            carteRecue: p.partie.dons[partenaire(s)],
+            carteRecue: p.partie.dons[donneurDon(p.partie.etat.donne, s, n)],
           });
           p.partie = jouerCoup(p.partie, s, coup);
           suivreDonnes(p);
@@ -618,7 +627,7 @@ export async function ouvrirSession(id) {
       etat: copie(etat),
       main: mains[siege].slice(),
       don: dons[siege],
-      recu: etat.phase === 'echange' ? null : dons[partenaire(siege)],
+      recu: etat.phase === 'echange' ? null : dons[donneurDon(etat.donne, siege, nombreJoueurs(etat))],
       historique: copie(historique),
     };
   };
@@ -662,7 +671,7 @@ export async function ouvrirSession(id) {
         joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid })),
         siege,
         historique: copie(q.partie.historique),
-        donnes: (q.donnes || []).map((d) => ({ distribuees: d.mains[siege].slice(), donnee: d.dons[siege], recue: d.dons[partenaire(siege)] })),
+        donnes: (q.donnes || []).map((d, k) => ({ distribuees: d.mains[siege].slice(), donnee: d.dons[siege], recue: d.dons[donneurDon(k, siege, q.joueurs.length)] })),
       };
     },
     fermer() {

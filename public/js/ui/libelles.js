@@ -1,24 +1,34 @@
 // Libellés en français : noms de cartes, journal des coups, description des choix (logique pure, testée dans
 // tests/ui-libelles.test.js).
 
-import { rang, couleurCarte, SYMBOLES } from '../moteur/cartes.js';
+import { rang, couleurCarte, SYMBOLES, estJoker } from '../moteur/cartes.js';
 
 const NOMS_RANGS = { A: 'As', V: 'Valet', D: 'Dame', R: 'Roi' };
 const NOMS_COULEURS = { P: 'pique', C: 'cœur', K: 'carreau', T: 'trèfle' };
 
 /** Rang affiché sur la carte : « A », « 7 », « V »… */
-export const rangAffiche = (carte) => rang(carte);
-export const symbole = (carte) => SYMBOLES[couleurCarte(carte)];
-export const estRouge = (carte) => ['C', 'K'].includes(couleurCarte(carte));
+export const rangAffiche = (carte) => (estJoker(carte) ? 'JOKER' : rang(carte));
+export const symbole = (carte) => (estJoker(carte) ? '★' : SYMBOLES[couleurCarte(carte)]);
+export const estRouge = (carte) => !estJoker(carte) && ['C', 'K'].includes(couleurCarte(carte));
+
+/** Nom d'un rang avec son article indéfini : « un as », « un 9 », « une dame ». */
+export function rangAvecArticle(r) {
+  if (r === 'D') return 'une dame';
+  return 'un ' + ({ A: 'as', V: 'valet', R: 'roi' }[r] ?? r);
+}
+/** Nom court d'un rang : « As », « 9 », « Valet ». */
+export const nomRang = (r) => NOMS_RANGS[r] ?? r;
 
 /** « As de pique », « 7 de cœur », « Valet de trèfle ». */
 export function nomCarte(carte) {
+  if (estJoker(carte)) return 'Joker';
   const r = rang(carte);
   return `${NOMS_RANGS[r] ?? r} de ${NOMS_COULEURS[couleurCarte(carte)]}`;
 }
 
 /** « As ♠ », « 7 ♥ ». */
 export function carteCourte(carte) {
+  if (estJoker(carte)) return 'Joker';
   const r = rang(carte);
   return `${NOMS_RANGS[r] ?? r} ${symbole(carte)}`;
 }
@@ -26,7 +36,8 @@ export function carteCourte(carte) {
 /** Ordre d'affichage d'une main : par valeur (As, 2 … 10, Valet, Dame, Roi), puis par couleur. */
 const ORDRE_RANGS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'V', 'D', 'R'];
 export function trierMain(main) {
-  return main.slice().sort((a, b) => ORDRE_RANGS.indexOf(rang(a)) - ORDRE_RANGS.indexOf(rang(b)) || couleurCarte(a).localeCompare(couleurCarte(b)));
+  const ordre = (c) => (estJoker(c) ? 99 : ORDRE_RANGS.indexOf(rang(c)));
+  return main.slice().sort((a, b) => ordre(a) - ordre(b) || couleurCarte(a).localeCompare(couleurCarte(b)));
 }
 
 const nomDe = (joueurs, siege) => joueurs?.[siege]?.pseudo || `Joueur ${siege + 1}`;
@@ -59,7 +70,7 @@ export function decrireAction(coup, siege, joueurs) {
       const o = coup.pion >> 2;
       const autre = duPion(coup.pion, siege, joueurs);
       if (coup.allee) return autre ? `fait entrer${autre} dans son allée (${coup.pas})` : `avance de ${coup.pas} dans son allée`;
-      if (o !== siege && o % 2 !== siege % 2) return `fait avancer${autre} de ${coup.pas}`;
+      if (o !== siege && (joueurs?.length === 3 || o % 2 !== siege % 2)) return `fait avancer${autre} de ${coup.pas}`;
       return autre ? `avance${autre} de ${coup.pas}` : `avance de ${coup.pas}`;
     }
     case 'recul':
@@ -87,8 +98,9 @@ export function ligneJournal(entree, joueurs) {
   const { siege, coup, captures = [] } = entree;
   const qui = nomDe(joueurs, siege);
   const carte = carteCourte(coup.carte);
-  if (coup.t === 'defausse') return `${qui} défausse le ${carte} (aucune carte jouable).`;
-  let texte = `${qui} joue ${articleCarte(coup.carte)}${carte} : ${decrireAction(coup, siege, joueurs)}`;
+  if (coup.t === 'defausse') return estJoker(coup.carte) ? `${qui} défausse un joker (aucune carte jouable).` : `${qui} défausse le ${carte} (aucune carte jouable).`;
+  const joue = estJoker(coup.carte) ? `un joker comme ${rangAvecArticle(coup.comme)}` : `${articleCarte(coup.carte)}${carte}`;
+  let texte = `${qui} joue ${joue} : ${decrireAction(coup, siege, joueurs)}`;
   if (captures.length) texte += ` et renvoie ${decrireCaptures(captures, joueurs, siege)} à la base`;
   return texte + '.';
 }
@@ -111,7 +123,7 @@ export function libelleChoix(coup, siege, joueurs, { depuisAllee = false } = {})
       return 'Sortir un pion';
     case 'avance': {
       const o = coup.pion >> 2;
-      if (o !== siege && o % 2 !== siege % 2) return `Pousser le pion de ${nomDe(joueurs, o)} de ${coup.pas}`;
+      if (o !== siege && (joueurs?.length === 3 || o % 2 !== siege % 2)) return `Pousser le pion de ${nomDe(joueurs, o)} de ${coup.pas}`;
       if (coup.allee) return depuisAllee ? `Avancer de ${coup.pas} dans l’allée` : `Entrer dans l’allée (${coup.pas})`;
       return `Avancer de ${coup.pas}`;
     }
@@ -120,7 +132,7 @@ export function libelleChoix(coup, siege, joueurs, { depuisAllee = false } = {})
     case 'echange':
       return `Échanger avec ${nomDe(joueurs, coup.cible >> 2)}`;
     case 'defausse':
-      return `Défausser le ${carteCourte(coup.carte)}`;
+      return estJoker(coup.carte) ? 'Défausser le joker' : `Défausser le ${carteCourte(coup.carte)}`;
     default:
       return 'Jouer';
   }

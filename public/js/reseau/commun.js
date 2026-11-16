@@ -137,7 +137,7 @@ export function calculerEnAttente(etat, joueurs) {
   const humain = (s) => joueurs[s] && !joueurs[s].ia && joueurs[s].uid;
   if (etat.phase === 'echange') {
     const r = [];
-    for (let s = 0; s < 4; s++) if (!etat.echanges[s] && humain(s)) r.push(joueurs[s].uid);
+    for (let s = 0; s < etat.echanges.length; s++) if (!etat.echanges[s] && humain(s)) r.push(joueurs[s].uid);
     return r;
   }
   return humain(etat.tour) ? [joueurs[etat.tour].uid] : [];
@@ -156,22 +156,39 @@ export function siegeDoitAgir(etat, s) {
   return false;
 }
 
+/** Nombre de joueurs d'une partie d'après ses réglages : 3, ou 4 (champ absent). */
+export const nbJoueursDe = (reglages) => (reglages && reglages.nbJoueurs === 3 ? 3 : 4);
+
+/** Réglages au format du moteur : { cinqAdverse } à 4, { cinqAdverse, nbJoueurs: 3 } à 3. */
+export function reglagesPartie(cinqAdverse, nbJoueurs) {
+  return nbJoueurs === 3 ? { cinqAdverse: !!cinqAdverse, nbJoueurs: 3 } : { cinqAdverse: !!cinqAdverse };
+}
+
+/** Sièges gagnants d'une partie terminée (les deux de l'équipe à 4, un seul à 3). */
+export function siegesVainqueurs(etat, nbJoueurs) {
+  if (!etat || etat.phase !== 'fini' || etat.gagnant === null || etat.gagnant === undefined) return [];
+  return nbJoueurs === 3 ? [etat.gagnant] : [etat.gagnant, etat.gagnant + 2];
+}
+
 /** ResumePartie (voir api.js) à partir du document `parties/{id}`. */
 export function resumePartie(id, d, uid) {
   const monSiege = siegeDe(d, uid);
   const etat = d.etat || null;
   const pseudos = d.pseudosInvites || {};
+  const nbJoueurs = nbJoueursDe(d.reglages);
   return {
     id,
     nom: d.nom,
     code: d.code,
     statut: d.statut,
     hote: d.hote,
-    reglages: { cinqAdverse: !!d.reglages?.cinqAdverse },
-    joueurs: (d.joueurs || [null, null, null, null]).map((p) => (p ? { uid: p.uid ?? null, pseudo: p.pseudo, ia: !!p.ia } : null)),
+    reglages: reglagesPartie(d.reglages?.cinqAdverse, nbJoueurs),
+    nbJoueurs,
+    joueurs: (d.joueurs || Array(nbJoueurs).fill(null)).map((p) => (p ? { uid: p.uid ?? null, pseudo: p.pseudo, ia: !!p.ia } : null)),
     monSiege,
     aMoiDeJouer: d.statut === 'encours' && monSiege >= 0 && siegeDoitAgir(etat, monSiege),
     gagnant: etat && etat.gagnant !== undefined ? etat.gagnant : null,
+    gagnants: siegesVainqueurs(etat, nbJoueurs),
     majLe: date(d.majLe) || date(d.creeLe) || new Date(0),
     invites: (d.invites || []).map((u) => ({ uid: u, pseudo: pseudos[u] ?? '?' })),
     refus: (d.refus || []).map((u) => ({ uid: u, pseudo: pseudos[u] ?? '?' })),

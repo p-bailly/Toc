@@ -20,6 +20,8 @@ import {
   emailDe,
   identifiant,
   motDePasseDe,
+  nbJoueursDe,
+  siegesVainqueurs,
   verifierPseudo,
   siegeDe,
 } from './commun.js';
@@ -139,6 +141,7 @@ export async function modifierProfil(ctx, changements = {}) {
 export async function comptabiliserPartie(ctx, id, partie) {
   const s = siegeDe(partie, ctx.uid);
   if (partie.statut !== 'finie' || s < 0 || !partie.etat) return false;
+  const gagne = siegesVainqueurs(partie.etat, nbJoueursDe(partie.reglages)).includes(s);
   const chemin = chemins.joueur(ctx.uid);
   return transaction(ctx, async (tx) => {
     const d = await tx.lire(chemin);
@@ -147,7 +150,7 @@ export async function comptabiliserPartie(ctx, id, partie) {
     if (comptees.includes(id)) return false;
     const stats = d.stats || { jouees: 0, gagnees: 0 };
     tx.maj(chemin, {
-      stats: { jouees: stats.jouees + 1, gagnees: stats.gagnees + (partie.etat.gagnant === s % 2 ? 1 : 0) },
+      stats: { jouees: stats.jouees + 1, gagnees: stats.gagnees + (gagne ? 1 : 0) },
       comptees: comptees.concat([id]),
     });
     return true;

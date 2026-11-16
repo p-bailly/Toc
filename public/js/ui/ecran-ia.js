@@ -1,63 +1,93 @@
-// Contre l'IA (route #/ia) : reprendre la partie d'entraînement sauvegardée sur l'appareil, ou en commencer une
-// nouvelle (option « 5 adverse »). C'est l'écran d'ouverture de qui joue sans compte ou sans réseau.
+// Contre l'IA (route #/ia) : reprendre une partie d'entraînement sauvegardée sur l'appareil, ou en commencer une
+// nouvelle, en « 2 contre 2 » (toi et une IA contre deux IA) ou à « 3 joueurs » (chacun pour soi, toi contre deux
+// IA). C'est l'écran d'ouverture de qui joue sans compte ou sans réseau.
 
-import { h, remplacer, ecrire } from './dom.js';
-import { entete, interrupteur, rangee } from './composants.js';
-import { SessionLocale } from '../session-locale.js';
-import { nouvellePartieLocale } from './ecran-jeu.js';
+import { h, remplacer, ecrire, lire } from './dom.js';
+import { entete, interrupteur, rangee, segments } from './composants.js';
+import { nouvellePartieLocale, sauvegardeLocale, MODES_LOCAUX } from './ecran-jeu.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
 
+const CLE_MODE = 'toc.modeLocal';
+
 export function afficher(racine, app) {
   let cinqAdverse = false;
+  let nbJoueurs = lire(CLE_MODE, 4) === 3 ? 3 : 4;
+
+  const ligneEnCours = (sauvegarde, n) => {
+    const etat = sauvegarde.partie.etat;
+    const aMoi = (etat.phase === 'echange' && !sauvegarde.partie.dons?.[0]) || (etat.phase === 'jeu' && etat.tour === 0);
+    const avec = n === 3 ? `contre ${sauvegarde.joueurs.slice(1).map((j) => j.pseudo).join(' et ')}` : `avec ${sauvegarde.joueurs[2]?.pseudo || 'IA'}`;
+    return h(
+      'a',
+      { class: 'ligne' + (aMoi ? ' choisie' : ''), href: MODES_LOCAUX[n].route, 'data-action': n === 3 ? 'reprendre-3' : 'reprendre' },
+      h('div', { class: 'avatar', style: { background: aMoi ? 'var(--accent)' : 'var(--muted)' } }, '🤖'),
+      h(
+        'div',
+        { class: 'principal' },
+        h('div', { class: 'mot' }, (n === 3 ? '3 joueurs · ' : '2 contre 2 · ') + (aMoi ? 'à toi de jouer' : 'en cours')),
+        h('div', { class: 'note' }, `Donne ${etat.donne + 1}${etat.reglages.cinqAdverse ? ' · 5 adverse' : ''} · ${avec}`),
+      ),
+      h('span', { class: 'bouton' }, 'Reprendre'),
+    );
+  };
 
   const dessiner = () => {
-    const sauvegarde = SessionLocale.lireSauvegarde(localStorage);
-    const enCours = sauvegarde && sauvegarde.partie.etat.phase !== 'fini' ? sauvegarde : null;
     const blocs = [entete('Contre l’IA')];
     const conseil = conseilInstallation(app);
     if (conseil) blocs.push(conseil);
 
-    if (enCours) {
-      const etat = enCours.partie.etat;
-      const aMoi = (etat.phase === 'echange' && !enCours.partie.dons?.[0]) || (etat.phase === 'jeu' && etat.tour === 0);
-      blocs.push(
-        h('h2', {}, 'Partie en cours'),
-        h(
-          'a',
-          { class: 'ligne' + (aMoi ? ' choisie' : ''), href: '#/jeu/locale', 'data-action': 'reprendre' },
-          h('div', { class: 'avatar', style: { background: aMoi ? 'var(--accent)' : 'var(--muted)' } }, '🤖'),
-          h(
-            'div',
-            { class: 'principal' },
-            h('div', { class: 'mot' }, aMoi ? 'À toi de jouer' : 'Partie d’entraînement'),
-            h('div', { class: 'note' }, `Donne ${etat.donne + 1} · ${etat.reglages.cinqAdverse ? '5 adverse' : '5 normal'} · avec ${enCours.joueurs[2]?.pseudo || 'IA'}`),
-          ),
-          h('span', { class: 'bouton' }, 'Reprendre'),
-        ),
-      );
-    }
+    const enCours = [4, 3]
+      .map((n) => [n, sauvegardeLocale(n)])
+      .filter(([, sv]) => sv && sv.partie.etat.phase !== 'fini');
+    if (enCours.length) blocs.push(h('h2', {}, enCours.length > 1 ? 'Parties en cours' : 'Partie en cours'), h('div', { class: 'liste' }, enCours.map(([n, sv]) => ligneEnCours(sv, n))));
 
-    if (sauvegarde && !enCours) {
-      const e = sauvegarde.partie.etat;
-      const gagne = e.gagnant === 0;
+    // Dernière partie à 4 terminée : analyse (l'IA ne sait pas encore analyser le jeu à 3).
+    const fini4 = sauvegardeLocale(4);
+    if (fini4 && fini4.partie.etat.phase === 'fini') {
+      const gagne = fini4.partie.etat.gagnant === 0;
       blocs.push(
-        h('h2', {}, 'Dernière partie'),
+        h('h2', {}, 'Dernière partie à 2 contre 2'),
         h(
           'a',
           { class: 'ligne', href: '#/analyse/locale', 'data-action': 'analyser' },
           h('div', { class: 'avatar', style: { background: gagne ? 'var(--ok)' : 'var(--muted)' } }, gagne ? '🏆' : '🎲'),
-          h('div', { class: 'principal' }, h('div', { class: 'mot' }, gagne ? 'Victoire de ton équipe' : 'Victoire de l’équipe adverse'), h('div', { class: 'note' }, `${e.donne + 1} donnes · revois tes coups avec l’IA`)),
+          h('div', { class: 'principal' }, h('div', { class: 'mot' }, gagne ? 'Victoire de ton équipe' : 'Victoire de l’équipe adverse'), h('div', { class: 'note' }, `${fini4.partie.etat.donne + 1} donnes · revois tes coups avec l’IA`)),
           h('span', { class: 'bouton' }, 'Analyser'),
         ),
       );
     }
+
+    const enCoursMode = enCours.find(([n]) => n === nbJoueurs);
     blocs.push(
-      h('h2', {}, enCours ? 'Ou une nouvelle partie' : 'Nouvelle partie'),
+      h('h2', {}, 'Nouvelle partie'),
       h(
         'div',
         { class: 'carte' },
-        rangee({ titre: 'Toi et une IA contre deux IA', texte: 'Ton partenaire est en face. La partie est gardée sur cet appareil : tu peux la reprendre plus tard.' }),
+        h(
+          'div',
+          { class: 'champ', style: { marginBottom: '10px' } },
+          'Mode de jeu',
+          segments(
+            [
+              { valeur: 4, nom: '2 contre 2' },
+              { valeur: 3, nom: '3 joueurs' },
+            ],
+            nbJoueurs,
+            (v) => {
+              nbJoueurs = v;
+              ecrire(CLE_MODE, v);
+              dessiner();
+            },
+          ),
+        ),
+        rangee({
+          titre: nbJoueurs === 3 ? 'Toi contre deux IA, chacun pour soi' : 'Toi et une IA contre deux IA',
+          texte:
+            nbJoueurs === 3
+              ? 'Plateau en triangle, 54 cartes dont 2 jokers. Le premier qui rentre ses 4 pions gagne.'
+              : 'Ton partenaire est en face. La partie est gardée sur cet appareil : tu peux la reprendre plus tard.',
+        }),
         interrupteur({
           titre: 'Option « 5 adverse »',
           texte: 'Le 5 peut aussi faire avancer un pion adverse de 5 cases.',
@@ -74,9 +104,9 @@ export function afficher(racine, app) {
               class: 'bouton principal large',
               'data-action': 'nouvelle-locale',
               onclick: () => {
-                if (enCours && !confirm('Abandonner la partie en cours et en commencer une nouvelle ?')) return;
-                nouvellePartieLocale({ cinqAdverse });
-                app.naviguer('#/jeu/locale');
+                if (enCoursMode && !confirm('Abandonner la partie en cours de ce mode et en commencer une nouvelle ?')) return;
+                nouvellePartieLocale({ cinqAdverse }, nbJoueurs);
+                app.naviguer(MODES_LOCAUX[nbJoueurs].route);
               },
             },
             piPlus(),
@@ -92,16 +122,8 @@ export function afficher(racine, app) {
           'div',
           { class: 'carte carte-info' },
           h('b', {}, 'Jouer avec tes proches ?'),
-          h('span', { class: 'note' }, 'Choisis un nom d’utilisateur dans « Mes parties » pour créer une partie et inviter jusqu’à 3 joueurs.'),
-          h(
-            'a',
-            {
-              class: 'bouton',
-              href: '#/parties',
-              onclick: () => ecrire('toc.sansCompte', false),
-            },
-            'Créer mon compte',
-          ),
+          h('span', { class: 'note' }, 'Choisis un nom d’utilisateur dans « Mes parties » pour créer une partie et inviter tes proches.'),
+          h('a', { class: 'bouton', href: '#/parties', onclick: () => ecrire('toc.sansCompte', false) }, 'Créer mon compte'),
         ),
       );
     } else if (!app.enLigne()) {

@@ -2,6 +2,7 @@
 
 import { h } from './dom.js';
 import { rangAffiche, symbole, estRouge, nomCarte } from './libelles.js';
+import { estJoker } from '../moteur/cartes.js';
 
 /**
  * @param {string} carte   ex. « 7C »
@@ -10,13 +11,16 @@ import { rangAffiche, symbole, estRouge, nomCarte } from './libelles.js';
 export function dessinCarte(carte, o = {}) {
   const r = rangAffiche(carte);
   const sy = symbole(carte);
-  const contenu = [
+  const joker = estJoker(carte);
+  const contenu = joker
+    ? [h('span', { class: 'titre-joker' }, 'JOKER'), h('span', { class: 'symbole-central' }, '★'), o.marque ? h('span', { class: 'marque-carte' }, o.marque) : null]
+    : [
     h('span', { class: 'coin haut' }, h('b', {}, r), h('span', {}, sy)),
     h('span', { class: 'symbole-central' + (['V', 'D', 'R'].includes(r) ? ' figure' : '') }, ['V', 'D', 'R'].includes(r) ? r : sy),
     h('span', { class: 'coin bas' }, h('b', {}, r), h('span', {}, sy)),
     o.marque ? h('span', { class: 'marque-carte' }, o.marque) : null,
   ];
-  const classes = ['carte-jeu', estRouge(carte) ? 'rouge' : 'noire'];
+  const classes = ['carte-jeu', joker ? 'joker' : estRouge(carte) ? 'rouge' : 'noire'];
   if (o.choisie) classes.push('choisie');
   if (o.injouable) classes.push('injouable');
   if (o.petite) classes.push('petite');

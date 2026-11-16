@@ -15,7 +15,7 @@ export function afficher(racine) {
       'div',
       { class: 'contenu' },
       entete('Règles du Toc'),
-      h('p', { class: 'intro' }, 'Quatre joueurs en deux équipes de deux, partenaires face à face. Chaque joueur a 4 pions ; la première équipe qui rentre ses 8 pions dans ses allées d’arrivée gagne.'),
+      h('p', { class: 'intro' }, 'Quatre joueurs en deux équipes de deux, partenaires face à face. Chaque joueur a 4 pions ; la première équipe qui rentre ses 8 pions dans ses allées d’arrivée gagne. Il existe aussi un jeu à 3, chacun pour soi (voir plus bas).'),
       section(
         'Le plateau',
         liste(
@@ -65,11 +65,23 @@ export function afficher(racine) {
         ),
       ),
       section(
+        'Le jeu à 3 joueurs',
+        liste(
+          'Chacun pour soi : pas d’équipe, ni de partenaire. Le premier qui rentre ses 4 pions gagne.',
+          'Plateau en triangle de 48 cases (3 côtés de 16). Chaque joueur garde la disposition du jeu à 4 : sortie au milieu de son côté, entrée 3 cases avant, allée de 4 cases vers l’intérieur, repères sur la 6e et la 12e case. Seule différence : la base est à l’extérieur du triangle, accolée à la case de sortie.',
+          '54 cartes, dont 2 jokers. Donnes de 5, 4, 4 puis 5 cartes ; on remélange ensuite.',
+          'Au début de chaque donne, chacun donne une carte à un voisin : à celui de gauche (le joueur suivant) les donnes paires — la 1re, la 3e… —, à celui de droite les autres.',
+          'Joker : il copie une carte déjà posée (jouée ou défaussée) pendant la donne en cours et se joue exactement comme elle. Un joker défaussé n’offre rien à copier ; sans carte utile à copier, il n’est pas jouable.',
+          'Le valet échange un de tes pions avec celui de n’importe quel autre joueur ; le 7 ne sert qu’à tes propres pions ; avec l’option « 5 adverse », le 5 peut pousser le pion de n’importe quel autre joueur.',
+        ),
+      ),
+      section(
         'Dans l’appli',
         liste(
-          'Touchez une carte : les pions jouables s’entourent. Touchez un pion, puis sa destination ; un bouton « Jouer » confirme (réglable).',
-          'Valet : touchez votre pion, puis le pion à échanger. 7 : avancez pas à pas ; le compteur indique les points restants et les pions qui retourneront à la base.',
-          'En ligne, la partie attend le joueur dont c’est le tour, sans limite de temps : l’appli prévient quand c’est à vous.',
+          'Touche une carte : les pions jouables s’entourent. Touche un pion, puis sa destination : le coup part aussitôt (un réglage permet d’ajouter un bouton « Jouer » pour confirmer). S’il n’y a qu’un coup possible avec la carte, la toucher suffit.',
+          'Valet : touche ton pion, puis le pion à échanger. 7 : avance pas à pas ; le compteur indique les points restants et les pions qui retourneront à la base ; le 7 part quand le dernier point est placé.',
+          'Joker : choisis d’abord la carte qu’il copie, puis joue comme avec cette carte.',
+          'En ligne, la partie attend le joueur dont c’est le tour, sans limite de temps : l’appli te prévient quand c’est à toi.',
         ),
       ),
     ),

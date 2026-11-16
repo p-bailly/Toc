@@ -8,8 +8,8 @@
 //   passe en premier, les autres attendent un délai aléatoire, ce qui limite les courses.
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
 
-import { partenaire } from '../moteur/index.js';
-import { ConflitIA, ErreurToc, chemins, enErreurToc, siegeDe } from './commun.js';
+import { donneurDon, nombreJoueurs } from '../moteur/index.js';
+import { ConflitIA, ErreurToc, chemins, enErreurToc, nbJoueursDe, reglagesPartie, siegeDe } from './commun.js';
 import { comptabiliserPartie } from './comptes.js';
 import { chargerMain, creerLecteurMains, donnerCarte, jouerCoup } from './parties.js';
 
@@ -151,7 +151,7 @@ export class SessionReseau {
     if (!p || p.statut !== 'encours') return -1;
     const { etat } = p;
     if (etat.phase === 'echange') {
-      for (let s = 0; s < 4; s++) if (p.joueurs[s]?.ia && !etat.echanges[s]) return s;
+      for (let s = 0; s < p.joueurs.length; s++) if (p.joueurs[s]?.ia && !etat.echanges[s]) return s;
     } else if (etat.phase === 'jeu' && p.joueurs[etat.tour]?.ia) {
       return etat.tour;
     }
@@ -185,11 +185,15 @@ export class SessionReseau {
       // Cartes de l'IA (lisibles par tout membre de la partie), lues hors transaction : immuables.
       const prive = await chargerMain(this.lire, this.id, etat, s);
       let n;
+      // IA à 3 joueurs : celle du mode à 3 (l'IA forte ne joue qu'à 4).
+      const a3 = nombreJoueurs(etat) === 3;
+      const choisirDon = a3 ? this.ia.choisirDon3 : this.ia.choisirDon;
+      const choisirCoup = a3 ? this.ia.choisirCoup3 : this.ia.choisirCoup;
       if (etat.phase === 'echange') {
-        const carte = this.ia.choisirDon(etat, s, prive.main, { rng: this.rng });
+        const carte = choisirDon(etat, s, prive.main, { rng: this.rng });
         n = await donnerCarte(this.ctx, this.id, s, carte, { lire: this.lire, numCoupAttendu: numCoup });
       } else {
-        const coup = this.ia.choisirCoup(etat, s, prive.main, {
+        const coup = choisirCoup(etat, s, prive.main, {
           rng: this.rng,
           budgetMs: this.budgetIA,
           carteDonnee: prive.don,
@@ -230,7 +234,7 @@ export class SessionReseau {
           Promise.all([
             this.lire(chemins.donne(this.id, d, siege)),
             aDonne ? this.lire(chemins.don(this.id, d, siege)) : null,
-            echangeFini ? this.lire(chemins.don(this.id, d, partenaire(siege))) : null,
+            echangeFini ? this.lire(chemins.don(this.id, d, donneurDon(d, siege, nombreJoueurs(etat)))) : null,
           ]).then(([dist, don, recu]) => ({
             distribuees: dist ? dist.cartes.slice() : [],
             donnee: don?.carte ?? null,
@@ -239,7 +243,7 @@ export class SessionReseau {
         );
       }
       return {
-        reglages: { cinqAdverse: !!p.reglages?.cinqAdverse },
+        reglages: reglagesPartie(p.reglages?.cinqAdverse, nbJoueursDe(p.reglages)),
         joueurs: p.joueurs.map((j) => ({ pseudo: j?.pseudo ?? '?', ia: !!j?.ia })),
         siege,
         historique: p.historique || [],

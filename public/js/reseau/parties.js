@@ -17,16 +17,21 @@
 
 import {
   appliquerCoup,
+  destinataireDon,
   distribuerCycle,
+  donneurDon,
   etatInitial,
+  longueurCycle,
   mainEffective,
   marquerEchange,
-  partenaire,
+  nombreJoueurs,
 } from '../moteur/index.js';
 import {
   ConflitIA,
   ErreurToc,
   calculerEnAttente,
+  nbJoueursDe,
+  reglagesPartie,
   chemins,
   codeValide,
   nouveauCode,
@@ -38,6 +43,7 @@ import { transaction } from './outils.js';
 export const NOM_MAX = 40;
 export const MAX_INVITES = 8;
 export const NOMS_IA = ['IA Sud', 'IA Est', 'IA Nord', 'IA Ouest'];
+export const NOMS_IA_3 = ['IA 1', 'IA 2', 'IA 3'];
 
 const copie = (x) => JSON.parse(JSON.stringify(x));
 
@@ -61,15 +67,18 @@ function exigerHote(ctx, p) {
   if (p.hote !== ctx.uid) throw new ErreurToc("Seul le créateur de la partie peut le faire.");
 }
 
-function exigerSiege(siege) {
-  if (!Number.isInteger(siege) || siege < 0 || siege > 3) throw new ErreurToc('Siège invalide.');
+function exigerSiege(siege, p) {
+  if (!Number.isInteger(siege) || siege < 0 || siege >= (p ? p.joueurs.length : 4)) throw new ErreurToc('Siège invalide.');
 }
 
-/** Écrit les 12 mains d'un cycle (3 donnes à partir de `donne`), dans la transaction. */
-function ecrireCycle(ctx, tx, id, donne) {
-  const cycle = distribuerCycle(ctx.rng || Math.random);
-  for (let k = 0; k < 3; k++) {
-    for (let s = 0; s < 4; s++) {
+/**
+ * Écrit les mains d'un cycle, dans la transaction : 12 documents dans les deux modes
+ * (3 donnes × 4 sièges à 4 joueurs, 4 donnes × 3 sièges à 3).
+ */
+function ecrireCycle(ctx, tx, id, donne, n) {
+  const cycle = distribuerCycle(ctx.rng || Math.random, n);
+  for (let k = 0; k < longueurCycle(n); k++) {
+    for (let s = 0; s < n; s++) {
       tx.creer(chemins.donne(id, donne + k, s), { donne: donne + k, siege: s, cartes: cycle[k][s] });
     }
   }
@@ -78,7 +87,11 @@ function ecrireCycle(ctx, tx, id, donne) {
 // ─── Création, invitations, salle d'attente ────────────────────────────────
 
 /** Crée une partie ; le créateur prend le siège 0. → { id, code } */
-export async function creerPartie(ctx, { nom, cinqAdverse } = {}) {
+export async function creerPartie(ctx, { nom, cinqAdverse, nbJoueurs } = {}) {
+  if (nbJoueurs !== undefined && nbJoueurs !== null && nbJoueurs !== 3 && nbJoueurs !== 4) {
+    throw new ErreurToc('Une partie se joue à 3 ou à 4.');
+  }
+  const nb = nbJoueurs === 3 ? 3 : 4;
   for (let essai = 0; essai < 5; essai++) {
     const code = nouveauCode(ctx.rng || Math.random);
     try {
@@ -92,8 +105,8 @@ export async function creerPartie(ctx, { nom, cinqAdverse } = {}) {
           code,
           hote: ctx.uid,
           statut: 'attente',
-          reglages: { cinqAdverse: !!cinqAdverse },
-          joueurs: [{ uid: ctx.uid, pseudo, ia: false }, null, null, null],
+          reglages: reglagesPartie(cinqAdverse, nb),
+          joueurs: [{ uid: ctx.uid, pseudo, ia: false }].concat(Array(nb - 1).fill(null)),
           uids: [ctx.uid],
           invites: [],
           pseudosInvites: {},
@@ -132,7 +145,7 @@ async function entrerTransaction(ctx, id) {
     if (siegeDe(p, ctx.uid) >= 0) return;
     exigerAttente(p);
     const libre = p.joueurs.findIndex((x) => x === null);
-    if (libre < 0) throw new ErreurToc('La partie est complète (4 joueurs).');
+    if (libre < 0) throw new ErreurToc(`La partie est complète (${p.joueurs.length} joueurs).`);
     const pseudo = await lirePseudo(tx, ctx.uid);
     const joueurs = p.joueurs.slice();
     joueurs[libre] = { uid: ctx.uid, pseudo, ia: false };
@@ -163,6 +176,7 @@ export async function choisirSiege(ctx, id, siege) {
   exigerSiege(siege);
   await transaction(ctx, async (tx) => {
     const p = await lirePartie(tx, id);
+    exigerSiege(siege, p);
     exigerAttente(p);
     const actuel = siegeDe(p, ctx.uid);
     if (actuel < 0) throw new ErreurToc('Tu ne participes pas à cette partie.');
@@ -180,11 +194,12 @@ export async function ajouterIA(ctx, id, siege) {
   exigerSiege(siege);
   await transaction(ctx, async (tx) => {
     const p = await lirePartie(tx, id);
+    exigerSiege(siege, p);
     exigerAttente(p);
     exigerHote(ctx, p);
     if (p.joueurs[siege] !== null) throw new ErreurToc('Ce siège est déjà pris.');
     const joueurs = p.joueurs.slice();
-    joueurs[siege] = { uid: null, pseudo: NOMS_IA[siege], ia: true };
+    joueurs[siege] = { uid: null, pseudo: (p.joueurs.length === 3 ? NOMS_IA_3 : NOMS_IA)[siege], ia: true };
     tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
   });
 }
@@ -193,6 +208,7 @@ export async function retirerIA(ctx, id, siege) {
   exigerSiege(siege);
   await transaction(ctx, async (tx) => {
     const p = await lirePartie(tx, id);
+    exigerSiege(siege, p);
     exigerAttente(p);
     exigerHote(ctx, p);
     if (!p.joueurs[siege]?.ia) throw new ErreurToc("Ce siège n'est pas tenu par une IA.");
@@ -278,9 +294,12 @@ export async function lancerPartie(ctx, id) {
     const p = await lirePartie(tx, id);
     exigerAttente(p);
     exigerHote(ctx, p);
-    if (p.joueurs.some((x) => x === null)) throw new ErreurToc('Il faut quatre joueurs (ou IA) pour lancer la partie.');
-    const etat = etatInitial(p.reglages);
-    ecrireCycle(ctx, tx, id, 0);
+    const n = nbJoueursDe(p.reglages);
+    if (p.joueurs.some((x) => x === null)) {
+      throw new ErreurToc(`Il faut ${n === 3 ? 'trois' : 'quatre'} joueurs (ou IA) pour lancer la partie.`);
+    }
+    const etat = etatInitial(reglagesPartie(p.reglages?.cinqAdverse, n));
+    ecrireCycle(ctx, tx, id, 0, n);
     tx.maj(chemins.partie(id), {
       statut: 'encours',
       etat,
@@ -314,10 +333,12 @@ export function creerLecteurMains(magasin, id) {
  */
 export async function chargerMain(lire, id, etat, siege, tx) {
   const d = etat.donne;
+  const n = nombreJoueurs(etat);
   const donne = await lire(chemins.donne(id, d, siege), tx);
   if (!donne) throw new ErreurToc('Cartes introuvables pour cette donne.');
   const don = etat.echanges[siege] ? (await lire(chemins.don(id, d, siege), tx))?.carte ?? null : null;
-  const recu = etat.phase !== 'echange' ? (await lire(chemins.don(id, d, partenaire(siege)), tx))?.carte ?? null : null;
+  // Carte reçue : du partenaire à 4, du voisin de la donne à 3 (donneurDon).
+  const recu = etat.phase !== 'echange' ? (await lire(chemins.don(id, d, donneurDon(d, siege, n)), tx))?.carte ?? null : null;
   return { distribuees: donne.cartes, don, recu, main: mainEffective(donne.cartes, don, recu, etat.pile) };
 }
 
@@ -351,7 +372,8 @@ export async function donnerCarte(ctx, id, siege, carte, { lire, numCoupAttendu 
     const c = typeof carte === 'function' ? carte(main, etat) : carte;
     if (!main.includes(c)) throw new ErreurToc("Cette carte n'est pas dans ta main.");
     const nouvel = marquerEchange(etat, siege);
-    tx.creer(chemins.don(id, etat.donne, siege), { donne: etat.donne, de: siege, pour: partenaire(siege), carte: c });
+    const pour = destinataireDon(etat.donne, siege, nombreJoueurs(etat));
+    tx.creer(chemins.don(id, etat.donne, siege), { donne: etat.donne, de: siege, pour, carte: c });
     tx.maj(chemins.partie(id), {
       etat: nouvel,
       enAttente: calculerEnAttente(nouvel, p.joueurs),
@@ -382,8 +404,9 @@ export async function jouerCoup(ctx, id, siege, coup, { lire, numCoupAttendu } =
       // Coup normalisé par le moteur : l'historique permet de rejouer la partie à l'identique.
       { n: nouvel.numCoup, siege, coup: nouvel.dernierCoup.coup, captures: nouvel.dernierCoup.captures },
     ]);
-    if (nouvel.phase !== 'fini' && nouvel.donne !== etat.donne && nouvel.donne % 3 === 0) {
-      ecrireCycle(ctx, tx, id, nouvel.donne); // paquet épuisé : on remélange
+    const n = nombreJoueurs(etat);
+    if (nouvel.phase !== 'fini' && nouvel.donne !== etat.donne && nouvel.donne % longueurCycle(n) === 0) {
+      ecrireCycle(ctx, tx, id, nouvel.donne, n); // paquet épuisé : on remélange
     }
     tx.maj(chemins.partie(id), {
       etat: nouvel,

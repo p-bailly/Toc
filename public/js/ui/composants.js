@@ -113,13 +113,18 @@ export function ouvrirFeuille(contenu, { surFermer, fermable = true, classe = ''
 
 let minuterieToast = null;
 
-/** Message bref en bas de l'écran (erreurs, confirmations). */
+/**
+ * Message bref (confirmations, alertes d'autres parties). Il s'insère en haut de l'appli, dans le flux de la page :
+ * il décale le contenu le temps de son affichage mais ne recouvre jamais un bouton. (L'écran de jeu, lui,
+ * affiche ses messages dans sa consigne.)
+ */
 export function toast(message, { erreur = false, duree = 3200 } = {}) {
   let el = document.getElementById('toast');
   if (!el) {
     el = h('div', { id: 'toast', class: 'toast', role: 'status', 'aria-live': 'polite' });
-    document.body.append(el);
   }
+  const appli = document.getElementById('appli') || document.body;
+  if (el.parentNode !== appli) appli.prepend(el);
   el.textContent = message;
   el.classList.toggle('erreur', erreur);
   el.hidden = false;

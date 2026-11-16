@@ -3,7 +3,7 @@
 // d'un toucher, rejoindre avec un code, statistiques. Gère aussi la route #/rejoindre/CODE.
 
 import { h, remplacer, messageErreur, ilYa, lire, ecrire, pluriel } from './dom.js';
-import { entete, avatar, interrupteur, toast } from './composants.js';
+import { entete, avatar, interrupteur, segments, toast } from './composants.js';
 import { surVeille } from './veille.js';
 import { demanderPermission, notificationsAutorisees } from './notifications.js';
 import { notificationVoulue, lireReglages } from './reglages.js';
@@ -140,7 +140,9 @@ function afficherListe(racine, app) {
   let veille = { pret: false, parties: [], invitations: [] };
   let occupe = false;
   let erreur = '';
-  const options = { nom: '', cinqAdverse: false, ...(lire(CLE_OPTIONS, {}) || {}) };
+  // « Nom et options » reste ouvert quand la liste se redessine (une partie change en arrière-plan).
+  let optionsOuvertes = false;
+  const options = { nom: '', cinqAdverse: false, nbJoueurs: 4, ...(lire(CLE_OPTIONS, {}) || {}) };
 
   const nouvelle = async () => {
     occupe = true;
@@ -149,8 +151,8 @@ function afficherListe(racine, app) {
     void demanderPermission();
     try {
       const nom = options.nom.trim() || `Partie de ${app.joueur.pseudo}`;
-      ecrire(CLE_OPTIONS, { cinqAdverse: options.cinqAdverse });
-      const { id } = await api.creerPartie({ nom, cinqAdverse: options.cinqAdverse });
+      ecrire(CLE_OPTIONS, { cinqAdverse: options.cinqAdverse, nbJoueurs: options.nbJoueurs });
+      const { id } = await api.creerPartie({ nom, cinqAdverse: options.cinqAdverse, nbJoueurs: options.nbJoueurs === 3 ? 3 : 4 });
       app.naviguer('#/partie/' + encodeURIComponent(id));
     } catch (e) {
       erreur = messageErreur(e);
@@ -187,8 +189,27 @@ function afficherListe(racine, app) {
 
     const details = h(
       'details',
-      { class: 'options' },
-      h('summary', {}, 'Nom et options'),
+      { class: 'options', open: optionsOuvertes, ontoggle: (e) => (optionsOuvertes = e.target.open) },
+      h('summary', {}, `Nom et options${options.nbJoueurs === 3 ? ' · 3 joueurs' : ''}`),
+      h(
+        'div',
+        { class: 'champ' },
+        'Mode de jeu',
+        segments(
+          [
+            { valeur: 4, nom: '2 contre 2' },
+            { valeur: 3, nom: '3 joueurs' },
+          ],
+          options.nbJoueurs === 3 ? 3 : 4,
+          (v) => {
+            options.nbJoueurs = v;
+            ecrire(CLE_OPTIONS, { cinqAdverse: options.cinqAdverse, nbJoueurs: v });
+            const resume = details.querySelector('summary');
+            if (resume) resume.textContent = `Nom et options${v === 3 ? ' · 3 joueurs' : ''}`;
+          },
+        ),
+        h('span', { class: 'note' }, '3 joueurs : chacun pour soi, sur un plateau en triangle, avec deux jokers.'),
+      ),
       h(
         'label',
         { class: 'champ' },
@@ -366,24 +387,25 @@ function ligneInvitation(p, app) {
 function lignePartie(p, app) {
   const moi = p.monSiege;
   const places = p.joueurs || [];
-  const partenaire = moi >= 0 ? places[(moi + 2) % 4] : null;
-  const adversaires = moi >= 0 ? [places[(moi + 1) % 4], places[(moi + 3) % 4]] : [];
+  const a3 = (p.nbJoueurs || places.length) === 3;
+  const partenaire = moi >= 0 && !a3 ? places[(moi + 2) % 4] : null;
+  const adversaires = moi < 0 ? [] : a3 ? [places[(moi + 1) % 3], places[(moi + 2) % 3]] : [places[(moi + 1) % 4], places[(moi + 3) % 4]];
   const libres = places.filter((x) => !x).length;
   let sousTitre = '';
   if (p.statut === 'attente') {
     const invites = p.invites || [];
-    sousTitre = libres ? `${pluriel(libres, 'place libre', 'places libres')}` : 'Complet : prêt à lancer';
+    sousTitre = (a3 ? '3 joueurs · ' : '') + (libres ? `${pluriel(libres, 'place libre', 'places libres')}` : 'Complet : prêt à lancer');
     if (invites.length) sousTitre += ` · invité${invites.length > 1 ? 's' : ''} : ${invites.map((i) => i.pseudo).join(', ')}`;
   } else {
     const avec = partenaire ? `Avec ${nomPlace(partenaire)}` : '';
     const contre = adversaires.filter(Boolean).map(nomPlace).join(' et ');
-    sousTitre = [avec, contre && `contre ${contre}`].filter(Boolean).join(' · ');
+    sousTitre = a3 ? `3 joueurs · contre ${contre}` : [avec, contre && `contre ${contre}`].filter(Boolean).join(' · ');
   }
   sousTitre += ' · ' + ilYa(p.majLe);
   let titre = p.nom || 'Partie de Toc';
   let badge = null;
   if (p.statut === 'finie') {
-    const gagne = moi >= 0 && p.gagnant === moi % 2;
+    const gagne = moi >= 0 && (a3 ? p.gagnant === moi : p.gagnant === moi % 2);
     badge = h('span', { class: 'badge ' + (gagne ? 'ok' : 'neutre') }, gagne ? 'Gagnée' : 'Perdue');
   } else if (p.aMoiDeJouer) {
     badge = h('span', { class: 'badge a-toi' }, 'À toi de jouer');

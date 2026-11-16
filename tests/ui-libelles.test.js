@@ -33,3 +33,18 @@ test('libellés : choix proposés', () => {
   assert.equal(libelleChoix({ t: 'avance', carte: '5P', pion: 4, pas: 5, allee: false }, 0, joueurs), 'Pousser le pion de Max de 5');
   assert.equal(enumerer(['A', 'B', 'C']), 'A, B et C');
 });
+
+test('libellés : joker (jeu à 3)', () => {
+  const trois = joueurs.slice(0, 3);
+  assert.equal(nomCarte('J1'), 'Joker');
+  assert.deepEqual(trierMain(['J2', 'RP', 'AT']), ['AT', 'RP', 'J2']);
+  assert.equal(
+    ligneJournal({ siege: 1, coup: { t: 'avance', carte: 'J1', comme: '9', pion: 4, pas: 9, allee: false }, captures: [] }, trois),
+    'Max joue un joker comme un 9 : avance de 9.',
+  );
+  assert.equal(ligneJournal({ siege: 0, coup: { t: 'defausse', carte: 'J2' }, captures: [] }, trois), 'Léa défausse un joker (aucune carte jouable).');
+  assert.equal(
+    ligneJournal({ siege: 0, coup: { t: 'avance', carte: '5C', pion: 8, pas: 5, allee: false }, captures: [] }, trois),
+    'Léa joue le 5 ♥ : fait avancer un pion de Zoé de 5.',
+  );
+});
