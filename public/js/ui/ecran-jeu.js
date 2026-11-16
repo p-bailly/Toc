@@ -4,6 +4,7 @@
 // Chaque mode a sa propre sauvegarde : on peut avoir une partie en cours dans chacun.
 
 import { SessionLocale } from '../session-locale.js';
+import { enregistrerPartieFinie } from './parties-finies.js';
 import { monterJeu } from './vue-jeu.js';
 import { lire, ecrire } from './dom.js';
 import { lireReglages, rythme } from './reglages.js';
@@ -51,7 +52,12 @@ export function afficher(racine, app, { reste }) {
     const icone = app.joueur?.icone;
     const vraie = session;
     const enveloppe = {
-      abonner: (cb) => vraie.abonner((v) => cb({ ...v, joueurs: v.joueurs.map((j, i) => (i === v.siege ? { ...j, icone } : j)) })),
+      abonner: (cb) =>
+        vraie.abonner((v) => {
+          // Partie terminée : elle entre dans l'historique de l'appareil (statistiques, analyse).
+          if (v.etat.phase === 'fini') enregistrerPartieFinie({ nom: vraie.nom, joueurs: vraie.joueurs, partie: vraie.partie }, nbJoueurs);
+          cb({ ...v, joueurs: v.joueurs.map((j, i) => (i === v.siege ? { ...j, icone } : j)) });
+        }),
       donner: (c) => vraie.donner(c),
       jouer: (c) => vraie.jouer(c),
       fermer: () => vraie.fermer(),

@@ -5,9 +5,9 @@ import { h } from './dom.js';
 import { piRetour } from './pictos.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 
-/** Logo : un pion rouge posé sur le tapis vert, dans le cadre bleu nuit. */
+/** Logo : le plateau en bois vu de dessus (le même dessin que l'icône de l'appli). */
 export function logo() {
-  return h('div', { class: 'logo', 'aria-hidden': 'true' }, h('span'));
+  return h('img', { class: 'logo', src: './icons/icon.svg', alt: '', width: 32, height: 32, 'aria-hidden': 'true' });
 }
 
 export function entete(titre = 'Toc', droite = null) {

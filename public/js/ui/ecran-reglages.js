@@ -34,7 +34,6 @@ export function afficher(racine, app) {
             r.texte,
             (texte) => maj({ texte }),
           ),
-          h('span', { class: 'note' }, 'Le plateau et les pions gardent leur taille.'),
         ),
         h(
           'div',
@@ -45,7 +44,6 @@ export function afficher(racine, app) {
             r.theme,
             (theme) => maj({ theme }),
           ),
-          h('span', { class: 'note' }, '« Auto » suit le réglage clair ou sombre du téléphone.'),
         ),
         etrePrevenu(r),
       ),
@@ -62,7 +60,6 @@ export function afficher(racine, app) {
         { class: 'carte' },
         interrupteur({
           titre: 'Confirmer avant de jouer',
-          texte: 'Après le choix d’un coup, un bouton « Jouer » l’envoie ; sinon le coup part dès qu’on touche la destination.',
           actif: r.confirmerCoup,
           surChange: (confirmerCoup) => maj({ confirmerCoup }),
         }),
@@ -75,23 +72,20 @@ export function afficher(racine, app) {
             r.vitesse,
             (vitesse) => maj({ vitesse }),
           ),
-          h('span', { class: 'note' }, 'Le rythme des coups des autres joueurs : chacun est montré, animé, avec le temps de le lire.'),
         ),
         interrupteur({
-          titre: 'Jouer tout seul le seul coup possible',
-          texte: 'Quand ta main ne permet qu’un seul coup, il est montré une seconde puis joué pour toi, avec un message.',
+          titre: 'Jouer tout seul le coup quand il n’y en a qu’un',
           actif: r.coupUniqueAuto,
           surChange: (coupUniqueAuto) => maj({ coupUniqueAuto }),
         }),
         interrupteur({
           titre: 'Animations',
-          texte: 'Les pions glissent case par case. Coupées aussi si le téléphone demande moins d’animations.',
           actif: r.animations,
           surChange: (animations) => maj({ animations }),
         }),
         interrupteur({
           titre: 'Conseils de l’IA',
-          texte: 'L’IA propose des coups et explique ses raisons : bouton « Conseil » dans les parties contre l’IA, et conseils dans l’analyse de fin de partie. Jamais pendant une partie en ligne.',
+          texte: 'Contre l’IA et dans l’analyse. Jamais en ligne.',
           actif: r.conseilsIA,
           surChange: (conseilsIA) => {
             maj({ conseilsIA });
@@ -103,8 +97,7 @@ export function afficher(racine, app) {
               'div',
               { class: 'sous-reglage', 'data-reglage': 'commenter' },
               interrupteur({
-                titre: 'Commenter mes coups',
-                texte: 'Contre l’IA : après chaque coup, un court message dit si l’IA aurait joué pareil, et sinon pourquoi.',
+                titre: 'Commenter mes coups contre l’IA',
                 actif: r.commenterCoups,
                 surChange: (commenterCoups) => maj({ commenterCoups }),
               }),
@@ -121,15 +114,13 @@ export function afficher(racine, app) {
         notifs.append(
           rangee({
             titre: 'Essai',
-            texte: 'Vérifie que les alertes arrivent bien sur cet appareil.',
             droite: h('button', { type: 'button', class: 'bouton', onclick: () => notifier('essai', 'Toc', 'Les notifications fonctionnent.', '#/reglages') }, 'Envoyer un essai'),
           }),
         );
       notifs.append(
-        interrupteur({ titre: 'C’est mon tour', texte: 'Un joueur a joué et c’est à toi, ou la partie commence.', actif: r.notifTour, surChange: (notifTour) => maj({ notifTour }) }),
-        interrupteur({ titre: 'Invitations', texte: 'On t’invite à une partie.', actif: r.notifInvitations, surChange: (notifInvitations) => maj({ notifInvitations }) }),
-        interrupteur({ titre: 'Fin de partie', texte: 'Une de tes parties est terminée.', actif: r.notifFin, surChange: (notifFin) => maj({ notifFin }) }),
-        rangee({ titre: 'Quand ?', texte: 'Les alertes partent quand l’appli est ouverte ou en arrière-plan ; l’icône de l’appli affiche aussi le nombre de parties qui t’attendent.' }),
+        interrupteur({ titre: 'C’est mon tour', actif: r.notifTour, surChange: (notifTour) => maj({ notifTour }) }),
+        interrupteur({ titre: 'Invitations', actif: r.notifInvitations, surChange: (notifInvitations) => maj({ notifInvitations }) }),
+        interrupteur({ titre: 'Fin de partie', actif: r.notifFin, surChange: (notifFin) => maj({ notifFin }) }),
       );
     }
     blocs.push(h('h2', {}, 'Notifications'), notifs);
@@ -211,7 +202,6 @@ export function afficher(racine, app) {
       );
     return interrupteur({
       titre: 'Être prévenu quand c’est mon tour',
-      texte: 'Une alerte pour tes parties en ligne : ton tour, une invitation, une fin de partie.',
       actif: r.notifications,
       surChange: async (notifications) => {
         modifierReglages({ notifications });
@@ -229,7 +219,6 @@ export function afficher(racine, app) {
       return [
         rangee({
           titre: 'Compte',
-          texte: 'Indique ton prénom pour jouer en ligne et inviter tes proches.',
           droite: h('a', { class: 'bouton', href: '#/parties' }, 'Se connecter'),
         }),
       ];
@@ -257,7 +246,6 @@ export function afficher(racine, app) {
       lignes.push(
         rangee({
           titre: 'Prénom',
-          texte: 'Le nom que voient les autres joueurs. Le prénom saisi à la connexion, lui, ne change pas.',
           enfants: h(
             'form',
             {
@@ -305,11 +293,10 @@ export function afficher(racine, app) {
         ),
       );
     }
-    lignes.push(rangee({ titre: 'Icône', texte: 'Elle remplace l’initiale de ton prénom, chez tous les joueurs.', enfants: grille }));
+    lignes.push(rangee({ titre: 'Icône', enfants: grille }));
     lignes.push(
       interrupteur({
         titre: 'Être trouvé par les autres joueurs',
-        texte: 'Ton prénom apparaît dans la liste des joueurs qu’on peut inviter. Désactivé, seul le lien ou le code d’une partie permet de te faire jouer.',
         actif: j.visible !== false,
         surChange: (visible) => enregistrer({ visible }),
       }),
@@ -319,7 +306,7 @@ export function afficher(racine, app) {
     lignes.push(
       rangee({
         titre: 'Compte',
-        texte: `${pluriel(st.jouees, 'partie jouée', 'parties jouées')}, ${pluriel(st.gagnees, 'gagnée', 'gagnées')}. Saisis le même nom sur un autre appareil pour retrouver tes parties.`,
+        texte: `${pluriel(st.jouees, 'partie jouée', 'parties jouées')}, ${pluriel(st.gagnees, 'gagnée', 'gagnées')}.`,
         droite: h(
           'button',
           {

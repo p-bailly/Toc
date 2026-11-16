@@ -4,7 +4,7 @@
 // indéfiniment). Seules les requêtes GET de même origine passent ici : Firebase, Firestore, gstatic, googleapis
 // et les autres domaines ne sont jamais interceptés.
 // Incrémenter VERSION quand la liste de la coquille change.
-const VERSION = 'v8';
+const VERSION = 'v9';
 const COQUE = `toc-coque-${VERSION}`;
 
 const FICHIERS = [
@@ -12,6 +12,7 @@ const FICHIERS = [
   './index.html',
   './manifest.webmanifest',
   './css/app.css',
+  './css/regles.css',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -45,8 +46,11 @@ const FICHIERS = [
   './js/ui/ecran-parties.js',
   './js/ui/ecran-partie.js',
   './js/ui/ecran-regles.js',
+  './js/ui/regles-page.js',
   './js/ui/ecran-reglages.js',
   './js/ui/ecran-etude.js',
+  './js/ui/ecran-bilan.js',
+  './js/ui/parties-finies.js',
   './js/ui/etude-calcul.js',
   './js/ui/etude-boucle.js',
   './js/ui/etude-worker.js',

@@ -310,11 +310,18 @@ test('analyse : utilisable dès avancer(0), la marge décroît et l’évaluatio
   assert.equal(r0.iterations, 0);
   assert.ok(r0.candidats.length >= 1);
   assert.ok(r0.probaVictoire >= 0 && r0.probaVictoire <= 1);
+  // Trois analyses de la même position, arrêtées à 10, 80 et 300 simulations : le résultat ne dépend pas de la
+  // vitesse de la machine (une seule analyse découpée en tranches de temps sautait des paliers sur une machine rapide).
   const marges = [];
   const evals = [];
   for (const n of [10, 80, 300]) {
-    while (a.resultat().iterations < n && !(a.resultat().stable && a.resultat().iterations >= 3000)) a.avancer(20);
-    const r = a.resultat();
+    const an = creerAnalyse(p.etat, s, p.mains[s], { rng: generateurAleatoire(2), carteDonnee: p.dons[s], iterations: n });
+    let avant = -1;
+    while (an.resultat().iterations < n && an.resultat().iterations !== avant) {
+      avant = an.resultat().iterations;
+      an.avancer(2000);
+    }
+    const r = an.resultat();
     marges.push(r.marge);
     evals.push(r.evaluation);
     for (const c of r.candidats) assert.equal(validerCoup(p.etat, s, c.coup, p.mains[s]), null);

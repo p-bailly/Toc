@@ -209,7 +209,6 @@ function afficherListe(racine, app) {
             if (resume) resume.textContent = `Nom et options${v === 3 ? ' · 3 joueurs' : ''}`;
           },
         ),
-        h('span', { class: 'note' }, '3 joueurs : chacun pour soi, sur un plateau en triangle, avec deux jokers.'),
       ),
       h(
         'label',

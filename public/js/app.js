@@ -7,12 +7,14 @@
 //   #/jeu/locale         partie d'entraînement en cours
 //   #/partie/ID          partie en ligne : salle d'attente, puis plateau
 //   #/rejoindre/CODE     rejoindre une partie par son code (après connexion si besoin)
+//   #/stats              statistiques et parties terminées
+//   #/analyse/…          analyse d'une partie terminée (locale, locale3, finie/ID ou ID d'une partie en ligne)
 //   #/regles, #/reglages
 
 import { h } from './ui/dom.js';
 import { lire } from './ui/dom.js';
 import { demarrerReglages } from './ui/reglages.js';
-import { piParties, piIA, piRegles, piReglages } from './ui/pictos.js';
+import { piParties, piIA, piBilan, piRegles, piReglages } from './ui/pictos.js';
 import { definirLecteurJoueurs, retenirIcone } from './ui/composants.js';
 import { surEnAttente, nbEnAttente, surOuvertureNotification } from './ui/notifications.js';
 import { demarrerVeille, arreterVeille } from './ui/veille.js';
@@ -55,6 +57,7 @@ racine.replaceChildren(principal, onglets);
 const ONGLETS = [
   { route: 'parties', texte: 'Mes parties', picto: piParties, pastille: true },
   { route: 'ia', texte: 'Contre l’IA', picto: piIA },
+  { route: 'stats', texte: 'Stats', picto: piBilan },
   { route: 'regles', texte: 'Règles', picto: piRegles },
   { route: 'reglages', texte: 'Réglages', picto: piReglages },
 ];
@@ -121,7 +124,11 @@ async function router() {
       break;
     case 'analyse':
       module = await import('./ui/ecran-etude.js');
-      ongletActif = reste[0] === 'locale' ? 'ia' : 'parties';
+      ongletActif = reste[0] === 'finie' ? 'stats' : reste[0] === 'locale' || reste[0] === 'locale3' ? 'ia' : 'parties';
+      break;
+    case 'stats':
+      module = await import('./ui/ecran-bilan.js');
+      ongletActif = 'stats';
       break;
     case 'partie':
       module = await import('./ui/ecran-partie.js');

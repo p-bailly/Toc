@@ -7,6 +7,8 @@ import { entete, interrupteur, rangee, segments } from './composants.js';
 import { nouvellePartieLocale, sauvegardeLocale, MODES_LOCAUX } from './ecran-jeu.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
+import { lirePartiesFinies } from './parties-finies.js';
+import { rattraperPartiesFinies } from './ecran-bilan.js';
 import { choixNiveau, niveauxLocaux, ecrireNiveauxLocaux, nomNiveau } from './niveaux.js';
 
 const CLE_MODE = 'toc.modeLocal';
@@ -38,6 +40,8 @@ export function afficher(racine, app) {
     );
   };
 
+  rattraperPartiesFinies();
+
   const dessiner = () => {
     const blocs = [entete('Contre l’IA')];
     const conseil = conseilInstallation(app);
@@ -64,13 +68,15 @@ export function afficher(racine, app) {
               'a',
               { class: 'ligne', href: MODES_LOCAUX[n].analyse, 'data-action': n === 3 ? 'analyser-3' : 'analyser' },
               h('div', { class: 'avatar', style: { background: gagne ? 'var(--ok)' : 'var(--muted)' } }, gagne ? '🏆' : '🎲'),
-              h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, `${e.donne + 1} donnes · revois tes coups avec l’IA`)),
+              h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, `${e.donne + 1} donnes`)),
               h('span', { class: 'bouton' }, 'Analyser'),
             );
           }),
         ),
       );
     }
+
+    if (lirePartiesFinies().length) blocs.push(h('a', { class: 'bouton discret', href: '#/stats', 'data-action': 'voir-stats' }, 'Toutes mes parties terminées et mes statistiques'));
 
     const enCoursMode = enCours.find(([n]) => n === nbJoueurs);
     blocs.push(
@@ -97,10 +103,6 @@ export function afficher(racine, app) {
         ),
         rangee({
           titre: nbJoueurs === 3 ? 'Toi contre deux IA, chacun pour soi' : 'Toi et une IA contre deux IA',
-          texte:
-            nbJoueurs === 3
-              ? 'Plateau en triangle, 54 cartes dont 2 jokers. Le premier qui rentre ses 4 pions gagne.'
-              : 'Ton partenaire est en face. La partie est gardée sur cet appareil : tu peux la reprendre plus tard.',
         }),
         interrupteur({
           titre: 'Option « 5 adverse »',

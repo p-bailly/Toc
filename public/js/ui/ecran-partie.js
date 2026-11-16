@@ -343,7 +343,7 @@ export function afficher(racine, app, { reste }) {
       'div',
       { class: 'carte formulaire' },
       h('b', { class: 'grand' }, 'Quelqu’un d’autre ?'),
-      h('span', { class: 'note' }, 'Envoie-lui le lien : en le touchant, il arrive directement dans la partie. Il peut aussi saisir le code dans « Mes parties ».'),
+      h('span', { class: 'note' }, 'Envoie le lien, ou donne le code à saisir dans « Mes parties ».'),
       h('div', { class: 'code-invitation', 'aria-label': `Code d’invitation ${p.code.split('').join(' ')}` }, h('span', { class: 'note' }, 'Code'), h('span', { class: 'code' }, p.code)),
       bouton,
     );
