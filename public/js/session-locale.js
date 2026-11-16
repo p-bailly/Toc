@@ -20,7 +20,7 @@
 //     enLigne,       booléen
 //     nom,           nom de la partie
 //     siege,         siège du joueur local (0 à 3)
-//     joueurs,       [{ pseudo, ia }] × 4, indexé par siège
+//     joueurs,       [{ pseudo, ia, niveau? }] × 4, indexé par siège (niveau = force d'une IA)
 //     etat,          état public du moteur (voir moteur/regles.js)
 //     main,          cartes du joueur local (tableau de chaînes, déjà à jour)
 //     don,           carte que le joueur local a donnée pour la donne en cours, ou null
@@ -51,6 +51,9 @@ export class SessionLocale {
    * @param {string} [options.nom]        nom de la partie
    * @param {number} [options.delaiIA]    délai (ms) avant chaque action d'une IA
    * @param {number} [options.budgetIA]   temps de réflexion (ms) accordé à l'IA par coup
+   * @param {string|string[]} [options.niveaux]  force des IA : un niveau pour toutes (ex. 'expert'),
+   *                                      ou un niveau par siège (le siège 0, humain, est ignoré).
+   *                                      Voir NIVEAUX dans ia/ia.js ; absent = le plus fort.
    * @param {Storage} [options.stockage]  ex. localStorage, pour sauvegarder la partie
    * @param {string} [options.cle]        clé de stockage
    * @param {boolean} [options.reprendre] reprendre la partie sauvegardée si elle existe
@@ -86,6 +89,12 @@ export class SessionLocale {
             { pseudo: 'IA Partenaire', ia: true },
             { pseudo: 'IA Ouest', ia: true },
           ];
+      // Force de chaque IA, gardée avec la partie (joueurs[s].niveau) pour la reprise.
+      const { niveaux } = options;
+      this.joueurs.forEach((j, s) => {
+        const niveau = Array.isArray(niveaux) ? niveaux[s] : niveaux;
+        if (j.ia && typeof niveau === 'string') j.niveau = niveau;
+      });
       const reglages = a3 ? { ...(options.reglages || {}), nbJoueurs: 3 } : options.reglages || {};
       this.partie = nouvellePartie(reglages, this.rng);
       this.sauvegarder();
@@ -182,7 +191,10 @@ export class SessionLocale {
     if (etat.phase === 'echange') {
       for (let s = 0; s < etat.echanges.length; s++) {
         if (this.joueurs[s].ia && !this.partie.etat.echanges[s]) {
-          const carte = (a3 ? choisirDon3 : choisirDon)(this.partie.etat, s, this.partie.mains[s], { rng: this.rng });
+          const carte = (a3 ? choisirDon3 : choisirDon)(this.partie.etat, s, this.partie.mains[s], {
+            rng: this.rng,
+            niveau: this.joueurs[s].niveau,
+          });
           this.partie = donnerCarte(this.partie, s, carte);
         }
       }
@@ -191,6 +203,7 @@ export class SessionLocale {
       const coup = (a3 ? choisirCoup3 : choisirCoup)(etat, s, mains[s], {
         rng: this.rng,
         budgetMs: this.budgetIA,
+        niveau: this.joueurs[s].niveau,
         carteDonnee: dons[s],
         carteRecue: dons[donneurDon(etat.donne, s, nombreJoueurs(etat))],
       });
