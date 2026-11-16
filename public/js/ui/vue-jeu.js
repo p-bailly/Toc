@@ -290,7 +290,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     clearTimeout(minuterieAuto);
     minuterieAuto = setTimeout(() => {
       if (!vue || vue.etat.numCoup !== etat.numCoup || envoi || coupPret !== coup || enPresentation) return;
-      envoyer().then((ok) => ok && annoncer(`Seul coup possible : joué pour toi — ${resumeCoup(coup)}`, { duree: 6000 }));
+      envoyer().then((ok) => ok && annoncer(`Seul coup possible, joué pour toi : ${resumeCoup(coup)}`, { duree: 6000 }));
     }, leRythme().avantAuto);
   }
 
@@ -688,7 +688,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
           { class: 'ordre-ligne' },
           h('span', { class: 'titre-ordre' }, 'C’est à'),
           puce(actuel, 0),
-          h('span', { class: 'sep' }, '— ensuite :'),
+          h('span', { class: 'sep' }, 'ensuite :'),
           ensuite.map((si, i) => puce(si, i + 1)),
         ),
       );
@@ -1031,9 +1031,10 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         if (meilleur.joue || cle(meilleur.coup) === cle(coup) || (joue && !joue.ecart)) {
           annoncer('Bien joué : c’est aussi le choix de l’IA.', { duree: 3500 });
         } else {
-          const raison = meilleur.raisons?.[0] ? ` — ${meilleur.raisons[0]}` : '';
+          const r = meilleur.raisons?.[0];
+          const raison = r ? ` ${r[0].toUpperCase()}${r.slice(1)}.` : '';
           const ecart = joue && typeof joue.ecart === 'number' ? ` (écart ${formatEcart(joue.ecart)})` : '';
-          annoncer(`L’IA aurait préféré ${descriptionCoup(meilleur.coup)}${raison}${ecart}.`, { duree: 7000 });
+          annoncer(`L’IA aurait préféré ${descriptionCoup(meilleur.coup)}${ecart}.${raison}`, { duree: 7000 });
         }
       } catch (e) {
         console.warn('Commentaire du coup impossible', e);

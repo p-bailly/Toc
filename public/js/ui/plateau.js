@@ -196,7 +196,7 @@ export class Plateau {
       const cote = geo.coteDe(o, siegeVue);
       const angle = geo.angleCote(cote);
       // Base.
-      g.append(rectTourne('zone-base', geo.centreBase(o, siegeVue), geo.TAILLE_BASE, geo.TAILLE_BASE, angle, { rx: 3, fill: couleurSiege(o) }));
+      g.append(rectTourne('zone-base', geo.centreBase(o, siegeVue), geo.TAILLE_BASE, geo.TAILLE_BASE, angle, { rx: 3, fill: couleurSiege(o), 'data-base': o }));
       for (let k = 0; k < 4; k++) {
         const b = geo.emplacementBase(o, k, siegeVue);
         g.append(s('circle', { class: 'trou', cx: b.x, cy: b.y, r: RAYON_TROU + 0.4, style: { fill: `url(#${this.idTrou})` } }));
@@ -252,6 +252,9 @@ export class Plateau {
     this.etat = etat;
     const positions = pions || etat.pions;
     this.positions = positions;
+    // Le contour de la base clignote pour le joueur dont c'est le tour (pendant l'échange : celui qui jouera le premier).
+    const auTour = etat.phase === 'jeu' || etat.phase === 'echange' ? etat.tour : -1;
+    for (const base of this.svg.querySelectorAll('.zone-base')) base.classList.toggle('au-tour', Number(base.dataset.base) === auTour);
     for (let g = 0; g < this.pions.length; g++) {
       const el = this.pions[g];
       el.style.transform = translate(this.geo.positionPion(g, positions[g], siegeVue));

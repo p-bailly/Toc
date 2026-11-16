@@ -2087,6 +2087,18 @@ details > .reglage:first-of-type {
   stroke: var(--trou-bord);
   stroke-width: 0.62;
 }
+/* À qui le tour : le contour de sa base clignote (fixe et épais si le téléphone demande moins d'animations) */
+.plateau-toc .zone-base.au-tour {
+  stroke: #fff;
+  stroke-width: 1.7;
+  animation: clignote-base 1.1s ease-in-out infinite;
+}
+@keyframes clignote-base {
+  50% {
+    stroke: var(--trou-bord);
+    stroke-width: 0.62;
+  }
+}
 .plateau-toc .texte-donne {
   fill: var(--bois-texte);
   opacity: 1;
