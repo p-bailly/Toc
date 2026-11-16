@@ -53,7 +53,7 @@ test('à 3 : salle d’attente à 3 sièges, lancement, 12 mains du cycle 5-4-4-
   assert.equal(salle.nbJoueurs, 3);
   assert.deepEqual(salle.reglages, { cinqAdverse: false, nbJoueurs: 3 });
   assert.equal(salle.joueurs.length, 3);
-  assert.deepEqual(salle.joueurs[2], { uid: null, pseudo: 'IA 3', ia: true });
+  assert.deepEqual(salle.joueurs[2], { uid: null, pseudo: 'IA 3', ia: true, niveau: 'champion' });
   arret();
 
   p = serveur.get(`parties/${id}`);

@@ -32,6 +32,7 @@ import * as IA from '../ia/ia.js';
 import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
 import { couleurSiege, nomCouleur, PIONS } from './couleurs.js';
 import { lireReglages } from './reglages.js';
+import { nomNiveau } from './niveaux.js';
 import { majMonTour, notifier } from './notifications.js';
 import { s } from './dom.js';
 
@@ -860,6 +861,12 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     );
   }
 
+  /** « · IA Expert » pour une place tenue par une IA (niveau par défaut si absent). */
+  function niveauDe(si) {
+    const j = vue.joueurs[si];
+    return j?.ia ? ` · ${nomSiege(si)} : ${nomNiveau(j.niveau)}` : '';
+  }
+
   function montrerFin() {
     if (!vue || vue.etat.phase !== 'fini' || feuilleFin) return;
     const { etat, siege } = vue;
@@ -883,7 +890,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
           'div',
           { class: 'ligne' + (gagnants.includes(si) ? ' choisie' : '') },
           h('span', { class: 'puce-pion grande', style: { '--c': couleurSiege(si) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[si].forme]),
-          h('div', { class: 'principal' }, h('div', { class: 'mot' }, nomSiege(si)), h('div', { class: 'note' }, `${rentres(si)}/4 pions rentrés`)),
+          h('div', { class: 'principal' }, h('div', { class: 'mot' }, nomSiege(si)), h('div', { class: 'note' }, `${rentres(si)}/4 pions rentrés${niveauDe(si)}`)),
           h('span', { class: 'pts' }, gagnants.includes(si) ? 'Gagnant' : ''),
         ),
       );
@@ -894,7 +901,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         h(
           'div',
           { class: 'ligne' + (e === etat.gagnant ? ' choisie' : '') },
-          h('div', { class: 'principal' }, h('div', { class: 'mot' }, enumerer(equipe(e))), h('div', { class: 'note' }, e === siege % 2 ? 'Ton équipe' : 'Équipe adverse')),
+          h('div', { class: 'principal' }, h('div', { class: 'mot' }, enumerer(equipe(e))), h('div', { class: 'note' }, (e === siege % 2 ? 'Ton équipe' : 'Équipe adverse') + niveauDe(e) + niveauDe(e + 2))),
           h('span', { class: 'pts' }, e === etat.gagnant ? 'Gagnant' : ''),
         ),
       );

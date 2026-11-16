@@ -7,17 +7,23 @@ import { entete, interrupteur, rangee, segments } from './composants.js';
 import { nouvellePartieLocale, sauvegardeLocale, MODES_LOCAUX } from './ecran-jeu.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
+import { choixNiveau, niveauxLocaux, ecrireNiveauxLocaux, nomNiveau } from './niveaux.js';
 
 const CLE_MODE = 'toc.modeLocal';
 
 export function afficher(racine, app) {
   let cinqAdverse = false;
   let nbJoueurs = lire(CLE_MODE, 4) === 3 ? 3 : 4;
+  // Force des IA : la dernière choisie est retenue sur l'appareil ; partenaire null = comme les adversaires.
+  let niveaux = niveauxLocaux();
+  let ouvert = null; // 'adversaires' | 'partenaire' : liste des niveaux dépliée
 
   const ligneEnCours = (sauvegarde, n) => {
     const etat = sauvegarde.partie.etat;
     const aMoi = (etat.phase === 'echange' && !sauvegarde.partie.dons?.[0]) || (etat.phase === 'jeu' && etat.tour === 0);
-    const avec = n === 3 ? `contre ${sauvegarde.joueurs.slice(1).map((j) => j.pseudo).join(' et ')}` : `avec ${sauvegarde.joueurs[2]?.pseudo || 'IA'}`;
+    const ias = sauvegarde.joueurs.filter((j) => j.ia).map((j) => nomNiveau(j.niveau));
+    const niveauxTexte = [...new Set(ias)].join(', ');
+    const avec = (n === 3 ? `contre ${sauvegarde.joueurs.slice(1).map((j) => j.pseudo).join(' et ')}` : `avec ${sauvegarde.joueurs[2]?.pseudo || 'IA'}`) + ` · IA ${niveauxTexte}`;
     return h(
       'a',
       { class: 'ligne' + (aMoi ? ' choisie' : ''), href: MODES_LOCAUX[n].route, 'data-action': n === 3 ? 'reprendre-3' : 'reprendre' },
@@ -102,6 +108,35 @@ export function afficher(racine, app) {
           actif: cinqAdverse,
           surChange: (v) => (cinqAdverse = v),
         }),
+        choixNiveau({
+          cle: 'adversaires',
+          titre: nbJoueurs === 3 ? 'Niveau des deux IA' : 'Niveau des adversaires',
+          actuel: niveaux.adversaires,
+          ouvert: ouvert === 'adversaires',
+          surOuvrir: (o) => ((ouvert = o ? 'adversaires' : null), dessiner()),
+          surChoix: (id) => {
+            niveaux = { ...niveaux, adversaires: id };
+            ecrireNiveauxLocaux(niveaux);
+            ouvert = null;
+            dessiner();
+          },
+        }),
+        nbJoueurs === 4
+          ? choixNiveau({
+              cle: 'partenaire',
+              titre: 'Niveau de ton partenaire',
+              actuel: niveaux.partenaire || niveaux.adversaires,
+              note: niveaux.partenaire ? '' : 'Le même que les adversaires.',
+              ouvert: ouvert === 'partenaire',
+              surOuvrir: (o) => ((ouvert = o ? 'partenaire' : null), dessiner()),
+              surChoix: (id) => {
+                niveaux = { ...niveaux, partenaire: id === niveaux.adversaires ? null : id };
+                ecrireNiveauxLocaux(niveaux);
+                ouvert = null;
+                dessiner();
+              },
+            })
+          : null,
         h(
           'div',
           { class: 'reglage' },
@@ -113,7 +148,10 @@ export function afficher(racine, app) {
               'data-action': 'nouvelle-locale',
               onclick: () => {
                 if (enCoursMode && !confirm('Abandonner la partie en cours de ce mode et en commencer une nouvelle ?')) return;
-                nouvellePartieLocale({ cinqAdverse }, nbJoueurs);
+                const adv = niveaux.adversaires;
+                // Un niveau par siège : partenaire en face (siège 2) à 4 joueurs ; le siège 0 est le tien.
+                const parSiege = nbJoueurs === 3 ? [null, adv, adv] : [null, adv, niveaux.partenaire || adv, adv];
+                nouvellePartieLocale({ cinqAdverse }, nbJoueurs, parSiege);
                 app.naviguer(MODES_LOCAUX[nbJoueurs].route);
               },
             },

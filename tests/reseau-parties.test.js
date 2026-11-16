@@ -44,7 +44,7 @@ test("salle d'attente : créer, rejoindre, sièges, IA, quitter", async () => {
   await a.client.ajouterIA(id, 1);
   await assert.rejects(a.client.ajouterIA(id, 1), /déjà pris/);
   p = serveur.get(`parties/${id}`);
-  assert.deepEqual(p.joueurs[1], { uid: null, pseudo: 'IA Est', ia: true });
+  assert.deepEqual(p.joueurs[1], { uid: null, pseudo: 'IA Est', ia: true, niveau: 'champion' });
   assert.equal(p.joueurs[2].uid, b.joueur.uid);
 
   await c.client.rejoindrePartie(code);

@@ -4,7 +4,8 @@
 // et l'hôte peut compléter avec des IA.
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
-import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue } from './composants.js';
+import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille } from './composants.js';
+import { nomNiveau, niveauValide, niveauEnLigne, ecrireNiveauEnLigne, listeNiveaux } from './niveaux.js';
 import { monterJeu } from './vue-jeu.js';
 import { definirPartieOuverte } from './veille.js';
 import { piPartager, piPlus } from './pictos.js';
@@ -77,7 +78,7 @@ export function afficher(racine, app, { reste }) {
       ...v,
       joueurs: v.joueurs.map((j, i) => {
         const uid = j?.uid ?? resume?.joueurs?.[i]?.uid;
-        return { ...j, uid, icone: j?.icone ?? iconeConnue(uid) };
+        return { ...j, uid, icone: j?.icone ?? iconeConnue(uid), niveau: j?.niveau ?? resume?.joueurs?.[i]?.niveau };
       }),
     });
     return {
@@ -133,9 +134,13 @@ export function afficher(racine, app, { reste }) {
       const actions = [];
       if (!place) {
         if (monSiege >= 0) actions.push(h('button', { type: 'button', class: 'bouton petit', disabled: occupe, onclick: () => agir(() => api.choisirSiege(p.id, si)) }, 'M’asseoir ici'));
-        if (hote) actions.push(h('button', { type: 'button', class: 'bouton petit', disabled: occupe, 'data-action': 'ajouter-ia', onclick: () => agir(() => api.ajouterIA(p.id, si)) }, piPlus(14), 'IA'));
+        // L'IA arrive au dernier niveau choisi ; l'hôte peut le changer d'un toucher sur sa place.
+        if (hote) actions.push(h('button', { type: 'button', class: 'bouton petit', disabled: occupe, 'data-action': 'ajouter-ia', onclick: () => agir(() => api.ajouterIA(p.id, si, niveauEnLigne())) }, piPlus(14), 'IA'));
       } else if (place.ia && hote) {
-        actions.push(h('button', { type: 'button', class: 'bouton petit danger', disabled: occupe, onclick: () => agir(() => api.retirerIA(p.id, si)) }, 'Retirer'));
+        actions.push(
+          h('button', { type: 'button', class: 'bouton petit', disabled: occupe, 'data-action': 'niveau-ia', onclick: () => choisirNiveauIA(p, si, place) }, nomNiveau(place.niveau), ' ▾'),
+          h('button', { type: 'button', class: 'bouton petit danger', disabled: occupe, onclick: () => agir(() => api.retirerIA(p.id, si)) }, 'Retirer'),
+        );
       }
       const nom = place ? (place.uid === moi ? `${place.pseudo} (toi)` : place.pseudo || (place.ia ? 'IA' : '?')) : 'Place libre';
       return h(
@@ -143,7 +148,7 @@ export function afficher(racine, app, { reste }) {
         { class: 'siege' + (place ? '' : ' libre') + (si === monSiege ? ' moi' : ''), 'data-siege': si, style: { '--c': couleurSiege(si) } },
         place ? avatar({ uid: place.uid, nom: place.pseudo, ia: place.ia, fond: couleurSiege(si) }) : h('div', { class: 'avatar vide', 'aria-hidden': 'true' }, '?'),
         h('div', { class: 'nom-siege' }, nom),
-        h('div', { class: 'note' }, place?.uid === p.hote ? `Hôte · ${equipe}` : place?.ia ? `IA · ${equipe}` : equipe),
+        h('div', { class: 'note' }, place?.uid === p.hote ? `Hôte · ${equipe}` : place?.ia ? (hote ? `IA · ${equipe}` : `IA ${nomNiveau(place.niveau)} · ${equipe}`) : equipe),
         actions.length ? h('div', { class: 'actions-siege' }, actions) : null,
       );
     };
@@ -222,6 +227,26 @@ export function afficher(racine, app, { reste }) {
       ),
     );
     remplacer(racine, h('div', { class: 'contenu salle-attente' }, blocs));
+  }
+
+  /** Feuille de choix du niveau d'une IA déjà assise (hôte, avant le lancement). */
+  function choisirNiveauIA(p, si, place) {
+    const feuille = ouvrirFeuille([
+      h('h3', {}, `Niveau de ${place.pseudo || 'l’IA'}`),
+      listeNiveaux(niveauValide(place.niveau), (id) => {
+        feuille.fermer();
+        ecrireNiveauEnLigne(id);
+        if (id === niveauValide(place.niveau)) return;
+        agir(async () => {
+          if (typeof api.changerNiveauIA === 'function') await api.changerNiveauIA(p.id, si, id);
+          else {
+            await api.retirerIA(p.id, si);
+            await api.ajouterIA(p.id, si, id);
+          }
+        });
+      }),
+      h('button', { type: 'button', class: 'bouton large', onclick: () => feuille.fermer() }, 'Fermer'),
+    ]);
   }
 
   function carteInviter(p, hote, nbLibres) {

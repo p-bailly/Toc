@@ -17,6 +17,8 @@
 //                 visible : accepte d'être trouvé par les autres joueurs ;
 //                 verrouille : pseudo imposé par l'administrateur (non modifiable)
 //   Place       = { uid, pseudo, ia } | null          (ia = true : place tenue par une IA, uid = null)
+//                 une IA a aussi `niveau` : 'debutant' | 'amateur' | 'confirme' | 'expert' | 'champion'
+//                 (NIVEAUX de js/ia/ia.js ; place d'une partie ancienne sans niveau : 'champion')
 //   ResumePartie = {
 //     id, nom, code,     id === code (le code d'invitation identifie la partie)
 //     statut,            'attente' | 'encours' | 'finie'
@@ -147,10 +149,19 @@ export async function choisirSiege(id, siege) {
   return client.choisirSiege(id, siege);
 }
 
-/** Hôte : place une IA sur un siège libre / la retire. */
-export async function ajouterIA(id, siege) {
+/**
+ * Hôte : place une IA sur un siège libre / la retire. niveau : un des id de NIVEAUX (js/ia/ia.js),
+ * facultatif (défaut 'champion') ; un niveau inconnu est refusé.
+ */
+export async function ajouterIA(id, siege, niveau) {
   if (!reseauDisponible()) return nonConfigure();
-  return client.ajouterIA(id, siege);
+  return client.ajouterIA(id, siege, niveau);
+}
+
+/** Hôte, partie en attente : change le niveau de l'IA placée sur ce siège. */
+export async function changerNiveauIA(id, siege, niveau) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.changerNiveauIA(id, siege, niveau);
 }
 export async function retirerIA(id, siege) {
   if (!reseauDisponible()) return nonConfigure();
@@ -211,6 +222,7 @@ export async function refuserInvitation(id) {
  * → Session, même interface que SessionLocale (voir js/session-locale.js) :
  *   abonner(cb), donner(carte), jouer(coup), fermer(), avec vue.enLigne = true
  *   (la vue a en plus `statut`), et donneesAnalyse() (analyse de fin de partie).
+ *   vue.joueurs[s] = { pseudo, ia } et, pour une IA, `niveau` (transmis à l'IA qui joue ce siège).
  *   À 3 joueurs, `vue.recu` est la carte reçue du voisin de la donne (donneurDon).
  * La session fait aussi jouer les IA de la partie.
  */

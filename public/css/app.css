@@ -1981,3 +1981,16 @@ details > .reglage:first-of-type {
 .ligne-conseils .reglage .titre {
   font-size: calc(14px * var(--texte));
 }
+/* Choix du niveau des IA */
+.choix-niveau .reglage {
+  border-top: 1px solid var(--line);
+}
+.choix-niveau .liste-niveaux {
+  margin-bottom: 10px;
+}
+.liste-niveaux .ligne {
+  background: var(--surface-2);
+}
+.liste-niveaux .ligne.choisie {
+  background: var(--chip);
+}

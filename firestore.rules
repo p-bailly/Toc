@@ -135,17 +135,21 @@ service cloud.firestore {
       function estMoi(p) {
         return aMoi(p) && p.keys().hasOnly(['uid', 'pseudo', 'ia']) && p.pseudo == pseudoFiche();
       }
+      // Place d'une IA ; `niveau` facultatif (absent dans les parties d'avant les niveaux : champion).
       function estIA(p) {
-        return p != null && p.keys().hasOnly(['uid', 'pseudo', 'ia']) && p.ia == true && p.uid == null
-          && p.pseudo is string && p.pseudo.size() > 0 && p.pseudo.size() <= 20;
+        return p != null && p.keys().hasOnly(['uid', 'pseudo', 'ia', 'niveau']) && p.ia == true && p.uid == null
+          && p.pseudo is string && p.pseudo.size() > 0 && p.pseudo.size() <= 20
+          && (!('niveau' in p) || p.niveau in ['debutant', 'amateur', 'confirme', 'expert', 'champion']);
       }
-      // Changement permis d'un siège en salle d'attente : soi-même s'y placer ou en partir ; l'hôte, une IA.
+      // Changement permis d'un siège en salle d'attente : soi-même s'y placer ou en partir ; l'hôte place,
+      // retire une IA ou change son niveau.
       function siegeOk(a, b, hote) {
         return a == b
           || (a == null && estMoi(b))
           || (aMoi(a) && b == null)
           || (hote && a == null && estIA(b))
-          || (hote && estIA(a) && b == null);
+          || (hote && estIA(a) && b == null)
+          || (hote && estIA(a) && estIA(b)); // changer le niveau d'une IA
       }
       function nbMoi(j) {
         return un(aMoi(j[0])) + un(aMoi(j[1])) + un(aMoi(j[2])) + (j.size() > 3 ? un(aMoi(j[3])) : 0);

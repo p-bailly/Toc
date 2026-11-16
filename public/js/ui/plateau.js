@@ -10,6 +10,7 @@ import { PIONS, couleurSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
+import { nomNiveau } from './niveaux.js';
 
 const COTE = 17 * CELLULE;
 /** Rayon d'un trou crème (case du circuit, de l'allée, emplacement de base) et d'un pion. */
@@ -256,7 +257,8 @@ export class Plateau {
       const g = s('g', {
         class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : ''),
         'data-siege': siege,
-        'aria-label': `${nom}${actif ? ', à son tour' : ''}`,
+        'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
+        'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}${actif ? ', à son tour' : ''}`,
       });
       g.append(
         s('rect', { class: 'boite', x: b.x, y: b.y, width: b.l, height: b.h, rx: 3 }),
@@ -276,7 +278,8 @@ export class Plateau {
       }
       g.append(s('text', { class: 'nb-cartes', x: b.x + b.l - 3, y: b.y + 14 }, String(nb)));
       g.append(s('text', { class: 'pseudo-plateau', x: b.x + 3, y: b.y + 24.5 }, tronquer(nom, 11)));
-      const sous = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '');
+      // Sous le pseudo : l'état du joueur (joue…, a donné ✓…), sinon le niveau d'une IA.
+      const sous = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '') || (j.ia ? nomNiveau(j.niveau) : '');
       if (sous) g.append(s('text', { class: 'sous-plateau', x: b.x + 3, y: b.y + 30.5 }, tronquer(sous, 15)));
       c.append(g);
     }
