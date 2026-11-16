@@ -64,7 +64,7 @@ test('partie complète : 3 humains + 1 IA, remélanges, fin, statistiques', { ti
         }
       } catch (e) {
         // Vue en retard d'un état : on réessaie au prochain tour de boucle.
-        if (!/pas ton tour|déjà donné|pas le moment/.test(e.message)) throw e;
+        if (!/pas ton tour|déjà donné|pas le moment|terminée/.test(e.message)) throw e;
       }
       if (agi) {
         actions++;

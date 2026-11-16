@@ -181,6 +181,16 @@ const gagnePions = (pions, s) => finiPions(pions, s) && finiPions(pions, (s + 2)
  * Énumère toutes les façons distinctes (par plateau final) de jouer un 7 : en entier, ou
  * jusqu'à la victoire de l'équipe (les points restants sont alors perdus).
  */
+/** Clé compacte d'un plateau (16 caractères). */
+export function clePions(p) {
+  return String.fromCharCode(
+    p[0] + 2, p[1] + 2, p[2] + 2, p[3] + 2, p[4] + 2, p[5] + 2, p[6] + 2, p[7] + 2,
+    p[8] + 2, p[9] + 2, p[10] + 2, p[11] + 2, p[12] + 2, p[13] + 2, p[14] + 2, p[15] + 2,
+  );
+}
+
+const occParProfondeur = Array.from({ length: 8 }, () => new Int8Array(64));
+
 function genererSept(pions, s, carte, sortie, limite) {
   const finals = new Set();
   const vus = new Set();
@@ -188,7 +198,7 @@ function genererSept(pions, s, carte, sortie, limite) {
   const captTot = [];
   const explorer = (pi, reste) => {
     if (sortie.length >= limite) return;
-    const cle = pi.join(',');
+    const cle = clePions(pi);
     if (reste === 0 || (reste < 7 && gagnePions(pi, s))) {
       if (!finals.has(cle)) {
         finals.add(cle);
@@ -196,10 +206,10 @@ function genererSept(pions, s, carte, sortie, limite) {
       }
       return;
     }
-    const cleReste = cle + '|' + reste;
+    const cleReste = cle + reste;
     if (vus.has(cleReste)) return;
     vus.add(cleReste);
-    const occ = occupation(pi, new Int8Array(64));
+    const occ = occupation(pi, occParProfondeur[7 - reste]);
     const c = finiPions(pi, s) ? (s + 2) & 3 : s;
     for (let g = c * 4; g < c * 4 + 4; g++) {
       const p = pi[g];
