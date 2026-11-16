@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { creerClient } from '../public/js/reseau/client.js';
 import { initialiser } from '../public/js/reseau/firebase.js';
-import { choisirCoup, choisirCoup3, choisirDon, choisirDon3 } from './outils-reseau/ia-simple.js';
+import { choisirCoupGlouton, choisirDon, coupGlouton } from './outils-reseau/ia-simple.js';
 import { coupsLegauxMain, generateurAleatoire, appliquerCoup, marquerEchange, etatInitial, rejouerPartie } from '../public/js/moteur/index.js';
 import { attendre } from './outils-reseau/faux-magasin.js';
 
@@ -49,7 +49,7 @@ function nouveauClient(graine) {
   const rng = generateurAleatoire(graine);
   const client = creerClient({
     services: async () => services,
-    ia: { choisirDon, choisirCoup, choisirDon3, choisirCoup3 },
+    ia: { choisirDon, choisirCoup: choisirCoupGlouton, choisirDon3: choisirDon, choisirCoup3: choisirCoupGlouton },
     rng,
     session: { delaiIA: 0, attenteAutres: [50, 200], budgetIA: 5 },
   });
@@ -132,7 +132,7 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
 
   const debut = Date.now();
   while (!vues.every((v) => v.etat.phase === 'fini')) {
-    assert.ok(Date.now() - debut < 580000, 'partie trop longue');
+    assert.ok(Date.now() - debut < 580000, `partie trop longue (coup ${vues[0].etat.numCoup}, donne ${vues[0].etat.donne})`);
     let agi = false;
     for (let i = 0; i < 3 && !agi; i++) {
       const v = vues[i];
@@ -143,7 +143,7 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
           agi = true;
         } else if (etat.phase === 'jeu' && etat.tour === v.siege) {
           const coups = coupsLegauxMain(etat, v.siege, v.main);
-          await sessions[i].jouer(coups[Math.floor(clients[i].rng() * coups.length)]);
+          await sessions[i].jouer(coupGlouton(etat, v.siege, coups, clients[i].rng));
           agi = true;
         }
       } catch (err) {
@@ -357,7 +357,7 @@ test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !acti
   }
   const debut = Date.now();
   while (!vues.every((v) => v.etat.phase === 'fini')) {
-    assert.ok(Date.now() - debut < 580000, 'partie trop longue');
+    assert.ok(Date.now() - debut < 580000, `partie trop longue (coup ${vues[0].etat.numCoup}, donne ${vues[0].etat.donne})`);
     let agi = false;
     for (let i = 0; i < 2 && !agi; i++) {
       const v = vues[i];
@@ -369,7 +369,7 @@ test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !acti
         } else if (etat.phase === 'jeu' && etat.tour === v.siege) {
           const coups = coupsLegauxMain(etat, v.siege, v.main);
           const joker = coups.find((c) => /^J[12]$/.test(c.carte) && c.t !== 'defausse');
-          await sessions[i].jouer(joker || coups[Math.floor(clients[i].rng() * coups.length)]);
+          await sessions[i].jouer(joker || coupGlouton(etat, v.siege, coups, clients[i].rng));
           agi = true;
         }
       } catch (err) {
