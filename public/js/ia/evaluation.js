@@ -25,7 +25,7 @@ export const POIDS_DEFAUT = {
   risque: 1, // multiplicateur global du risque
   bloque: 2.5,
   menaceValet: 0.5, // part de la menace du valet prise en compte // pénalité maximale d'un pion bloqué par un pion protégé juste devant
-  victoire: 100000,
+  victoire: 2000, // partie gagnée (borne finie : les moyennes de simulation restent lisibles)
   // Valeur des cartes gardées en main
   sortieUtile: 11, // as ou roi quand un pion attend en base (première carte de sortie)
   sortieSup: 5, // cartes de sortie supplémentaires utiles
