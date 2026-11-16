@@ -9,7 +9,8 @@ import { enteteRetour } from './composants.js';
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { piRetour } from './pictos.js';
-import { carteCourte, decrireAction, trierMain } from './libelles.js';
+import { carteCourte, decrireAction, trierMain, rangAvecArticle } from './libelles.js';
+import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
 import { apercuCoup } from '../moteur/regles.js';
 import { lancerAnalyse } from './analyseur.js';
@@ -20,7 +21,8 @@ const memoire = new Map();
 
 export function afficher(racine, app, { reste }) {
   const id = reste[0] || 'locale';
-  const locale = id === 'locale';
+  // #/analyse/locale (2 contre 2) ou #/analyse/locale3 (3 joueurs) : parties d'entraînement.
+  const locale = id === 'locale' || id === 'locale3';
   const retour = locale ? '#/ia' : '#/parties';
   const contenu = h('div', { class: 'contenu analyse' }, enteteRetour('Analyse de la partie', retour), h('div', { class: 'vide-etat' }, 'Préparation de l’analyse…'));
   remplacer(racine, contenu);
@@ -37,17 +39,13 @@ export function afficher(racine, app, { reste }) {
     // 1. Les données de la partie (mains distribuées, cartes données, historique).
     let donnees;
     try {
-      donnees = locale ? await donneesLocales() : await donneesEnLigne(app, id);
+      donnees = locale ? await donneesLocales(id === 'locale3' ? 3 : 4) : await donneesEnLigne(app, id);
     } catch (e) {
       message(messageErreur(e));
       return;
     }
     if (typeof donnees === 'string') {
       message(donnees);
-      return;
-    }
-    if (donnees?.reglages?.nbJoueurs === 3) {
-      message('L’analyse n’est pas encore disponible pour les parties à 3 joueurs : l’IA ne sait pas encore les juger.');
       return;
     }
     if (!donnees || !Array.isArray(donnees.donnes) || !donnees.donnes.length || !Array.isArray(donnees.historique)) {
@@ -73,7 +71,7 @@ export function afficher(racine, app, { reste }) {
       return;
     }
     if (ferme) return;
-    const cle = locale ? 'locale-' + donnees.historique.length + '-' + JSON.stringify(donnees.historique[0]?.coup || '') : id;
+    const cle = locale ? id + '-' + donnees.historique.length + '-' + JSON.stringify(donnees.historique[0]?.coup || '') : id;
     const resultats = memoire.get(cle) || new Map();
     memoire.set(cle, resultats);
     detruireVue = monterVue(contenu, { donnees, items, resultats, retour, lancer: (taches, surMsg) => (analyse = lancerAnalyse(taches, surMsg)) });
@@ -86,11 +84,12 @@ export function afficher(racine, app, { reste }) {
   };
 }
 
-async function donneesLocales() {
-  const sauvegarde = SessionLocale.lireSauvegarde(localStorage);
+async function donneesLocales(nbJoueurs) {
+  const cleSauvegarde = nbJoueurs === 3 ? 'toc.partieLocale3' : 'toc.partieLocale';
+  const sauvegarde = SessionLocale.lireSauvegarde(localStorage, cleSauvegarde);
   if (!sauvegarde) return 'Aucune partie contre l’IA n’est gardée sur cet appareil.';
   if (sauvegarde.partie.etat.phase !== 'fini') return 'Termine d’abord la partie en cours : l’analyse s’ouvre à la fin de la partie.';
-  const session = new SessionLocale({ stockage: localStorage, reprendre: true, delaiIA: 1e9 });
+  const session = new SessionLocale({ stockage: localStorage, cle: cleSauvegarde, reprendre: true, delaiIA: 1e9, nbJoueurs });
   try {
     if (typeof session.donneesAnalyse !== 'function') return 'L’analyse n’est pas encore disponible dans cette version de l’appli.';
     return await session.donneesAnalyse();
@@ -118,6 +117,9 @@ async function donneesEnLigne(app, id) {
 
 function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
   const { siege, joueurs } = donnees;
+  // À 3, l'évaluation est celle du joueur seul : un joueur neutre a 1 chance sur 3, pas 1 sur 2.
+  const a3 = (joueurs?.length || 4) === 3 || donnees.reglages?.nbJoueurs === 3;
+  const neutre = a3 ? 1 / 3 : 0.5;
   let actuel = 0;
   let montre = 'joue'; // 'joue' | 'meilleur' | index de candidat
   let dispo = true;
@@ -268,10 +270,11 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     const n = items.length;
     const x = (i) => (n <= 1 ? L / 2 : 8 + (i * (L - 16)) / (n - 1));
     const y = (p) => H - 8 - p * (H - 16);
-    const svg = s('svg', { viewBox: `0 0 ${L} ${H}`, class: 'courbe', role: 'img', 'aria-label': 'Chances de victoire de ton équipe au fil de la partie' });
+    const svg = s('svg', { viewBox: `0 0 ${L} ${H}`, class: 'courbe', role: 'img', 'aria-label': a3 ? 'Tes chances de gagner au fil de la partie' : 'Chances de victoire de ton équipe au fil de la partie' });
     svg.append(
       s('rect', { class: 'fond-courbe', x: 0, y: 0, width: L, height: H, rx: 6 }),
-      s('line', { class: 'mi-courbe', x1: 0, x2: L, y1: y(0.5), y2: y(0.5) }),
+      s('line', { class: 'mi-courbe', x1: 0, x2: L, y1: y(neutre), y2: y(neutre) }),
+      s('text', { class: 'legende-courbe', x: L - 4, y: y(neutre) - 3, 'text-anchor': 'end' }, a3 ? 'égalité : 1 chance sur 3' : 'égalité : 50 %'),
       s('text', { class: 'legende-courbe', x: 4, y: 12 }, '100 %'),
       s('text', { class: 'legende-courbe', x: 4, y: H - 3 }, '0 %'),
     );
@@ -303,11 +306,13 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
 
   function descriptionCoup(coup) {
     if (!coup) return '';
-    if (coup.t === 'defausse') return `Défausser le ${carteCourte(coup.carte)}`;
-    return `${carteCourte(coup.carte)} : ${decrireAction(coup, siege, joueurs)}`;
+    if (coup.t === 'defausse') return estJoker(coup.carte) ? 'Défausser le joker' : `Défausser le ${carteCourte(coup.carte)}`;
+    const carte = estJoker(coup.carte) ? `Joker comme ${rangAvecArticle(coup.comme)}` : carteCourte(coup.carte);
+    return `${carte} : ${decrireAction(coup, siege, joueurs)}`;
   }
-  const descriptionCandidat = (it, c) => (it.type === 'don' ? `Donner le ${carteCourte(c.carte)}` : descriptionCoup(c.coup));
-  const descriptionItem = (it) => (it.type === 'don' ? `Donner le ${carteCourte(it.carte)}` : descriptionCoup(it.coup));
+  const nomDon = (c) => `Donner ${estJoker(c) ? 'le joker' : 'le ' + carteCourte(c)}`;
+  const descriptionCandidat = (it, c) => (it.type === 'don' ? nomDon(c.carte) : descriptionCoup(c.coup));
+  const descriptionItem = (it) => (it.type === 'don' ? nomDon(it.carte) : descriptionCoup(it.coup));
 
   let derniereCle = '';
   function majTour(depuisResultat = false) {
@@ -354,14 +359,15 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
         zoneEval,
         h(
           'div',
-          { class: 'barre-eval', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': p === null ? null : Math.round(p * 100), 'aria-label': 'Chances de victoire de ton équipe' },
-          h('div', { class: 'part-nous', style: { width: `${(p ?? 0.5) * 100}%` } }),
-          h('span', { class: 'texte-eval' }, p === null ? '' : `${Math.round(p * 100)} %`),
+          { class: 'barre-eval', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': p === null ? null : Math.round(p * 100), 'aria-label': a3 ? 'Tes chances de gagner' : 'Chances de victoire de ton équipe' },
+          h('div', { class: 'part-nous', style: { width: `${(p ?? neutre) * 100}%` } }),
+          h('div', { class: 'repere-neutre', style: { left: `${neutre * 100}%` }, title: a3 ? 'Égalité entre les trois joueurs' : 'Égalité' }),
+          h('span', { class: 'texte-eval' }, p === null ? '' : `${a3 ? 'Tes chances : ' : ''}${Math.round(p * 100)} %`),
         ),
         h(
           'div',
           { class: 'note ligne-eval' },
-          h('span', {}, `Avantage de ton équipe : `, h('b', {}, `${formatCases(r.evaluation)} cases`), typeof r.marge === 'number' ? ` ± ${fmt(r.marge)}` : ''),
+          h('span', {}, a3 ? 'Ton avance : ' : `Avantage de ton équipe : `, h('b', {}, `${formatCases(r.evaluation)} cases`), typeof r.marge === 'number' ? ` ± ${fmt(r.marge)}` : ''),
           h('span', {}, `${(r.iterations || 0).toLocaleString('fr-FR')} simulations · ${r.stable ? 'stable' : 's’affine…'}`),
         ),
       );

@@ -10,7 +10,7 @@ import { lire, ecrire } from './dom.js';
 /** Clé de sauvegarde et d'options de chaque mode. */
 export const MODES_LOCAUX = {
   4: { cle: 'toc.partieLocale', options: 'toc.optionsLocales', route: '#/jeu/locale', analyse: '#/analyse/locale' },
-  3: { cle: 'toc.partieLocale3', options: 'toc.optionsLocales3', route: '#/jeu/locale3', analyse: null },
+  3: { cle: 'toc.partieLocale3', options: 'toc.optionsLocales3', route: '#/jeu/locale3', analyse: '#/analyse/locale3' },
 };
 
 /** Partie sauvegardée d'un mode ({ nom, joueurs, partie }) ou null. */

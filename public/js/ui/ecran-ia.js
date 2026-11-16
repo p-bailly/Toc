@@ -42,18 +42,26 @@ export function afficher(racine, app) {
       .filter(([, sv]) => sv && sv.partie.etat.phase !== 'fini');
     if (enCours.length) blocs.push(h('h2', {}, enCours.length > 1 ? 'Parties en cours' : 'Partie en cours'), h('div', { class: 'liste' }, enCours.map(([n, sv]) => ligneEnCours(sv, n))));
 
-    // Dernière partie à 4 terminée : analyse (l'IA ne sait pas encore analyser le jeu à 3).
-    const fini4 = sauvegardeLocale(4);
-    if (fini4 && fini4.partie.etat.phase === 'fini') {
-      const gagne = fini4.partie.etat.gagnant === 0;
+    // Dernières parties terminées : analyse avec l'IA.
+    const finies = [4, 3].map((n) => [n, sauvegardeLocale(n)]).filter(([, sv]) => sv && sv.partie.etat.phase === 'fini');
+    if (finies.length) {
       blocs.push(
-        h('h2', {}, 'Dernière partie à 2 contre 2'),
+        h('h2', {}, 'Dernières parties terminées'),
         h(
-          'a',
-          { class: 'ligne', href: '#/analyse/locale', 'data-action': 'analyser' },
-          h('div', { class: 'avatar', style: { background: gagne ? 'var(--ok)' : 'var(--muted)' } }, gagne ? '🏆' : '🎲'),
-          h('div', { class: 'principal' }, h('div', { class: 'mot' }, gagne ? 'Victoire de ton équipe' : 'Victoire de l’équipe adverse'), h('div', { class: 'note' }, `${fini4.partie.etat.donne + 1} donnes · revois tes coups avec l’IA`)),
-          h('span', { class: 'bouton' }, 'Analyser'),
+          'div',
+          { class: 'liste' },
+          finies.map(([n, sv]) => {
+            const e = sv.partie.etat;
+            const gagne = e.gagnant === 0;
+            const titre = n === 3 ? (gagne ? '3 joueurs · tu as gagné' : `3 joueurs · ${sv.joueurs[e.gagnant]?.pseudo || 'un adversaire'} a gagné`) : gagne ? '2 contre 2 · victoire de ton équipe' : '2 contre 2 · victoire de l’équipe adverse';
+            return h(
+              'a',
+              { class: 'ligne', href: MODES_LOCAUX[n].analyse, 'data-action': n === 3 ? 'analyser-3' : 'analyser' },
+              h('div', { class: 'avatar', style: { background: gagne ? 'var(--ok)' : 'var(--muted)' } }, gagne ? '🏆' : '🎲'),
+              h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, `${e.donne + 1} donnes · revois tes coups avec l’IA`)),
+              h('span', { class: 'bouton' }, 'Analyser'),
+            );
+          }),
         ),
       );
     }

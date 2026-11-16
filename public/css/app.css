@@ -1943,3 +1943,12 @@ details > .reglage:first-of-type {
   margin: 10px 0 0;
   text-align: center;
 }
+.barre-eval .repere-neutre {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  opacity: 0.8;
+}
