@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Calibrage de la probabilité de victoire (analyse.js → probaDepuisEvaluation).
+// Calibrage de la probabilité de victoire (etude.js → probaDepuisEvaluation).
 //
 // Parties de l'IA contre elle-même (évaluation statique par défaut, rapide). À chaque fin de
 // donne, on note l'évaluation de la position pour l'équipe 0, le travail restant (somme des

@@ -3,7 +3,7 @@
 // 1. Tous les coups légaux de la main sont générés (moteur rapide) et évalués statiquement
 //    (évaluation de la position + valeur des cartes gardées) : c'est déjà un bon joueur,
 //    utilisé tel quel quand le budget est minuscule.
-// 2. Les meilleurs candidats sont ensuite départagés par des simulations (voir analyse.js) :
+// 2. Les meilleurs candidats sont ensuite départagés par des simulations (voir etude.js) :
 //    à chaque itération, on tire au hasard les mains cachées parmi les cartes non vues (en
 //    tenant compte de la carte donnée : au partenaire à 4, au voisin à 3), puis on joue le reste
 //    de la donne pour chaque candidat avec la même distribution (variables aléatoires communes),
