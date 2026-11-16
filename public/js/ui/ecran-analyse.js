@@ -382,7 +382,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
           // Le coût du coup joué (écart avec le choix de l'IA), et ses raisons seulement s'il est bon : une
           // « Erreur » n'apparaît jamais à côté de phrases qui le décrivent comme un bon coup.
           joueCand && qualif && qualif !== 'meilleur' && typeof joueCand.ecart === 'number'
-            ? h('div', { class: 'note ecart-neg cout-coup' }, `Coûte ${fmt(joueCand.ecart)} case${joueCand.ecart >= 2 ? 's' : ''} par rapport au choix de l’IA`)
+            ? h('div', { class: 'note cout-coup' + (qualif === 'bon' ? '' : ' ecart-neg') }, `Coûte ${fmt(joueCand.ecart)} case${joueCand.ecart >= 2 ? 's' : ''} par rapport au choix de l’IA`)
             : null,
           joueCand?.raisons?.length && (qualif === 'meilleur' || qualif === 'bon') ? h('ul', { class: 'raisons' }, joueCand.raisons.map((x) => h('li', {}, x))) : null,
         ),

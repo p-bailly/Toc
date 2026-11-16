@@ -76,12 +76,12 @@ export class SessionLocale {
       const a3 = options.nbJoueurs === 3;
       this.joueurs = a3
         ? [
-            { pseudo: options.pseudo || 'Vous', ia: false },
+            { pseudo: options.pseudo || 'Toi', ia: false },
             { pseudo: 'IA Gauche', ia: true },
             { pseudo: 'IA Droite', ia: true },
           ]
         : [
-            { pseudo: options.pseudo || 'Vous', ia: false },
+            { pseudo: options.pseudo || 'Toi', ia: false },
             { pseudo: 'IA Est', ia: true },
             { pseudo: 'IA Partenaire', ia: true },
             { pseudo: 'IA Ouest', ia: true },

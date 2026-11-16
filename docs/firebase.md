@@ -63,10 +63,16 @@ pseudos recopiés dans ses parties (`joueurs[i].pseudo`) ne changent pas. Le nom
   visible), `icone`, `verrouille`, `stats { jouees, gagnees }`, `comptees` (parties déjà comptées),
   `creeLe`.
 - `parties/{code}` : le code d'invitation (6 caractères sans 0/O/1/I/L) est l'identifiant. Nom,
-  hôte, statut, réglages, 4 places, `uids`, invitations, état public du moteur, historique des coups,
-  `enAttente` (qui doit jouer).
+  hôte, statut, réglages, places (4, ou 3), `uids`, invitations, état public du moteur, historique
+  des coups (rejouable par `rejouerPartie`), `enAttente` (qui doit jouer).
 - `parties/{code}/donnes/{donne}_{siège}` et `…/dons/{donne}_{siège}` : cartes distribuées et carte
-  donnée au partenaire, **jamais modifiées** une fois écrites.
+  donnée (au partenaire ; au voisin à 3), **jamais modifiées** une fois écrites. 12 documents de
+  mains par cycle : 3 donnes × 4 sièges, ou 4 donnes × 3 sièges.
+
+Deux modes, choisis à la création et figés ensuite : **4 joueurs** (deux équipes ; réglages
+`{ cinqAdverse }`, la forme d'origine) et **3 joueurs** chacun pour soi (réglages
+`{ cinqAdverse, nbJoueurs: 3 }`, circuit de 48 cases, 54 cartes avec 2 jokers, cycle 5-4-4-5, don
+au voisin de gauche les donnes paires et de droite les impaires).
 
 ## Ce que garantissent les règles (et ce qu'elles ne garantissent pas)
 
@@ -75,7 +81,7 @@ Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le mot
 
 - tout accès exige d'être connecté ; une fiche n'est modifiable que par son titulaire, qui ne peut ni
   poser ni lever le verrou de pseudo ; les statistiques ne bougent que d'une partie terminée à la fois,
-  avec le bon résultat, une seule fois ;
+  avec le bon résultat (son équipe à 4, son siège à 3), une seule fois ;
 - une partie en cours n'est lisible que par ses membres (et ses invités) ; seules ses parties et ses
   invitations se listent ;
 - en salle d'attente, chacun ne déplace que sa propre place ; seul l'hôte place des IA, invite, lance
@@ -83,15 +89,18 @@ Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le mot
 - un coup n'est écrit que par le joueur dont c'est le tour (ou par un membre pour une IA), avec un
   numéro de coup qui augmente exactement de 1, un historique qui ne fait que s'allonger, et une
   structure d'état cohérente (tour suivant, donne, pile, échange…) ;
-- **la main d'un autre humain n'est jamais lisible**, ni une donne future ; la carte reçue du
-  partenaire ne l'est qu'une fois l'échange terminé ; une carte donnée doit être dans la main
-  distribuée ; mains et dons ne sont jamais modifiés ni supprimés.
+- **la main d'un autre humain n'est jamais lisible**, ni une donne future ; un don va au bon
+  destinataire (partenaire, ou voisin de la donne à 3), qui ne le lit qu'une fois l'échange terminé
+  (à 3, le troisième joueur ne le lit jamais) ; une carte donnée doit être dans la main distribuée ;
+  mains et dons ne sont jamais modifiés ni supprimés ;
+- le nombre de joueurs est figé à la création, et la forme de l'état suit le mode (à 4, exactement
+  celle d'origine ; à 3, tableaux de 3 et 12, jokers J1/J2, gagnant de 0 à 2).
 
 Limites connues (modèle de confiance « entre amis ») :
 
-- la **légalité d'un coup** (déplacement des pions, carte réellement en main) n'est pas vérifiée par
-  le serveur : un client modifié pourrait écrire un coup illégal ;
-- le client qui lance la partie ou déclenche un remélange **tire les 52 cartes du cycle** : un client
+- la **légalité d'un coup** (déplacement des pions, carte réellement en main, rang copié par un
+  joker) n'est pas vérifiée par le serveur : un client modifié pourrait écrire un coup illégal ;
+- le client qui lance la partie ou déclenche un remélange **tire les cartes du cycle** (52, ou 54) : un client
   modifié pourrait les connaître ou les choisir ;
 - les mains des **IA** sont lisibles par tous les membres (ce sont les clients qui font jouer l'IA),
   donc le partenaire humain d'une IA peut voir le jeu de celle-ci ;

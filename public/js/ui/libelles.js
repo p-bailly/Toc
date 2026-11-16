@@ -94,13 +94,16 @@ export function decrireAction(coup, siege, joueurs) {
  * Ligne du journal pour une entrée de vue.historique : { n, siege, coup, captures }.
  * Ex. « Léa joue le Roi ♠ : sort un pion. » — « Max joue le 7 ♥ : fractionne le 7 (3 + 4) et renvoie un pion de Léa à la base. »
  */
-export function ligneJournal(entree, joueurs) {
+export function ligneJournal(entree, joueurs, siegeLocal = -1) {
   const { siege, coup, captures = [] } = entree;
-  const qui = nomDe(joueurs, siege);
+  // Le joueur local est tutoyé : « Tu joues le Roi ♠ : sort un pion. »
+  const moi = siege === siegeLocal;
+  const qui = moi ? 'Tu' : nomDe(joueurs, siege);
+  const [joueV, defausseV] = moi ? ['joues', 'défausses'] : ['joue', 'défausse'];
   const carte = carteCourte(coup.carte);
-  if (coup.t === 'defausse') return estJoker(coup.carte) ? `${qui} défausse un joker (aucune carte jouable).` : `${qui} défausse le ${carte} (aucune carte jouable).`;
+  if (coup.t === 'defausse') return estJoker(coup.carte) ? `${qui} ${defausseV} un joker (aucune carte jouable).` : `${qui} ${defausseV} le ${carte} (aucune carte jouable).`;
   const joue = estJoker(coup.carte) ? `un joker comme ${rangAvecArticle(coup.comme)}` : `${articleCarte(coup.carte)}${carte}`;
-  let texte = `${qui} joue ${joue} : ${decrireAction(coup, siege, joueurs)}`;
+  let texte = `${qui} ${joueV} ${joue} : ${decrireAction(coup, siege, joueurs)}`;
   if (captures.length) texte += ` et renvoie ${decrireCaptures(captures, joueurs, siege)} à la base`;
   return texte + '.';
 }

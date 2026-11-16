@@ -48,3 +48,8 @@ test('libellés : joker (jeu à 3)', () => {
     'Léa joue le 5 ♥ : fait avancer un pion de Zoé de 5.',
   );
 });
+
+test('libellés : le joueur local est tutoyé dans le journal', () => {
+  assert.equal(ligneJournal({ siege: 0, coup: { t: 'sortie', carte: 'RP', pion: 0 }, captures: [] }, joueurs, 0), 'Tu joues le Roi ♠ : sort un pion.');
+  assert.equal(ligneJournal({ siege: 0, coup: { t: 'defausse', carte: '9P' }, captures: [] }, joueurs, 0), 'Tu défausses le 9 ♠ (aucune carte jouable).');
+});

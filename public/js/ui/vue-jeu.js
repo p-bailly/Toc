@@ -547,7 +547,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       boutons.push(h('button', { type: 'button', class: 'bouton principal large', onclick: montrerFin }, 'Voir le résultat'));
     } else if (etat.phase === 'echange') {
       if (!vue.don) {
-        const voisin = a3 ? `ton voisin de ${etat.donne % 2 === 0 ? 'gauche' : 'droite'} : ` : '';
+        const voisin = a3 ? `ton voisin de ${etat.donne % 2 === 0 ? 'gauche' : 'droite'}\u00a0: ` : '';
         lignes.push(h('span', {}, h('b', {}, 'Échange : '), `donne une carte à ${voisin}`, h('b', {}, nomDest), '.'));
         boutons.push(
           h(
@@ -846,7 +846,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
           'li',
           { class: 'ligne-journal' },
           h('span', { class: 'puce-pion', style: { '--c': couleurSiege(e.siege) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[e.siege].forme]),
-          h('span', {}, ligneJournal(e, vue.joueurs)),
+          h('span', {}, ligneJournal(e, vue.joueurs, vue.siege)),
         ),
       );
     feuilleJournal = ouvrirFeuille(
