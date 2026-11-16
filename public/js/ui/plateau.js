@@ -3,7 +3,7 @@
 // Le plateau n'applique aucune règle : il affiche ce qu'on lui donne et signale les touchers (pions, cibles).
 
 import { s } from './dom.js';
-import { BASE, ALLEE, NB_CASES, caseDepart, caseEntree } from '../moteur/plateau.js';
+import { BASE, NB_CASES, caseDepart } from '../moteur/plateau.js';
 import { estProtege } from '../moteur/regles.js';
 import {
   CELLULE,
@@ -16,6 +16,7 @@ import {
   versSvg,
   boiteEtiquette,
   chemin,
+  positionFlecheSens,
 } from './geometrie.js';
 import { PIONS, couleurSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
@@ -23,16 +24,22 @@ import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
 
 const MARGE = 3;
 const COTE = 17 * CELLULE;
-const RAYON_PION = 3.7;
+/** Rayon d'un trou crème (case du circuit, de l'allée, emplacement de base) et d'un pion. */
+const RAYON_TROU = 3.75;
+const RAYON_PION = 3.35;
 
-/** Dessin d'un pion (sans position) : disque de couleur au bord crème, forme claire au centre. */
+/**
+ * Dessin d'un pion (sans position) : disque à la couleur du joueur, contour foncé (lisible même posé sur un fond
+ * de sa couleur), reflet, et une petite forme claire propre à chaque couleur (lisible sans les couleurs).
+ */
 export function dessinPion(siege, { fantome = false } = {}) {
   const couleur = couleurSiege(siege);
   return s(
     'g',
     { class: 'dessin-pion' + (fantome ? ' fantome' : '') },
-    s('circle', { class: 'ombre-pion', cx: 0.35, cy: 0.6, r: RAYON_PION }),
+    s('ellipse', { class: 'ombre-pion', cx: 0, cy: 1.3, rx: RAYON_PION, ry: 1.6 }),
     s('circle', { class: 'corps-pion', r: RAYON_PION, fill: couleur }),
+    s('circle', { class: 'reflet-pion', cx: -1.1, cy: -1.2, r: 0.85 }),
     forme(PIONS[siege].forme),
   );
 }
@@ -41,14 +48,19 @@ function forme(nom) {
   const attrs = { class: 'forme-pion' };
   switch (nom) {
     case 'carre':
-      return s('rect', { ...attrs, x: -1.35, y: -1.35, width: 2.7, height: 2.7, rx: 0.3 });
+      return s('rect', { ...attrs, x: -1.05, y: -0.75, width: 2.1, height: 2.1, rx: 0.25 });
     case 'triangle':
-      return s('path', { ...attrs, d: 'M0 -1.9 L1.75 1.2 L-1.75 1.2 Z' });
+      return s('path', { ...attrs, d: 'M0.2 -1.05 L1.6 1.45 L-1.2 1.45 Z' });
     case 'losange':
-      return s('path', { ...attrs, d: 'M0 -2 L1.6 0 L0 2 L-1.6 0 Z' });
+      return s('path', { ...attrs, d: 'M0.2 -1.3 L1.5 0.3 L0.2 1.9 L-1.1 0.3 Z' });
     default:
-      return s('circle', { ...attrs, r: 1.45 });
+      return s('circle', { ...attrs, cx: 0.2, cy: 0.35, r: 1.05 });
   }
+}
+
+/** Petit bouclier blanc posé sur un pion protégé (sur sa case de sortie). */
+function bouclier() {
+  return s('path', { class: 'bouclier', d: 'M0 -2.1 l1.75 0.7 v1.3 c0 1.15 -0.75 1.85 -1.75 2.2 c-1 -0.35 -1.75 -1.05 -1.75 -2.2 v-1.3 z' });
 }
 
 const translate = (p) => {
@@ -80,7 +92,7 @@ export class Plateau {
     this.svg.append(this.coucheFond, this.coucheDernier, this.coucheEtiquettes, this.coucheCentre, this.couchePions, this.coucheChoix);
     this.pions = [];
     for (let g = 0; g < 16; g++) {
-      const el = s('g', { class: 'pion', 'data-pion-dessin': g }, dessinPion(g >> 2), s('circle', { class: 'anneau-protege', r: RAYON_PION + 1.25 }));
+      const el = s('g', { class: 'pion', 'data-pion-dessin': g }, dessinPion(g >> 2), bouclier());
       this.pions.push(el);
       this.couchePions.append(el);
     }
@@ -103,65 +115,73 @@ export class Plateau {
     else if (cible.dataset.action === 'cible') this.rappels.surCible?.(n);
   }
 
-  /** Fond du plateau : dépend seulement du siège vu en bas. */
+  /**
+   * Fond du plateau (dépend seulement du siège vu en bas), avec le code couleur d'un plateau en bois :
+   * base = grand carré plein de la couleur du joueur (4 trous crème), juste derrière sa case de sortie ;
+   * sortie = petit carré plein de sa couleur autour du trou ; allée = rectangle plein de sa couleur (4 trous) ;
+   * entrée = case ordinaire du circuit (le rectangle de l'allée, juste derrière, montre où l'on rentre) ;
+   * repères pour compter : bord foncé épais sur les 6e et 12e cases après chaque sortie.
+   */
   dessinerFond(siegeVue) {
     const f = this.coucheFond;
     f.replaceChildren();
     f.append(
-      s('rect', { class: 'cadre', x: -MARGE, y: -MARGE, width: COTE + 2 * MARGE, height: COTE + 2 * MARGE, rx: 2.5 }),
-      s('rect', { class: 'tapis', x: 0, y: 0, width: COTE, height: COTE, rx: 1 }),
+      s('rect', { class: 'cadre', x: -MARGE, y: -MARGE, width: COTE + 2 * MARGE, height: COTE + 2 * MARGE, rx: 3.5 }),
+      s('rect', { class: 'tapis', x: 0, y: 0, width: COTE, height: COTE, rx: 2 }),
+      s('rect', { class: 'filet', x: CELLULE * 1.05, y: CELLULE * 1.05, width: COTE - CELLULE * 2.1, height: COTE - CELLULE * 2.1, rx: 1.6 }),
     );
-    const cases = s('g', { class: 'cases' });
-    const departs = new Map([0, 1, 2, 3].map((o) => [caseDepart(o), o]));
-    const entrees = new Map([0, 1, 2, 3].map((o) => [caseEntree(o), o]));
-    for (let i = 0; i < NB_CASES; i++) {
-      const p = caseCircuit(i, siegeVue);
-      const o = departs.get(i);
-      const e = entrees.get(i);
-      const attrs = { x: p.u * CELLULE + 0.7, y: p.v * CELLULE + 0.7, width: CELLULE - 1.4, height: CELLULE - 1.4, rx: 1.6 };
-      if (o !== undefined) {
-        cases.append(s('rect', { ...attrs, class: 'case depart', fill: couleurSiege(o) }), this.fleche(p, o, siegeVue));
-      } else if (e !== undefined) {
-        cases.append(s('rect', { ...attrs, class: 'case entree', stroke: couleurSiege(e) }));
-      } else {
-        cases.append(s('rect', { ...attrs, class: 'case' }));
-      }
-    }
+    const g = s('g', { class: 'cases' });
     for (let o = 0; o < 4; o++) {
-      // Allée : 4 cases teintées, reliées à la case d'entrée par un trait.
-      const entree = versSvg(caseCircuit(caseEntree(o), siegeVue));
-      const fond = versSvg(caseAllee(o, 3, siegeVue));
-      cases.append(s('line', { class: 'trait-allee', x1: entree.x, y1: entree.y, x2: fond.x, y2: fond.y, stroke: couleurSiege(o) }));
-      for (let k = 0; k < 4; k++) {
-        const p = caseAllee(o, k, siegeVue);
-        cases.append(
-          s('rect', {
-            class: 'case allee',
-            x: p.u * CELLULE + 0.7,
-            y: p.v * CELLULE + 0.7,
-            width: CELLULE - 1.4,
-            height: CELLULE - 1.4,
-            rx: 1.6,
-            stroke: couleurSiege(o),
-          }),
-        );
-      }
+      const cote = coteDe(o, siegeVue);
+      // Base.
       const c = versSvg(centreBase(o, siegeVue));
-      cases.append(s('rect', { class: 'zone-base', x: c.x - 11, y: c.y - 11, width: 22, height: 22, rx: 3, stroke: couleurSiege(o) }));
+      g.append(s('rect', { class: 'zone-base', x: c.x - 13.5, y: c.y - 13.5, width: 27, height: 27, rx: 3, fill: couleurSiege(o) }));
       for (let n = 0; n < 4; n++) {
         const b = versSvg(emplacementBase(o, n, siegeVue));
-        cases.append(s('circle', { class: 'emplacement-base', cx: b.x, cy: b.y, r: RAYON_PION + 0.4 }));
+        g.append(s('circle', { class: 'trou trou-fonce', cx: b.x, cy: b.y, r: RAYON_TROU + 0.25 }));
       }
+      // Allée : un rectangle de sa couleur qui englobe les 4 trous.
+      const a0 = versSvg(caseAllee(o, 0, siegeVue));
+      const a3 = versSvg(caseAllee(o, 3, siegeVue));
+      const demi = 4.9;
+      g.append(
+        s('rect', {
+          class: 'zone-allee',
+          x: Math.min(a0.x, a3.x) - demi,
+          y: Math.min(a0.y, a3.y) - demi,
+          width: Math.abs(a3.x - a0.x) + 2 * demi,
+          height: Math.abs(a3.y - a0.y) + 2 * demi,
+          rx: 2.6,
+          fill: couleurSiege(o),
+        }),
+      );
+      for (let k = 0; k < 4; k++) {
+        const p = versSvg(caseAllee(o, k, siegeVue));
+        g.append(s('circle', { class: 'trou trou-fonce', cx: p.x, cy: p.y, r: RAYON_TROU - 0.35 }));
+      }
+      // Sortie : petit carré plein de sa couleur.
+      const d = versSvg(caseCircuit(caseDepart(o), siegeVue));
+      g.append(s('rect', { class: 'zone-sortie', x: d.x - 4.9, y: d.y - 4.9, width: 9.8, height: 9.8, rx: 2, fill: couleurSiege(o) }));
+      // Flèche claire du sens de parcours, le long de son côté.
+      const fl = versSvg(positionFlecheSens(cote));
+      g.append(s('path', { class: 'fleche-sens', d: 'M2.2 0 H-2.2 M-0.7 -1.5 L-2.2 0 L-0.7 1.5', transform: `translate(${fl.x} ${fl.y}) rotate(${cote * 90})` }));
     }
-    f.append(cases);
-  }
-
-  /** Petite flèche blanche sur une case de départ, dans le sens du parcours. */
-  fleche(p, o, siegeVue) {
-    const { x, y } = versSvg(p);
-    // Sens du parcours au départ du joueur du bas : vers la gauche ; puis rotation selon son côté.
-    const angle = [180, 270, 0, 90][coteDe(o, siegeVue)];
-    return s('path', { class: 'fleche-depart', d: 'M1.6 -2.2 L-1.2 0 L1.6 2.2', transform: `translate(${x} ${y}) rotate(${angle - 180})` });
+    const departs = new Set([0, 1, 2, 3].map(caseDepart));
+    for (let i = 0; i < NB_CASES; i++) {
+      const p = versSvg(caseCircuit(i, siegeVue));
+      const repere = i % 16 === 6 || i % 16 === 12;
+      const depart = departs.has(i);
+      g.append(
+        s('circle', {
+          class: 'trou' + (repere ? ' repere' : '') + (depart ? ' trou-fonce' : ''),
+          cx: p.x,
+          cy: p.y,
+          r: depart ? RAYON_TROU - 0.35 : RAYON_TROU,
+          'data-case': i,
+        }),
+      );
+    }
+    f.append(g);
   }
 
   /**
@@ -299,7 +319,7 @@ export class Plateau {
     (choix.cibles || []).forEach((cible, i) => {
       const p = versSvg(positionPion(cible.pion, cible.pos, siegeVue));
       c.append(
-        s('circle', { class: 'marque-cible' + (choix.cibleChoisie === i ? ' choisie' : ''), cx: p.x, cy: p.y, r: RAYON_PION + 0.6 }),
+        s('circle', { class: 'marque-cible' + (choix.cibleChoisie === i ? ' choisie' : ''), cx: p.x, cy: p.y, r: RAYON_TROU + 0.7 }),
         s('circle', {
           class: 'zone-touche',
           cx: p.x,

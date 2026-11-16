@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#a9d3f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e2238" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="Le jeu de Toc à quatre, en deux équipes : en ligne avec tes proches, ou contre l’ordinateur." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Toc" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./icons/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./css/app.css" />
+    <title>Toc</title>
+    <script>
+      // Thème et taille du texte choisis dans les réglages, posés avant le premier affichage (pas d'éclair clair sur
+      // un téléphone en sombre, ni de texte qui grossit). Même calcul que estSombre() dans js/ui/reglages.js.
+      (function () {
+        var r = {};
+        try {
+          r = JSON.parse(localStorage.getItem('toc.reglages') || '{}') || {};
+        } catch (e) {}
+        var sombre = r.theme === 'sombre' || (r.theme !== 'clair' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = sombre ? 'dark' : 'light';
+        if (typeof r.texte === 'string') document.documentElement.dataset.texte = r.texte;
+      })();
+    </script>
+    <script type="module" src="./js/app.js"></script>
+  </head>
+  <body>
+    <div id="appli" class="appli">
+      <div class="vide-etat">Chargement…</div>
+    </div>
+    <noscript><p class="vide-etat">Le Toc a besoin de JavaScript pour fonctionner.</p></noscript>
+  </body>
+</html>

@@ -8,7 +8,6 @@
 //   passe en premier, les autres attendent un délai aléatoire, ce qui limite les courses.
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
 
-import { partenaire } from '../moteur/index.js';
 import { ConflitIA, ErreurToc, chemins, enErreurToc, siegeDe } from './commun.js';
 import { comptabiliserPartie } from './comptes.js';
 import { chargerMain, creerLecteurMains, donnerCarte, jouerCoup } from './parties.js';
@@ -220,4 +219,3 @@ export class SessionReseau {
   }
 }
 
-export { partenaire };

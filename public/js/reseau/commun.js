@@ -1,8 +1,6 @@
 // Outils communs de la couche réseau : chemins Firestore, codes d'invitation, noms de joueurs,
 // traduction des erreurs. Aucun appel à Firebase ici (module pur, testé dans Node).
 
-import { partenaire } from '../moteur/index.js';
-
 // ─── Noms de joueurs ────────────────────────────────────────────────────────
 
 /**
@@ -180,4 +178,3 @@ export function resumePartie(id, d, uid) {
   };
 }
 
-export { partenaire };

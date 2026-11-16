@@ -52,16 +52,16 @@ export function choisirDon(etat, siege, main, options = {}) {
       const ir = indexRang(carte);
       if (vus.has(ir)) continue;
       vus.add(ir);
+      // Le partenaire n'en profite vraiment que s'il n'a pas déjà une carte équivalente.
+      const masque = ir === R_A || ir === R_R ? (1 << R_A) | (1 << R_R) : 1 << ir;
+      const nPart = Math.min(6, Math.max(0, etat.cartesRestantes[p] - 1));
+      const pManque = prep.ctx.pAucune[nPart][prep.ctx.sommeMasque[masque]];
       let gPart = gain(p, carte);
+      if (gPart > 0) gPart *= 0.35 + 0.65 * pManque;
       let gMoi = gain(siege, carte);
-      if (comptes[ir] > 1) gMoi *= 0.35;
-      // Cartes de sortie : le partenaire sans pion sorti en a besoin, et l'on garde
-      // la sienne si l'on n'en a qu'une et des pions en base.
-      if (ir === R_A || ir === R_R) {
-        const sorties = comptes[R_A] + comptes[R_R];
-        if (sorties > 1) gMoi *= 0.6;
-      }
-      // Petite préférence pour garder les cartes souples (7, 4, valet) : elles le restent.
+      // On perd peu à donner une carte dont on garde un double (ou une autre carte de sortie).
+      const doubles = ir === R_A || ir === R_R ? comptes[R_A] + comptes[R_R] : comptes[ir];
+      if (doubles > 1 && gMoi > 0) gMoi *= 0.3;
       const v = gPart - gMoi;
       if (v > best) {
         best = v;

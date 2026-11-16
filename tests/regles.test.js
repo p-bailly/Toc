@@ -277,6 +277,22 @@ test('7 : le reste profite au partenaire une fois ses propres pions rentrés', (
   assert.deepEqual(aide.options.map((o) => o.pion + ':' + o.pas), ['8:1', '8:2', '8:3', '8:4']);
 });
 
+test('7 : la victoire dispense d\'utiliser les points restants', () => {
+  // siège 2 fini ; le dernier pion du siège 0 est à 3 pas de l'allée (entrée 61)
+  const e = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: a(0), 9: a(1), 10: a(2), 11: a(3) });
+  const coup = { t: 'sept', carte: '7C', etapes: [{ pion: 3, pas: 3, allee: true }] };
+  assert.equal(legal(e, 0, coup), true);
+  assert.equal(appliquerCoup(e, 0, coup).gagnant, 0);
+  const aide = etapesSeptPossibles(e, 0, coup.etapes);
+  assert.deepEqual([aide.reste, aide.complet, aide.options.length], [4, true, 0]);
+  assert.equal(etapesSeptPossibles(e, 0).complet, false);
+  // la carte est jouable même si le pion ne peut rien faire d'autre des 7 points
+  assert.ok(coupsLegaux(e, 0, '7C').some((c) => c.etapes.length === 1 && c.etapes[0].pas === 3));
+  // partie déjà terminée : aucun 7 « vide » n'est proposé
+  const fin = appliquerCoup(e, 0, coup);
+  for (const c of coupsLegaux(fin, 0, '7C')) assert.ok(c.etapes.length > 0);
+});
+
 test('etapesSeptPossibles ne propose que des étapes qui permettent de finir le 7', () => {
   const e = etat({ 0: a(0), 1: a(3) }); // pion 0 : 2 pas max → 7 impossible
   assert.deepEqual(etapesSeptPossibles(e, 0).options, []);
@@ -433,8 +449,16 @@ test('parties aléatoires complètes : invariants et fin de partie', () => {
       }
       if (p.etat.phase === 'jeu') assert.deepEqual(p.mains.map((m) => m.length), p.etat.cartesRestantes);
       // tous les coups « sept » générés sont validés par le moteur
-      if (garde % 37 === 0) {
-        for (const c of coupsLegaux(p.etat, p.etat.tour, '7P')) assert.ok(apercuCoup(p.etat, p.etat.tour, c));
+      if (garde % 7 === 0) {
+        const finaux = new Set();
+        for (const c of coupsLegaux(p.etat, p.etat.tour, '7P')) {
+          const ap = apercuCoup(p.etat, p.etat.tour, c);
+          assert.ok(ap, 'coup de 7 généré mais refusé');
+          // étapes regroupées : jamais deux étapes de suite pour le même pion
+          c.etapes.forEach((x, i) => i && assert.notEqual(x.pion, c.etapes[i - 1].pion));
+          finaux.add(ap.pions.join());
+        }
+        assert.equal(finaux.size, coupsLegaux(p.etat, p.etat.tour, '7P').length, 'plateaux finaux en double');
       }
     }
     assert.ok(p.etat.gagnant === 0 || p.etat.gagnant === 1);

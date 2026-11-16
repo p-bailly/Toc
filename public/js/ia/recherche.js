@@ -216,10 +216,13 @@ export function analyser(etat, siege, main, options = {}) {
     const retenus = candidats.filter((c, i) => i < kMax && c.statique >= candidats[0].statique - marge);
     if (retenus.length > 1) {
       const prof = options.profondeur ?? Infinity;
+      const elagage = options.elagage ?? true;
+      for (const c of retenus) c.valeurs = [];
+      let actifs = retenus.slice();
       while (iterations < maxIter && maintenant() < limite) {
         const mains = tirerMains(prep, rng);
         let complet = true;
-        for (const c of retenus) {
+        for (const c of actifs) {
           if (maintenant() >= limite) {
             complet = false;
             break;
@@ -227,15 +230,41 @@ export function analyser(etat, siege, main, options = {}) {
           c.tmp = simuler(prep, c.res, c.mainApres, mains, prof);
         }
         if (!complet) break; // itération incomplète : on l'ignore (comparaison équitable)
-        for (const c of retenus) {
+        for (const c of actifs) {
           c.somme += c.tmp;
           c.n++;
+          c.valeurs.push(c.tmp);
         }
         iterations++;
+        // Élagage : on abandonne les candidats nettement moins bons que le meilleur
+        // (différences appariées, mêmes tirages), pour concentrer le temps sur les autres.
+        if (elagage && actifs.length > 2 && iterations >= 6 && (iterations & 1) === 0) {
+          let meilleur = actifs[0];
+          for (const c of actifs) if (c.somme > meilleur.somme) meilleur = c;
+          const debutComp = meilleur.valeurs.length - iterations;
+          actifs = actifs.filter((c) => {
+            if (c === meilleur) return true;
+            const k = iterations;
+            const o = c.valeurs.length - k;
+            let m = 0;
+            let m2 = 0;
+            for (let i = 0; i < k; i++) {
+              const d = meilleur.valeurs[debutComp + i] - c.valeurs[o + i];
+              m += d;
+              m2 += d * d;
+            }
+            m /= k;
+            const se = Math.sqrt(Math.max(0, m2 / k - m * m) / k);
+            return m <= 2.5 * se + 0.5;
+          });
+          if (actifs.length === 1) break;
+        }
       }
       if (iterations > 0) {
-        for (const c of retenus) c.score = c.somme / c.n;
-        retenus.sort((a, b) => b.score - a.score);
+        // Score : moyenne sur les tirages communs aux candidats encore en lice
+        for (const c of retenus) c.score = c.somme / Math.max(1, c.n);
+        const enLice = new Set(actifs);
+        retenus.sort((a, b) => (enLice.has(b) - enLice.has(a)) || b.score - a.score);
         return { coup: retenus[0].res.coup, candidats, retenus, iterations, duree: maintenant() - debut };
       }
     }

@@ -23,7 +23,8 @@ export const POIDS_DEFAUT = {
   alpha: 0.75, // poids d'une menace d'un joueur qui joue avant que la victime puisse réagir
   beta: 0.3, // poids d'une menace dont la victime peut se protéger avant
   risque: 1, // multiplicateur global du risque
-  bloque: 2.5, // pénalité maximale d'un pion bloqué par un pion protégé juste devant
+  bloque: 2.5,
+  menaceValet: 0.5, // part de la menace du valet prise en compte // pénalité maximale d'un pion bloqué par un pion protégé juste devant
   victoire: 100000,
   // Valeur des cartes gardées en main
   sortieUtile: 11, // as ou roi quand un pion attend en base (première carte de sortie)
@@ -91,6 +92,14 @@ function proba(ctx, info, j, masque) {
 const occ = new Int8Array(64);
 const valeurs = new Float64Array(16);
 const masquesAtt = new Int32Array(4);
+
+/** Valeur d'un pion g s'il était sur la case p du circuit. */
+function valeurCircuit(g, p, P) {
+  const d = (entree(g >> 2) - p + 64) & 63;
+  let v = P.sorti + (63 - d) * P.pas;
+  if (d <= 12) v += (13 - d) * P.approche;
+  return v;
+}
 
 /** Valeur intrinsèque de chaque pion (sans le risque). */
 function valeursPions(pions, P) {
@@ -196,6 +205,35 @@ export function evaluerPlateau(pions, equipePersp, prochain, info, ctx) {
       survie *= 1 - w * proba(ctx, info, j, masquesAtt[j]);
     }
     if (survie < 1) score -= signe * (1 - survie) * valeurs[g] * P.risque;
+  }
+
+  // Menace du valet : chaque joueur qui possède un valet peut échanger un de ses pions avec
+  // le pion adverse le plus avancé ; on compte le meilleur échange de chacun.
+  if (P.menaceValet) {
+    for (let j = 0; j < 4; j++) {
+      const c = couleurDe[j];
+      if (fini[c]) continue;
+      const pj = proba(ctx, info, j, 1 << R_V);
+      if (pj <= 0) continue;
+      let meilleur = 0;
+      for (let a = c * 4; a < c * 4 + 4; a++) {
+        const pa = pions[a];
+        if (pa < 0 || pa >= 64 || pa === c * 16) continue;
+        for (let b = 0; b < 16; b++) {
+          if (((b >> 2) & 1) === (c & 1)) continue;
+          const pb = pions[b];
+          if (pb < 0 || pb >= 64 || pb === (b >> 2) * 16) continue;
+          const gainA = valeurCircuit(a, pb, P) - valeurs[a];
+          const perteB = valeurs[b] - valeurCircuit(b, pa, P);
+          if (gainA + perteB > meilleur) meilleur = gainA + perteB;
+        }
+      }
+      if (meilleur > 0) {
+        // la victime peut-elle réagir avant ? approximation : poids selon la place de j
+        const w = decal(j) <= 1 ? P.alpha : P.beta;
+        score += ((c & 1) === equipePersp ? 1 : -1) * P.menaceValet * w * pj * meilleur;
+      }
+    }
   }
 
   // Blocages : pions qui ont un pion protégé juste devant eux

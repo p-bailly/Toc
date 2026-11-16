@@ -1,7 +1,7 @@
 // Client réseau complet, indépendant de Firebase : api.js l'instancie avec les vrais services
 // (SDK chargé depuis le CDN), les tests Node avec un faux magasin et une fausse authentification.
 
-import { ErreurToc, chemins, enErreurToc, identifiant, resumePartie } from './commun.js';
+import { ErreurToc, chemins, enErreurToc, resumePartie } from './commun.js';
 import {
   assurerFiche,
   comptabiliserPartie,
@@ -254,4 +254,3 @@ export function creerClient(options) {
   };
 }
 
-export { identifiant };

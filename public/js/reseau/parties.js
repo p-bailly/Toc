@@ -324,11 +324,12 @@ export async function chargerMain(lire, id, etat, siege, tx) {
 // ─── Échange et coups ──────────────────────────────────────────────────────
 
 function verifierActeur(ctx, p, siege, numCoupAttendu) {
+  // IA : si la partie a avancé (ou s'est terminée) entre-temps, un autre client a agi.
+  if (numCoupAttendu !== undefined && (p.statut !== 'encours' || p.etat?.numCoup !== numCoupAttendu)) throw new ConflitIA();
   if (p.statut !== 'encours') throw new ErreurToc(p.statut === 'finie' ? 'La partie est terminée.' : "La partie n'a pas commencé.");
   const place = p.joueurs[siege];
   const ia = !!place?.ia;
   if (!ia && place?.uid !== ctx.uid) throw new ErreurToc("Tu ne joues pas à cette place.");
-  if (numCoupAttendu !== undefined && p.etat.numCoup !== numCoupAttendu) throw new ConflitIA();
   return ia;
 }
 

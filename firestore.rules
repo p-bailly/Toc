@@ -1,0 +1,352 @@
+rules_version = '2';
+
+// Règles de sécurité du Toc en ligne (voir docs/firebase.md pour les publier).
+//
+// Pas de Cloud Functions (offre gratuite Spark) : chaque action est une transaction écrite par un
+// client, qui a validé le coup avec le moteur de règles. Ces règles vérifient tout ce qu'elles peuvent
+// sans exécuter le moteur (qui agit, dans quel ordre, quelles données sont lisibles, que rien
+// d'immuable ne change) ; elles ne vérifient PAS la légalité d'un coup ni le mélange des cartes.
+// Modèle de confiance « entre amis » : voir docs/firebase.md, « Ce que garantissent les règles ».
+service cloud.firestore {
+  match /databases/{base}/documents {
+
+    function connecte() {
+      return request.auth != null;
+    }
+    function moi() {
+      return request.auth.uid;
+    }
+    function un(condition) {
+      return condition ? 1 : 0;
+    }
+
+    // ─── Fiches des joueurs ───────────────────────────────────────────────
+    // { pseudo, recherche?, visible, icone?, verrouille?, stats: { jouees, gagnees }, comptees: [id…], creeLe }
+    match /joueurs/{uid} {
+      // Pseudo imposé par l'administrateur (champ `verrouille: true` posé dans la console).
+      function verrouille(d) {
+        return d.get('verrouille', false) == true;
+      }
+      function ficheValide(d) {
+        return d.keys().hasOnly(['pseudo', 'visible', 'recherche', 'verrouille', 'icone', 'stats', 'comptees', 'creeLe'])
+          && d.pseudo is string && d.pseudo.size() > 0 && d.pseudo.size() <= 20
+          // La clé de recherche (pseudo simplifié) n'existe que si le joueur accepte d'être trouvé.
+          && (!('recherche' in d) || (d.recherche is string && d.recherche.size() <= 20 && d.get('visible', true) == true))
+          && (!('visible' in d) || d.visible is bool)
+          && (!('icone' in d) || (d.icone is string && d.icone.size() <= 12))
+          && (!('verrouille' in d) || d.verrouille is bool)
+          && d.stats is map && d.stats.keys().hasOnly(['jouees', 'gagnees'])
+          && d.stats.jouees is int && d.stats.gagnees is int
+          && d.comptees is list;
+      }
+      function siegeDans(j, u) {
+        return (j[0] != null && j[0].uid == u) ? 0
+          : (j[1] != null && j[1].uid == u) ? 1
+          : (j[2] != null && j[2].uid == u) ? 2
+          : (j[3] != null && j[3].uid == u) ? 3 : -1;
+      }
+      // Compter une partie terminée : une seule fois (liste `comptees`), avec le bon résultat.
+      function partieComptee(av, ap) {
+        let n = ap.comptees.size();
+        let id = ap.comptees[n - 1];
+        let p = get(/databases/$(base)/documents/parties/$(id)).data;
+        let s = siegeDans(p.joueurs, uid);
+        return n == av.comptees.size() + 1 && n <= 5000
+          && ap.comptees[0:n - 1] == av.comptees
+          && id is string && !(id in av.comptees)
+          && p.statut == 'finie' && s >= 0
+          && ap.stats.jouees == av.stats.jouees + 1
+          && ap.stats.gagnees == av.stats.gagnees + un(s % 2 == p.etat.gagnant);
+      }
+
+      allow get: if connecte();
+      // Chercher un joueur : seulement les fiches qui ont une clé de recherche (joueurs visibles). Le
+      // nom suffit pour ouvrir un compte : lister les autres permettrait d'ouvrir leur compte. Une
+      // requête doit donc borner `recherche` et lire 10 fiches au plus (comme l'appli Scrabble).
+      allow list: if connecte() && request.query.limit <= 10 && resource.data.recherche >= '';
+      allow create: if connecte() && moi() == uid
+        && ficheValide(request.resource.data)
+        && !verrouille(request.resource.data)
+        && request.resource.data.stats == { 'jouees': 0, 'gagnees': 0 }
+        && request.resource.data.comptees == []
+        && request.resource.data.creeLe == request.time;
+      allow update: if connecte() && moi() == uid
+        && ficheValide(request.resource.data)
+        // Le joueur ne pose ni ne lève le verrou ; verrouillé, il garde son pseudo.
+        && verrouille(request.resource.data) == verrouille(resource.data)
+        && (!verrouille(resource.data) || request.resource.data.pseudo == resource.data.pseudo)
+        && request.resource.data.creeLe == resource.data.creeLe
+        && ((request.resource.data.stats == resource.data.stats && request.resource.data.comptees == resource.data.comptees)
+          || partieComptee(resource.data, request.resource.data));
+      allow delete: if false;
+    }
+
+    // ─── Parties ──────────────────────────────────────────────────────────
+    // parties/{code} : voir public/js/reseau/parties.js pour la forme du document.
+    match /parties/{id} {
+      function chemin() {
+        return /databases/$(base)/documents/parties/$(id);
+      }
+      function partie() {
+        return get(chemin()).data;
+      }
+      function partieApres() {
+        return getAfter(chemin()).data;
+      }
+      function membre(d) {
+        return moi() in d.uids;
+      }
+      function invite(d) {
+        return moi() in d.get('invites', []);
+      }
+      function affecte() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      // ── Places ──
+      function pseudoFiche() {
+        return get(/databases/$(base)/documents/joueurs/$(moi())).data.pseudo;
+      }
+      function aMoi(p) {
+        return p != null && p.ia == false && p.uid == moi();
+      }
+      function estMoi(p) {
+        return aMoi(p) && p.keys().hasOnly(['uid', 'pseudo', 'ia']) && p.pseudo == pseudoFiche();
+      }
+      function estIA(p) {
+        return p != null && p.keys().hasOnly(['uid', 'pseudo', 'ia']) && p.ia == true && p.uid == null
+          && p.pseudo is string && p.pseudo.size() > 0 && p.pseudo.size() <= 20;
+      }
+      // Changement permis d'un siège en salle d'attente : soi-même s'y placer ou en partir ; l'hôte, une IA.
+      function siegeOk(a, b, hote) {
+        return a == b
+          || (a == null && estMoi(b))
+          || (aMoi(a) && b == null)
+          || (hote && a == null && estIA(b))
+          || (hote && estIA(a) && b == null);
+      }
+      function nbMoi(j) {
+        return un(aMoi(j[0])) + un(aMoi(j[1])) + un(aMoi(j[2])) + un(aMoi(j[3]));
+      }
+
+      // ── Lecture ──
+      // Une partie se lit par ses membres et ses invités ; en attente, par qui a le code (le lien
+      // d'invitation). Un document absent se « lit » (pour savoir qu'un code est libre ou inconnu).
+      allow get: if connecte()
+        && (resource == null || membre(resource.data) || invite(resource.data) || resource.data.statut == 'attente');
+      // Listes : seulement ses parties (uids array-contains) et ses invitations (invites array-contains).
+      allow list: if connecte() && (membre(resource.data) || invite(resource.data));
+
+      // ── Création : par l'hôte, seul joueur, au siège 0 ──
+      allow create: if connecte() && creationValide(request.resource.data);
+      function creationValide(d) {
+        return d.keys().hasOnly(['nom', 'code', 'hote', 'statut', 'reglages', 'joueurs', 'uids', 'invites',
+            'pseudosInvites', 'refus', 'historique', 'enAttente', 'creeLe', 'majLe'])
+          && d.code == id && id.matches('^[A-HJKMNP-Z2-9]{6}$')
+          && d.hote == moi() && d.statut == 'attente'
+          && d.nom is string && d.nom.size() > 0 && d.nom.size() <= 40
+          && d.reglages is map && d.reglages.keys().hasOnly(['cinqAdverse']) && d.reglages.cinqAdverse is bool
+          && d.joueurs is list && d.joueurs.size() == 4
+          && estMoi(d.joueurs[0]) && d.joueurs[1] == null && d.joueurs[2] == null && d.joueurs[3] == null
+          && d.uids == [moi()]
+          && d.invites == [] && d.pseudosInvites == {} && d.refus == []
+          && d.historique == [] && d.enAttente == []
+          && d.creeLe == request.time && d.majLe == request.time;
+      }
+
+      // ── Salle d'attente : se placer, changer de siège, partir ; l'hôte place ou retire des IA ──
+      function majPlaces(av, ap) {
+        let hote = av.hote == moi();
+        let j = ap.joueurs;
+        let n = nbMoi(j);
+        return av.statut == 'attente' && ap.statut == 'attente'
+          && affecte().hasOnly(['joueurs', 'uids', 'invites', 'majLe'])
+          && j is list && j.size() == 4
+          && siegeOk(av.joueurs[0], j[0], hote) && siegeOk(av.joueurs[1], j[1], hote)
+          && siegeOk(av.joueurs[2], j[2], hote) && siegeOk(av.joueurs[3], j[3], hote)
+          && n <= 1
+          && (!hote || n == 1) // l'hôte ne part qu'en supprimant la partie
+          && ap.uids == (n == 1 ? (membre(av) ? av.uids : av.uids.concat([moi()])) : av.uids.removeAll([moi()]))
+          // En entrant, l'invité sort de la liste des invités.
+          && (ap.get('invites', []) == av.get('invites', []) || ap.invites == av.invites.removeAll([moi()]))
+          && ap.majLe == request.time;
+      }
+
+      // ── Invitations directes : l'hôte invite ou annule ──
+      function majInvitations(av, ap) {
+        return av.statut == 'attente' && av.hote == moi()
+          && affecte().hasOnly(['invites', 'pseudosInvites', 'refus', 'majLe'])
+          && ap.invites is list && ap.invites.size() <= 8 && !ap.invites.hasAny(av.uids)
+          && ap.pseudosInvites is map && ap.pseudosInvites.size() <= 32
+          && ap.refus is list && ap.refus.size() <= 32
+          && ap.majLe == request.time;
+      }
+
+      // ── Refuser une invitation : on se retire des invités, l'hôte le voit dans `refus` ──
+      function refus(av, ap) {
+        return av.statut == 'attente' && invite(av)
+          && affecte().hasOnly(['invites', 'refus', 'majLe'])
+          && ap.invites == av.invites.removeAll([moi()])
+          && ap.refus == av.get('refus', []).removeAll([moi()]).concat([moi()])
+          && ap.majLe == request.time;
+      }
+
+      // ── Lancement : l'hôte, 4 sièges occupés, état initial, premier cycle de mains écrit ──
+      function lancement(av, ap) {
+        let e = ap.etat;
+        return av.statut == 'attente' && av.hote == moi() && ap.statut == 'encours'
+          && affecte().hasOnly(['statut', 'etat', 'historique', 'enAttente', 'invites', 'majLe'])
+          && av.joueurs[0] != null && av.joueurs[1] != null && av.joueurs[2] != null && av.joueurs[3] != null
+          && ap.invites == [] && ap.historique == []
+          && e.keys().hasOnly(['v', 'reglages', 'pions', 'phase', 'donne', 'tour', 'echanges', 'cartesRestantes',
+              'pile', 'numCoup', 'gagnant', 'dernierCoup'])
+          && e.reglages == av.reglages
+          && e.pions == [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+          && e.phase == 'echange' && e.donne == 0 && e.tour == 0 && e.numCoup == 0
+          && e.echanges == [false, false, false, false] && e.cartesRestantes == [5, 5, 5, 5]
+          && e.pile == [] && e.gagnant == null && e.dernierCoup == null
+          && ap.enAttente.hasOnly(av.uids) && av.uids.hasOnly(ap.enAttente)
+          && existsAfter(/databases/$(base)/documents/parties/$(id)/donnes/0_0)
+          && ap.majLe == request.time;
+      }
+
+      // ── Jeu : un membre agit pour son siège, ou pour un siège d'IA ; une action à la fois ──
+      function peutAgir(av, s) {
+        return av.joueurs[s].ia == true || av.joueurs[s].uid == moi();
+      }
+      function aDonne(ea, en, s) {
+        return ea.echanges[s] == false && en.echanges[s] == true;
+      }
+      // Don d'une carte au partenaire : un seul siège passe à « a donné », le reste ne bouge pas,
+      // et le don est écrit dans le même lot.
+      function echange(av, ea, en) {
+        let s = aDonne(ea, en, 0) ? 0 : aDonne(ea, en, 1) ? 1 : aDonne(ea, en, 2) ? 2 : 3;
+        return ea.phase == 'echange' && aDonne(ea, en, s)
+          && peutAgir(av, s)
+          && en.echanges == [s == 0 || ea.echanges[0], s == 1 || ea.echanges[1], s == 2 || ea.echanges[2], s == 3 || ea.echanges[3]]
+          && en.phase == (false in en.echanges ? 'echange' : 'jeu')
+          && en.pions == ea.pions && en.pile == ea.pile && en.donne == ea.donne && en.tour == ea.tour
+          && en.cartesRestantes == ea.cartesRestantes && en.gagnant == null
+          && !affecte().hasAny(['historique', 'statut'])
+          && existsAfter(/databases/$(base)/documents/parties/$(id)/dons/$(string(ea.donne) + '_' + string(s)));
+      }
+      // Coup joué par le siège dont c'est le tour ; l'historique ne fait que s'allonger d'une entrée.
+      function coup(av, ap, ea, en) {
+        let s = ea.tour;
+        let h = ap.historique;
+        let n = h.size();
+        let nouvelleDonne = en.donne != ea.donne;
+        return ea.phase == 'jeu' && peutAgir(av, s)
+          && n == av.historique.size() + 1 && h[0:n - 1] == av.historique
+          && h[n - 1].siege == s && h[n - 1].n == en.numCoup
+          && en.dernierCoup.siege == s
+          && (en.phase == 'fini'
+            ? (en.gagnant == 0 || en.gagnant == 1) && !nouvelleDonne
+            : en.gagnant == null)
+          && (nouvelleDonne
+            // Fin de donne : nouvel échange ; au début d'un cycle, la pile est vidée et les 12 mains écrites.
+            ? en.donne == ea.donne + 1 && en.phase == 'echange' && en.tour == en.donne % 4
+              && en.echanges == [false, false, false, false]
+              && (en.donne % 3 != 0
+                ? en.pile.size() == ea.pile.size() + 1
+                : en.pile == [] && existsAfter(/databases/$(base)/documents/parties/$(id)/donnes/$(string(en.donne) + '_0')))
+            : en.donne == ea.donne && en.echanges == ea.echanges
+              && en.pile.size() == ea.pile.size() + 1
+              && en.cartesRestantes[s] == ea.cartesRestantes[s] - 1
+              && (en.phase == 'fini' || (en.phase == 'jeu' && en.tour == (s + 1) % 4)));
+      }
+      function majJeu(av, ap) {
+        let ea = av.etat;
+        let en = ap.etat;
+        return av.statut == 'encours' && membre(av)
+          && affecte().hasOnly(['etat', 'historique', 'enAttente', 'statut', 'majLe'])
+          && en.numCoup == ea.numCoup + 1
+          && en.reglages == ea.reglages && en.keys().hasOnly(ea.keys())
+          && ap.statut == (en.phase == 'fini' ? 'finie' : 'encours')
+          && ap.enAttente is list && ap.enAttente.hasOnly(av.uids)
+          && ap.majLe == request.time
+          && (echange(av, ea, en) || coup(av, ap, ea, en));
+      }
+
+      allow update: if connecte() && (
+        majPlaces(resource.data, request.resource.data)
+        || majInvitations(resource.data, request.resource.data)
+        || refus(resource.data, request.resource.data)
+        || lancement(resource.data, request.resource.data)
+        || majJeu(resource.data, request.resource.data)
+      );
+
+      // Supprimer : l'hôte, tant que la partie n'a pas commencé.
+      allow delete: if connecte() && resource.data.statut == 'attente' && resource.data.hote == moi();
+
+      // ── Mains privées, immuables : parties/{id}/donnes/{donne}_{siege} ──
+      // Lisible par le titulaire du siège (ou par tout membre si le siège est une IA, puisque ce sont
+      // les clients qui la font jouer), et seulement une fois cette donne commencée.
+      match /donnes/{cle} {
+        function d() {
+          return int(cle.split('_')[0]);
+        }
+        function s() {
+          return int(cle.split('_')[1]);
+        }
+        function titulaire(p, siege) {
+          return p.joueurs[siege].uid == moi() || p.joueurs[siege].ia == true;
+        }
+        allow get: if connecte() && lireMain(partie());
+        function lireMain(p) {
+          return p.statut != 'attente' && membre(p) && s() >= 0 && s() < 4 && p.etat.donne >= d() && titulaire(p, s());
+        }
+        // Écrites d'un coup (12 documents) par la transaction qui lance la partie ou commence un cycle.
+        allow create: if connecte() && creationMain(partie(), partieApres(), request.resource.data);
+        function creationMain(av, ap, n) {
+          let d0 = ap.etat.donne;
+          return membre(av) && ap.statut == 'encours'
+            && (av.statut == 'attente' || av.etat.donne != d0)
+            && d0 % 3 == 0 && d() >= d0 && d() < d0 + 3 && s() >= 0 && s() < 4
+            && cle == string(d()) + '_' + string(s())
+            && n.keys().hasOnly(['donne', 'siege', 'cartes']) && n.donne == d() && n.siege == s()
+            && n.cartes is list && n.cartes.size() == (d() % 3 == 0 ? 5 : 4);
+        }
+        allow list, update, delete: if false;
+      }
+
+      // ── Dons au partenaire, immuables : parties/{id}/dons/{donne}_{siege du donneur} ──
+      // Lisible par le donneur à tout moment ; par le destinataire une fois l'échange de cette donne
+      // terminé ; par tout membre (même condition) si le donneur ou le destinataire est une IA.
+      match /dons/{cle} {
+        function d() {
+          return int(cle.split('_')[0]);
+        }
+        function s() {
+          return int(cle.split('_')[1]);
+        }
+        function echangeFini(p) {
+          return p.etat.donne > d() || (p.etat.donne == d() && p.etat.phase != 'echange');
+        }
+        allow get: if connecte() && lireDon(partie());
+        function lireDon(p) {
+          let pour = (s() + 2) % 4;
+          return p.statut != 'attente' && membre(p) && s() >= 0 && s() < 4 && p.etat.donne >= d()
+            && (p.joueurs[s()].uid == moi()
+              || (echangeFini(p) && (p.joueurs[pour].uid == moi() || p.joueurs[s()].ia == true || p.joueurs[pour].ia == true)));
+        }
+        // Créé par le donneur (ou pour une IA) dans la transaction qui marque son échange ; la carte doit
+        // être dans sa main distribuée.
+        allow create: if connecte() && creationDon(partie(), partieApres(), request.resource.data);
+        function creationDon(av, ap, n) {
+          let de = s();
+          return av.statut == 'encours' && membre(av)
+            && de >= 0 && de < 4 && cle == string(d()) + '_' + string(de)
+            && av.etat.phase == 'echange' && av.etat.donne == d()
+            && av.etat.echanges[de] == false && ap.etat.echanges[de] == true
+            && ap.etat.numCoup == av.etat.numCoup + 1
+            && (av.joueurs[de].uid == moi() || av.joueurs[de].ia == true)
+            && n.keys().hasOnly(['donne', 'de', 'pour', 'carte'])
+            && n.donne == d() && n.de == de && n.pour == (de + 2) % 4
+            && n.carte in get(/databases/$(base)/documents/parties/$(id)/donnes/$(cle)).data.cartes;
+        }
+        allow list, update, delete: if false;
+      }
+    }
+  }
+}
