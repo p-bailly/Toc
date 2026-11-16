@@ -21,7 +21,7 @@ export const TAILLES = [
  * temps de lecture après le coup d'un autre joueur, et délai des IA de l'entraînement.
  */
 export const VITESSES = [
-  { vitesse: 'posee', nom: 'Posée', pas: 170, max: 1500, saut: 480, carte: 520, lecture: 950, delaiIA: 1300, avantAuto: 1300 },
+  { vitesse: 'posee', nom: 'Posée', pas: 150, max: 1150, saut: 460, carte: 500, lecture: 750, delaiIA: 1300, avantAuto: 1300 },
   { vitesse: 'normale', nom: 'Normale', pas: 110, max: 1000, saut: 360, carte: 380, lecture: 550, delaiIA: 900, avantAuto: 1000 },
   { vitesse: 'rapide', nom: 'Rapide', pas: 55, max: 550, saut: 220, carte: 230, lecture: 220, delaiIA: 450, avantAuto: 700 },
 ];

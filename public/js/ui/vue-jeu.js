@@ -144,7 +144,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const cleVu = () => (vueReelle?.enLigne ? `toc.vu.${vueReelle.id}` : null);
 
   const desabonner = session.abonner((v) => {
-    vueReelle = v;
+    vueReelle = v; console.log('DBG abonner', v.historique?.length, nHisto, enPresentation);
     if (nHisto < 0) {
       // Ouverture : en ligne, on reprend là où le joueur s'était arrêté (coups joués en son absence) ;
       // en entraînement, rien n'a bougé pendant son absence.
