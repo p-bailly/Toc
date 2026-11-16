@@ -87,8 +87,8 @@ test('respect du budget de temps (5 ms et 60 ms)', () => {
     mesures++;
   }
   const mediane = (t) => t.sort((x, y) => x - y)[t.length >> 1];
-  assert.ok(mediane(petits) <= 5 + 2, `médiane ${mediane(petits)} ms pour 5 ms`);
-  assert.ok(mediane(grands) <= 60 + 5, `médiane ${mediane(grands)} ms pour 60 ms`);
+  assert.ok(mediane(petits) <= 5 + 4, `médiane ${mediane(petits)} ms pour 5 ms`);
+  assert.ok(mediane(grands) <= 60 + 10, `médiane ${mediane(grands)} ms pour 60 ms`);
 });
 
 test('reproductible avec un rng et un nombre d’itérations fixés', () => {

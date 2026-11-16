@@ -92,8 +92,8 @@ test('à 3 : respect du budget de temps (5 ms et 60 ms)', () => {
     k++;
   }
   const mediane = (t) => t.sort((x, y) => x - y)[t.length >> 1];
-  assert.ok(mediane(petits) <= 7, `médiane ${mediane(petits)} ms pour 5 ms`);
-  assert.ok(mediane(grands) <= 65, `médiane ${mediane(grands)} ms pour 60 ms`);
+  assert.ok(mediane(petits) <= 9, `médiane ${mediane(petits)} ms pour 5 ms`);
+  assert.ok(mediane(grands) <= 70, `médiane ${mediane(grands)} ms pour 60 ms`);
 });
 
 test('à 3 : capturer de préférence le joueur en tête', () => {

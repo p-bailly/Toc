@@ -10,6 +10,8 @@
 //   jeu à 3 (un A contre deux B)        : P(A gagne) = sA / (sA + 2 sB)
 // Les deux modes sont classés séparément. L'ancre (défaut : le joueur le plus faible) vaut
 // 1000. Intervalles à 95 % : ± 1,96 erreur type (inverse de l'information de Fisher, ancre fixe).
+// Lissage : chaque rencontre reçoit une demi-victoire et une demi-défaite fictives, pour qu'un
+// score parfait (ex. 200/200 contre le hasard) donne un écart fini.
 //
 // Usage : node outils/elo.js resultats.jsonl [--ancre=ia:debutant]
 
@@ -70,10 +72,12 @@ function classer(rencontres, nJ) {
       const b = idx.get(r.b);
       // P = σ(xa − xb − ln k)
       const p = 1 / (1 + Math.exp(-(x[a] - x[b] - Math.log(k))));
-      const resid = r.victoiresA - r.parties * p;
+      const v = r.victoiresA + 0.5;
+      const n = r.parties + 1;
+      const resid = v - n * p;
       g[a] += resid;
       g[b] -= resid;
-      const w = r.parties * p * (1 - p);
+      const w = n * p * (1 - p);
       h[a][a] += w; h[b][b] += w; h[a][b] -= w; h[b][a] -= w;
     }
     const Hl = libres.map((i) => libres.map((j) => h[i][j] + 1e-9 * (i === j)));
