@@ -49,7 +49,7 @@ export function jouerCoup(partie, siege, coup, rng = Math.random) {
   mains[siege].splice(mains[siege].indexOf(coup.carte), 1);
   let { cycle, dons } = partie;
   const historique = partie.historique.concat([
-    { n: etat.numCoup, siege, coup, captures: etat.dernierCoup.captures },
+    { n: etat.numCoup, siege, coup: etat.dernierCoup.coup, captures: etat.dernierCoup.captures },
   ]);
   if (etat.phase !== 'fini' && etat.donne !== partie.etat.donne) {
     if (etat.donne % 3 === 0) cycle = distribuerCycle(rng);

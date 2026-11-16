@@ -7,12 +7,12 @@ export const SYMBOLES = { P: '♠', C: '♥', K: '♦', T: '♣' };
 
 /** Rang d'une carte : 'A', '2'…'10', 'V', 'D', 'R'. */
 export function rang(carte) {
-  return carte.slice(0, -1);
+  return typeof carte === 'string' ? carte.slice(0, -1) : '';
 }
 
 /** Couleur d'une carte : 'P', 'C', 'K' ou 'T'. */
 export function couleurCarte(carte) {
-  return carte.slice(-1);
+  return typeof carte === 'string' ? carte.slice(-1) : '';
 }
 
 export function estCarte(carte) {

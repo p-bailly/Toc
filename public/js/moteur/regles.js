@@ -24,8 +24,7 @@
 //  - 7 : tous les points doivent être utilisés. Le reste ne peut servir aux pions du
 //    partenaire qu'une fois ses propres pions tous rentrés.
 
-import { rang } from './cartes.js';
-import { tailleDonne } from './cartes.js';
+import { rang, estCarte, tailleDonne } from './cartes.js';
 import { BASE, ALLEE, NB_CASES, NB_PIONS, LONGUEUR_ALLEE, caseDepart, caseEntree, partenaire, equipe } from './plateau.js';
 
 const PAS_PAR_RANG = {
@@ -400,6 +399,7 @@ function septCompletable(pions, siege, reste, memo) {
  *          null si les étapes déjà choisies sont illégales.
  */
 export function etapesSeptPossibles(etat, siege, etapes = []) {
+  if (!Array.isArray(etapes)) return null;
   let pions = etat.pions;
   let reste = 7;
   for (const e of etapes) {
@@ -529,7 +529,7 @@ export function coupsLegauxMain(etat, siege, main) {
 export function validerCoup(etat, siege, coup, main) {
   if (etat.phase !== 'jeu') return "La partie n'est pas en phase de jeu.";
   if (etat.tour !== siege) return "Ce n'est pas à ce joueur de jouer.";
-  if (!coup || typeof coup.carte !== 'string') return 'Coup mal formé.';
+  if (!coup || !estCarte(coup.carte)) return 'Coup mal formé.';
   if (main && !main.includes(coup.carte)) return "Cette carte n'est pas dans la main du joueur.";
   if (coup.t === 'defausse') {
     if (main && mainJouable(etat, siege, main)) return 'Défausse interdite : une carte est jouable.';
@@ -544,6 +544,30 @@ export function apercuCoup(etat, siege, coup) {
     return { pions: etat.pions.slice(), captures: [], deplacements: [] };
   }
   return jouerSurPlateau(etat, siege, coup);
+}
+
+/**
+ * Copie d'un coup réduite à ses champs utiles (sans valeur indéfinie : enregistrable tel quel).
+ * Le coup doit être bien formé (validé).
+ */
+export function normaliserCoup(coup) {
+  switch (coup.t) {
+    case 'sortie':
+    case 'recul':
+      return { t: coup.t, carte: coup.carte, pion: coup.pion };
+    case 'avance':
+      return { t: 'avance', carte: coup.carte, pion: coup.pion, pas: coup.pas, allee: !!coup.allee };
+    case 'echange':
+      return { t: 'echange', carte: coup.carte, pion: coup.pion, cible: coup.cible };
+    case 'sept':
+      return {
+        t: 'sept',
+        carte: coup.carte,
+        etapes: coup.etapes.map((e) => ({ pion: e.pion, pas: e.pas, allee: !!e.allee })),
+      };
+    default:
+      return { t: 'defausse', carte: coup.carte };
+  }
 }
 
 function equipeGagnante(pions) {
@@ -569,7 +593,7 @@ export function appliquerCoup(etat, siege, coup, main) {
   n.pile.push(coup.carte);
   n.cartesRestantes[siege] -= 1;
   n.numCoup += 1;
-  n.dernierCoup = { siege, coup, captures: res.captures, deplacements: res.deplacements };
+  n.dernierCoup = { siege, coup: normaliserCoup(coup), captures: res.captures, deplacements: res.deplacements };
 
   const gagnant = equipeGagnante(n.pions);
   if (gagnant !== null) {
@@ -598,6 +622,7 @@ export function appliquerCoup(etat, siege, coup, main) {
  */
 export function marquerEchange(etat, siege) {
   if (etat.phase !== 'echange') throw new Error("Ce n'est pas la phase d'échange.");
+  if (!Number.isInteger(siege) || siege < 0 || siege > 3) throw new Error('Siège invalide.');
   if (etat.echanges[siege]) throw new Error('Ce joueur a déjà donné sa carte.');
   const n = clonerEtat(etat);
   n.echanges[siege] = true;

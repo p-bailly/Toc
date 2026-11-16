@@ -2,16 +2,23 @@
 //
 // CE FICHIER EST LE CONTRAT entre l'interface (js/ui) et le réseau : l'interface n'importe
 // que ce module et n'appelle jamais Firebase directement. Les signatures ci-dessous sont
-// figées ; l'implémentation peut être répartie dans d'autres fichiers de ce dossier.
+// figées ; l'implémentation est répartie dans les autres fichiers de ce dossier
+// (client.js, comptes.js, parties.js, session-reseau.js, firebase.js).
 //
 // Toutes les fonctions asynchrones rejettent avec une Error dont le `message` est en
 // français et affichable tel quel à l'utilisateur.
 //
+// Comptes : un simple nom d'utilisateur, sans mot de passe (même modèle que l'appli Scrabble).
+// Le nom n'est pas secret : qui le connaît ouvre le compte (voir docs/firebase.md).
+//
 // Types :
-//   Joueur      = { uid, pseudo, stats: { jouees, gagnees } }
+//   Joueur      = { uid, pseudo, icone, visible, verrouille, stats: { jouees, gagnees } }
+//                 icone : identifiant court d'un emoji du catalogue de l'interface, ou null ;
+//                 visible : accepte d'être trouvé par les autres joueurs ;
+//                 verrouille : pseudo imposé par l'administrateur (non modifiable)
 //   Place       = { uid, pseudo, ia } | null          (ia = true : place tenue par une IA, uid = null)
 //   ResumePartie = {
-//     id, nom, code,
+//     id, nom, code,     id === code (le code d'invitation identifie la partie)
 //     statut,            'attente' | 'encours' | 'finie'
 //     hote,              uid du créateur
 //     reglages,          { cinqAdverse }
@@ -21,32 +28,76 @@
 //                        (carte à donner pendant l'échange, ou coup à jouer)
 //     gagnant,           null | 0 | 1 (équipe)
 //     majLe,             Date de la dernière action
+//     invites,           [{ uid, pseudo }] joueurs invités directement (partie en attente)
+//     refus,             [{ uid, pseudo }] invités qui ont refusé (information pour l'hôte)
 //   }
+
+import { firebaseConfig } from '../firebase-config.js';
+import { choisirCoup, choisirDon } from '../ia/ia.js';
+import { creerClient } from './client.js';
 
 /** Firebase est-il configuré (js/firebase-config.js rempli) ? Sinon : mode hors ligne seulement. */
 export function reseauDisponible() {
-  return false;
+  return !!(firebaseConfig && firebaseConfig.apiKey);
 }
+
+// Le SDK n'est téléchargé qu'au premier appel, et seulement si Firebase est configuré.
+const client = creerClient({
+  services: async () => {
+    if (!reseauDisponible()) throw new Error('Réseau non configuré.');
+    const { demarrer } = await import('./firebase.js');
+    return demarrer(firebaseConfig);
+  },
+  ia: { choisirDon, choisirCoup },
+});
+
+const nonConfigure = () => Promise.reject(new Error('Réseau non configuré.'));
 
 // ─── Comptes ────────────────────────────────────────────────────────────────
 
-/** Écoute l'état de connexion. cb(Joueur | null). Renvoie la fonction de désabonnement. */
+/** Écoute l'état de connexion. cb(Joueur | null), rappelé aussi quand la fiche change. Renvoie le désabonnement. */
 export function surAuth(cb) {
-  cb(null);
-  return () => {};
+  if (!reseauDisponible()) {
+    cb(null);
+    return () => {};
+  }
+  return client.surAuth(cb);
 }
 
-/** Crée un compte (pseudo unique + mot de passe) et connecte. → Joueur */
-export async function inscrire(pseudo, motDePasse) {
-  throw new Error('Réseau non configuré.');
+/** Se connecte avec ce nom ; le compte (et la fiche) sont créés la première fois. → Joueur */
+export async function connecter(pseudo) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.connecter(pseudo);
 }
 
-/** Connexion avec pseudo + mot de passe. → Joueur */
-export async function connecter(pseudo, motDePasse) {
-  throw new Error('Réseau non configuré.');
+export async function deconnecter() {
+  if (!reseauDisponible()) return;
+  return client.deconnecter();
 }
 
-export async function deconnecter() {}
+/**
+ * Modifie sa fiche : { pseudo, icone, visible }, champs facultatifs (icone null l'efface).
+ * Refusé si le pseudo est verrouillé. Le pseudo affiché change, le nom de connexion non. → Joueur
+ */
+export async function modifierProfil(changements) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.modifierProfil(changements);
+}
+
+/** Fiche publique d'un joueur (avec cache) → { uid, pseudo, icone } | null */
+export async function lireJoueur(uid) {
+  if (!reseauDisponible()) return null;
+  return client.lireJoueur(uid);
+}
+
+/**
+ * Joueurs à qui proposer une invitation → [{ uid, pseudo, icone }] : ceux avec qui j'ai déjà joué
+ * en tête, puis les joueurs visibles ; moi exclu ; 100 au plus. Demande une connexion.
+ */
+export async function listerJoueurs() {
+  if (!reseauDisponible()) return [];
+  return client.listerJoueurs();
+}
 
 // ─── Parties : liste, création, invitation ──────────────────────────────────
 
@@ -55,47 +106,95 @@ export async function deconnecter() {}
  * triées de la plus récente à la plus ancienne. cb(ResumePartie[]). Renvoie le désabonnement.
  */
 export function surMesParties(cb) {
-  cb([]);
-  return () => {};
+  if (!reseauDisponible()) {
+    cb([]);
+    return () => {};
+  }
+  return client.surMesParties(cb);
 }
 
 /** Crée une partie (le créateur prend le siège 0). → { id, code } */
-export async function creerPartie({ nom, cinqAdverse }) {
-  throw new Error('Réseau non configuré.');
+export async function creerPartie({ nom, cinqAdverse } = {}) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.creerPartie({ nom, cinqAdverse });
 }
 
 /** Rejoint une partie en attente avec son code d'invitation (premier siège libre). → { id } */
 export async function rejoindrePartie(code) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.rejoindrePartie(code);
 }
 
 /** Écoute une partie (salle d'attente). cb(ResumePartie | null). Renvoie le désabonnement. */
 export function surPartie(id, cb) {
-  cb(null);
-  return () => {};
+  if (!reseauDisponible()) {
+    cb(null);
+    return () => {};
+  }
+  return client.surPartie(id, cb);
 }
 
 /** Change de siège dans la salle d'attente (le siège doit être libre). */
 export async function choisirSiege(id, siege) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.choisirSiege(id, siege);
 }
 
 /** Hôte : place une IA sur un siège libre / la retire. */
 export async function ajouterIA(id, siege) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.ajouterIA(id, siege);
 }
 export async function retirerIA(id, siege) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.retirerIA(id, siege);
 }
 
 /** Quitte une partie en attente (si l'hôte quitte, la partie est supprimée). */
 export async function quitterPartie(id) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.quitterPartie(id);
 }
 
 /** Hôte : lance la partie. Les 4 sièges doivent être occupés (humains ou IA). Distribue les cartes. */
 export async function lancerPartie(id) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.lancerPartie(id);
+}
+
+// ─── Invitations directes (partie en attente) ──────────────────────────────
+
+/** Hôte : invite un joueur (il voit l'invitation dans l'appli). */
+export async function inviter(id, uid) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.inviter(id, uid);
+}
+
+/** Hôte : retire une invitation. */
+export async function annulerInvitation(id, uid) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.annulerInvitation(id, uid);
+}
+
+/** Écoute les parties en attente où je suis invité. cb(ResumePartie[]). Renvoie le désabonnement. */
+export function surInvitations(cb) {
+  if (!reseauDisponible()) {
+    cb([]);
+    return () => {};
+  }
+  return client.surInvitations(cb);
+}
+
+/** Accepte une invitation : prend le premier siège libre. */
+export async function accepterInvitation(id) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.accepterInvitation(id);
+}
+
+/** Refuse une invitation (l'hôte le voit dans `refus`). */
+export async function refuserInvitation(id) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.refuserInvitation(id);
 }
 
 // ─── Jeu ────────────────────────────────────────────────────────────────────
@@ -103,9 +202,11 @@ export async function lancerPartie(id) {
 /**
  * Ouvre une partie en cours (ou terminée) pour y jouer.
  * → Session, même interface que SessionLocale (voir js/session-locale.js) :
- *   abonner(cb), donner(carte), jouer(coup), fermer(), avec vue.enLigne = true.
+ *   abonner(cb), donner(carte), jouer(coup), fermer(), avec vue.enLigne = true
+ *   (la vue a en plus `statut`).
  * La session fait aussi jouer les IA de la partie.
  */
 export async function ouvrirSession(id) {
-  throw new Error('Réseau non configuré.');
+  if (!reseauDisponible()) return nonConfigure();
+  return client.ouvrirSession(id);
 }

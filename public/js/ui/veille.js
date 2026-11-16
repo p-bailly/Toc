@@ -1,0 +1,111 @@
+// Veille des parties en ligne de l'utilisateur connecté : une seule écoute de « Mes parties » et des invitations
+// reçues, partagée par les écrans ; elle tient à jour la pastille, le badge et le titre, et prévient (notification
+// locale, ou toast si l'appli est au premier plan) quand c'est à lui de jouer, quand on l'invite, quand une partie
+// se termine.
+
+import { majEnAttente, notifier } from './notifications.js';
+import { toast } from './composants.js';
+
+let api = null;
+let arret = [];
+let etat = { pret: false, parties: [], invitations: [], erreur: '' };
+const abonnes = new Set();
+// Ce qu'on savait déjà, pour ne prévenir que des changements.
+let connues = null; // Map id → { aMoi, statut }
+let invitationsConnues = null; // Set id
+/** Partie affichée à l'écran (pas de toast pour elle). */
+let partieOuverte = null;
+
+export function definirPartieOuverte(id) {
+  partieOuverte = id;
+}
+
+/** Écoute l'état de la veille : cb({ pret, parties, invitations, erreur }). */
+export function surVeille(cb) {
+  abonnes.add(cb);
+  cb(etat);
+  return () => abonnes.delete(cb);
+}
+
+function publier(modif) {
+  etat = { ...etat, ...modif };
+  majEnAttente(etat.parties.filter((p) => p.aMoiDeJouer).length + etat.invitations.length);
+  for (const cb of abonnes) cb(etat);
+}
+
+export function demarrerVeille(reseau) {
+  arreterVeille();
+  api = reseau;
+  connues = null;
+  invitationsConnues = null;
+  try {
+    arret.push(
+      api.surMesParties((parties) => {
+        signalerParties(parties || []);
+        publier({ pret: true, parties: parties || [] });
+      }),
+    );
+  } catch (e) {
+    publier({ pret: true, erreur: e.message });
+  }
+  if (typeof api.surInvitations === 'function') {
+    try {
+      arret.push(
+        api.surInvitations((invitations) => {
+          signalerInvitations(invitations || []);
+          publier({ invitations: invitations || [] });
+        }),
+      );
+    } catch {
+      /* invitations indisponibles : le reste de l'écran marche */
+    }
+  }
+}
+
+export function arreterVeille() {
+  for (const f of arret) {
+    try {
+      f?.();
+    } catch {
+      /* déjà arrêté */
+    }
+  }
+  arret = [];
+  etat = { pret: false, parties: [], invitations: [], erreur: '' };
+  majEnAttente(0);
+}
+
+const cache = () => document.visibilityState === 'hidden';
+
+function prevenir(cle, titre, texte, hash, genre, id) {
+  if (cache()) void notifier(cle, titre, texte, hash, genre);
+  else if (id !== partieOuverte) toast(texte);
+}
+
+function signalerParties(parties) {
+  const suite = new Map(parties.map((p) => [p.id, { aMoi: !!p.aMoiDeJouer, statut: p.statut }]));
+  if (connues) {
+    for (const p of parties) {
+      const avant = connues.get(p.id);
+      const nom = p.nom || 'Partie de Toc';
+      if (p.aMoiDeJouer && !avant?.aMoi && p.statut === 'encours') {
+        prevenir('tour-' + p.id, 'À toi de jouer', `${nom} : c’est à toi de jouer.`, '#/partie/' + p.id, 'tour', p.id);
+      } else if (p.statut === 'finie' && avant && avant.statut !== 'finie') {
+        const gagne = p.monSiege >= 0 && p.gagnant === p.monSiege % 2;
+        prevenir('fin-' + p.id, 'Partie terminée', `${nom} : ${gagne ? 'ton équipe a gagné !' : 'ton équipe a perdu.'}`, '#/partie/' + p.id, 'fin', p.id);
+      }
+    }
+  }
+  connues = suite;
+}
+
+function signalerInvitations(invitations) {
+  if (invitationsConnues) {
+    for (const p of invitations) {
+      if (invitationsConnues.has(p.id)) continue;
+      const hote = p.joueurs?.find((j) => j && j.uid === p.hote)?.pseudo || 'Un joueur';
+      prevenir('invitation-' + p.id, 'Invitation', `${hote} t’invite à jouer au Toc.`, '#/parties', 'invitation', null);
+    }
+  }
+  invitationsConnues = new Set(invitations.map((p) => p.id));
+}
