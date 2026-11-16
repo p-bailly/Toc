@@ -43,6 +43,7 @@ export const POIDS_DEFAUT = {
   valet: 2.5,
   petiteAllee: 2, // A, 2, 3 quand un pion de l'allée doit encore monter
   joker: 7, // jeu à 3 : valeur d'un joker gardé (il pourra copier une carte posée plus tard)
+  offreJoker: 1, // jeu à 3 : coût d'une carte nouvelle offerte à la copie d'un joker adverse
 };
 
 // Masques de rangs capturant à une distance x vers l'avant (1..13).
