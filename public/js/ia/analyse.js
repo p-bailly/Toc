@@ -26,7 +26,7 @@
 // calibrée sur des parties de l'IA contre elle-même (voir probaDepuisEvaluation), puis
 // moyennée sur les simulations du meilleur candidat.
 
-import { apercuCoup } from '../moteur/index.js';
+import { apercuCoup, destinataireDon } from '../moteur/index.js';
 import { evaluerPlateau } from './evaluation.js';
 import { coupsMain, indexRang, clePions, equipeGagnantePions } from './simulation.js';
 import {
@@ -40,17 +40,21 @@ const CANDIDATS_MAX = 8;
 const ECART_STATIQUE_MAX = 40;
 
 /**
- * Probabilité de victoire de l'équipe à partir de l'évaluation `v` (en cases, pour cette équipe)
- * d'une position de fin de donne. Logistique en v / √(travail restant des 16 pions) :
- * le même avantage pèse davantage quand il reste peu à faire. Coefficient ajusté par maximum
- * de vraisemblance sur des positions de parties IA contre IA (outils/calibrage.js).
+ * Probabilité de victoire à partir de l'évaluation `v` (en cases, pour le siège `siege` : son
+ * équipe à 4 joueurs, lui seul à 3) d'une position de fin de donne. Logistique en
+ * v / √(travail restant de tous les pions) : le même avantage pèse davantage quand il reste peu
+ * à faire. À 3 joueurs, un terme constant ramène la position neutre (v = 0) vers 1 chance sur 3.
+ * Coefficients ajustés par maximum de vraisemblance sur des positions de parties IA contre IA
+ * (outils/calibrage.js).
  */
-export const CALIBRAGE = { k: 0.127 };
+export const CALIBRAGE = { k: 0.127, k3: 0.15, b3: -0.69 };
 
-export function probaDepuisEvaluation(v, pions, equipe) {
+export function probaDepuisEvaluation(v, pions, siege) {
   const g = equipeGagnantePions(pions);
-  if (g >= 0) return g === equipe ? 1 : 0;
-  const z = (CALIBRAGE.k * v) / Math.sqrt(Math.max(40, travailRestant(pions)));
+  const a3 = pions.length === 12;
+  if (g >= 0) return g === (a3 ? siege : siege & 1) ? 1 : 0;
+  const w = Math.sqrt(Math.max(40, travailRestant(pions)));
+  const z = a3 ? (CALIBRAGE.k3 * v) / w + CALIBRAGE.b3 : (CALIBRAGE.k * v) / w;
   return 1 / (1 + Math.exp(-z));
 }
 
@@ -313,11 +317,11 @@ export class AnalyseCoup extends AnalyseBase {
 
   simulerCandidat(c, mains) {
     const r = simuler(this.prep, c.res, c.mainApres, mains, this.profondeur);
-    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.siege & 1) };
+    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.siege) };
   }
 
   probaStatique(c) {
-    return probaDepuisEvaluation(c.statique, c.res.pions, this.siege & 1);
+    return probaDepuisEvaluation(c.statique, c.res.pions, this.siege);
   }
 
   /** Coup que l'IA jouerait en l'état de l'analyse. */
@@ -358,20 +362,21 @@ export class AnalyseDon extends AnalyseBase {
     this.actifs = this.candidats.slice();
   }
 
-  /** Tirage commun : mains des trois autres joueurs et dons des autres joueurs. */
+  /** Tirage commun : mains des autres joueurs et dons des autres joueurs. */
   tirage() {
     const { etat, siege } = this;
+    const nb = this.prep.n;
     const pool = melangerAvec(this.prep.nonVues.slice(), this.rng);
-    const mains = [null, null, null, null];
+    const mains = Array(nb).fill(null);
     let k = 0;
-    for (let j = 0; j < 4; j++) {
+    for (let j = 0; j < nb; j++) {
       if (j === siege) continue;
       mains[j] = pool.slice(k, k + etat.cartesRestantes[j]);
       k += etat.cartesRestantes[j];
     }
     // Chaque autre joueur choisit son don comme l'IA le ferait avec la main tirée.
-    const dons = [null, null, null, null];
-    for (let j = 0; j < 4; j++) {
+    const dons = Array(nb).fill(null);
+    for (let j = 0; j < nb; j++) {
       if (j === siege || !mains[j].length) continue;
       dons[j] = noterDons(etat, j, mains[j], {})[0].carte;
     }
@@ -380,24 +385,25 @@ export class AnalyseDon extends AnalyseBase {
 
   simulerCandidat(c, t) {
     const { etat, siege } = this;
-    const mains = [0, 1, 2, 3].map((j) => (j === siege ? this.main.slice() : t.mains[j].slice()));
+    const nb = this.prep.n;
+    const mains = Array.from({ length: nb }, (_, j) => (j === siege ? this.main.slice() : t.mains[j].slice()));
     const dons = t.dons.slice();
     dons[siege] = c.e.carte;
-    for (let j = 0; j < 4; j++) {
+    for (let j = 0; j < nb; j++) {
       const d = dons[j];
       if (!d) continue;
       mains[j].splice(mains[j].indexOf(d), 1);
     }
-    for (let j = 0; j < 4; j++) if (dons[j]) mains[(j + 2) & 3].push(dons[j]);
+    for (let j = 0; j < nb; j++) if (dons[j]) mains[destinataireDon(etat.donne, j, nb)].push(dons[j]);
     const restes = mains.map((m) => m.length);
-    const r = jouerDonne(this.prep, etat.pions, mains, restes, etat.tour, etat.donne, siege);
-    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.siege & 1) };
+    const r = jouerDonne(this.prep, etat.pions, mains, restes, etat.tour, etat.donne, siege, Infinity, 0);
+    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.siege) };
   }
 
   probaStatique() {
     const info = { n: this.etat.cartesRestantes, connu: [0, 0, 0, 0], nConnu: [0, 0, 0, 0] };
     // position actuelle, sans avantage de main
-    return probaDepuisEvaluation(this.evaluationPosition(info), this.etat.pions, this.siege & 1);
+    return probaDepuisEvaluation(this.evaluationPosition(info), this.etat.pions, this.siege);
   }
 
   evaluationPosition(info) {
@@ -424,7 +430,7 @@ export class AnalyseDon extends AnalyseBase {
 }
 
 function evaluerPlateauPublic(prep, etat, siege, info) {
-  return evaluerPlateau(etat.pions, siege & 1, etat.tour, info, prep.ctx);
+  return evaluerPlateau(etat.pions, siege, etat.tour, info, prep.ctx);
 }
 
 /** Crée l'analyse d'un coup (phase 'jeu'). */
