@@ -7,6 +7,8 @@ import { entete, interrupteur, rangee, segments } from './composants.js';
 import { nouvellePartieLocale, sauvegardeLocale, MODES_LOCAUX } from './ecran-jeu.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
+import { lirePartiesFinies } from './parties-finies.js';
+import { rattraperPartiesFinies } from './ecran-bilan.js';
 import { choixNiveau, niveauxLocaux, ecrireNiveauxLocaux, nomNiveau } from './niveaux.js';
 
 const CLE_MODE = 'toc.modeLocal';
@@ -37,6 +39,8 @@ export function afficher(racine, app) {
       h('span', { class: 'bouton' }, 'Reprendre'),
     );
   };
+
+  rattraperPartiesFinies();
 
   const dessiner = () => {
     const blocs = [entete('Contre l’IA')];
@@ -71,6 +75,8 @@ export function afficher(racine, app) {
         ),
       );
     }
+
+    if (lirePartiesFinies().length) blocs.push(h('a', { class: 'bouton discret', href: '#/stats', 'data-action': 'voir-stats' }, 'Toutes mes parties terminées et mes statistiques'));
 
     const enCoursMode = enCours.find(([n]) => n === nbJoueurs);
     blocs.push(

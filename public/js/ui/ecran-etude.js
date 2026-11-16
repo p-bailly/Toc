@@ -12,6 +12,7 @@ import { piRetour } from './pictos.js';
 import { carteCourte, decrireAction, trierMain, rangAvecArticle, leCarte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
+import { partieFinie } from './parties-finies.js';
 import { apercuCoup } from '../moteur/regles.js';
 import { lancerAnalyse } from './etude-pilote.js';
 import { lireReglages, modifierReglages } from './reglages.js';
@@ -22,10 +23,12 @@ import { toursDuJoueur, qualifier, candidatJoue, bilan, formatCases, QUALIFICATI
 const memoire = new Map();
 
 export function afficher(racine, app, { reste }) {
-  const id = reste[0] || 'locale';
+  // #/analyse/finie/ID : partie contre l'IA gardée dans l'historique de l'appareil (écran Statistiques).
+  const archive = reste[0] === 'finie' ? reste[1] || '' : null;
+  const id = archive !== null ? 'finie-' + archive : reste[0] || 'locale';
   // #/analyse/locale (2 contre 2) ou #/analyse/locale3 (3 joueurs) : parties d'entraînement.
-  const locale = id === 'locale' || id === 'locale3';
-  const retour = locale ? '#/ia' : '#/parties';
+  const locale = id === 'locale' || id === 'locale3' || archive !== null;
+  const retour = archive !== null ? '#/stats' : locale ? '#/ia' : '#/parties';
   const contenu = h('div', { class: 'contenu analyse' }, enteteRetour('Analyse de la partie', retour), h('div', { class: 'vide-etat' }, 'Préparation de l’analyse…'));
   remplacer(racine, contenu);
   let ferme = false;
@@ -41,7 +44,7 @@ export function afficher(racine, app, { reste }) {
     // 1. Les données de la partie (mains distribuées, cartes données, historique).
     let donnees;
     try {
-      donnees = locale ? await donneesLocales(id === 'locale3' ? 3 : 4) : await donneesEnLigne(app, id);
+      donnees = archive !== null ? await donneesArchive(archive) : locale ? await donneesLocales(id === 'locale3' ? 3 : 4) : await donneesEnLigne(app, id);
     } catch (e) {
       message(messageErreur(e));
       return;
@@ -94,6 +97,20 @@ async function donneesLocales(nbJoueurs) {
   const session = new SessionLocale({ stockage: localStorage, cle: cleSauvegarde, reprendre: true, delaiIA: 1e9, nbJoueurs });
   try {
     if (typeof session.donneesAnalyse !== 'function') return 'L’analyse n’est pas encore disponible dans cette version de l’appli.';
+    return await session.donneesAnalyse();
+  } finally {
+    session.fermer();
+  }
+}
+
+/** Partie contre l'IA de l'historique : même lecture qu'une sauvegarde, depuis un stockage en mémoire. */
+async function donneesArchive(idPartie) {
+  const entree = partieFinie(idPartie);
+  if (!entree) return 'Cette partie n’est plus dans l’historique de cet appareil.';
+  if (!entree.sauvegarde) return 'Seul le résultat de cette partie a été gardé : ses coups ne sont plus disponibles pour l’analyse.';
+  const stockage = { getItem: () => JSON.stringify(entree.sauvegarde), setItem() {}, removeItem() {} };
+  const session = new SessionLocale({ stockage, cle: 'partie', reprendre: true, delaiIA: 1e9, nbJoueurs: entree.nb });
+  try {
     return await session.donneesAnalyse();
   } finally {
     session.fermer();

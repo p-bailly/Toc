@@ -11,7 +11,7 @@ import { PIONS, couleurSiege, couleurFonceeSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
-import { nomNiveau } from './niveaux.js';
+import { nomNiveau, niveauEnLettres } from './niveaux.js';
 import { estHabille, contenuFigure, CADRE_FIGURE } from './figures.js';
 
 const COTE = 17 * CELLULE;
@@ -309,7 +309,7 @@ export class Plateau {
         class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
-        'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}${actif ? ', à son tour' : ''}`,
+        'aria-label': `${nom}${j.ia ? ', IA ' + niveauEnLettres(j.niveau) : ''}${actif ? ', à son tour' : ''}`,
       });
       g.append(
         s('rect', { class: 'boite', x: b.x, y: b.y, width: b.l, height: b.h, rx: 3 }),
@@ -359,7 +359,7 @@ export class Plateau {
         class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
-        'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}, ${nb} carte${nb > 1 ? 's' : ''}${actif ? ', à son tour' : ''}`,
+        'aria-label': `${nom}${j.ia ? ', IA ' + niveauEnLettres(j.niveau) : ''}, ${nb} carte${nb > 1 ? 's' : ''}${actif ? ', à son tour' : ''}`,
         transform: `translate(${place.x} ${place.y}) rotate(${place.angle})`,
       });
       const fond = s('rect', { class: 'fond-etiquette', x: 0, y: -4.4, width: 0, height: 8.8, rx: 4.4 });

@@ -1,6 +1,6 @@
 // Niveaux de force des IA (liste fournie par l'IA : ia.js → NIVEAUX, NIVEAU_DEFAUT) et petits composants pour
-// les choisir et les afficher, sur le modèle de l'appli Scrabble (« Niveau : Champion  [Changer] », puis la liste
-// des cinq niveaux avec leur description). Une place d'IA sans niveau (anciennes parties) vaut le niveau par défaut.
+// les choisir et les afficher, sur le modèle de l'appli Scrabble (« Niveau : ★★★★★  [Changer] », puis la liste
+// des cinq niveaux avec leur description). Un niveau s'affiche en étoiles, de 1 à 5. Une place d'IA sans niveau (anciennes parties) vaut le niveau par défaut.
 
 import { h, lire, ecrire } from './dom.js';
 import { NIVEAUX as LISTE, NIVEAU_DEFAUT as DEFAUT } from '../ia/ia.js';
@@ -12,9 +12,22 @@ const parId = new Map(NIVEAUX.map((n) => [n.id, n]));
 
 /** Identifiant valide d'un niveau (le niveau par défaut si absent ou inconnu). */
 export const niveauValide = (id) => (parId.has(id) ? id : NIVEAU_DEFAUT);
-/** Nom affiché d'un niveau : « Expert ». */
-export const nomNiveau = (id) => parId.get(niveauValide(id))?.nom || 'Champion';
-/** Nom d'une place d'IA avec son niveau : « IA Est · Expert ». */
+/** Force d'un niveau, de 1 (le plus faible) à 5 (le plus fort). */
+export const forceNiveau = (id) => {
+  const i = NIVEAUX.findIndex((n) => n.id === niveauValide(id));
+  return NIVEAUX.length > 1 ? 1 + Math.round((i * 4) / (NIVEAUX.length - 1)) : 5;
+};
+/** Niveau affiché : des étoiles, de 1 à 5 (« ★★★☆☆ »). */
+export const nomNiveau = (id) => {
+  const n = forceNiveau(id);
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+};
+/** Le même, en toutes lettres pour les lecteurs d'écran : « 3 étoiles sur 5 ». */
+export const niveauEnLettres = (id) => {
+  const n = forceNiveau(id);
+  return `${n} étoile${n > 1 ? 's' : ''} sur 5`;
+};
+/** Nom d'une place d'IA avec son niveau : « IA Est · ★★★★☆ ». */
 export const nomAvecNiveau = (place) => (place?.ia ? `${place.pseudo || 'IA'} · ${nomNiveau(place.niveau)}` : place?.pseudo || '');
 
 // ─── Mémoire des derniers choix ─────────────────────────────────────────────
@@ -52,7 +65,7 @@ export function listeNiveaux(actuel, surChoix) {
           'data-niveau': n.id,
           onclick: () => surChoix(n.id),
         },
-        h('div', { class: 'principal' }, h('div', { class: 'mot' }, n.nom), n.description ? h('div', { class: 'note' }, n.description) : null),
+        h('div', { class: 'principal' }, h('div', { class: 'mot etoiles', 'aria-label': niveauEnLettres(n.id) }, nomNiveau(n.id)), n.description ? h('div', { class: 'note' }, n.description) : null),
       ),
     ),
   );
@@ -67,7 +80,7 @@ export function choixNiveau({ titre, actuel, note = '', ouvert = false, surOuvri
   const ligne = h(
     'div',
     { class: 'reglage' },
-    h('div', { class: 'texte' }, h('div', { class: 'titre' }, `${titre} : `, h('b', {}, nomNiveau(actuel))), note ? h('div', { class: 'note' }, note) : null),
+    h('div', { class: 'texte' }, h('div', { class: 'titre' }, `${titre} : `, h('b', { class: 'etoiles', 'aria-label': niveauEnLettres(actuel) }, nomNiveau(actuel))), note ? h('div', { class: 'note' }, note) : null),
     h('button', { type: 'button', class: 'bouton', 'aria-expanded': String(ouvert), 'data-action': 'changer-niveau', onclick: () => surOuvrir(!ouvert) }, ouvert ? 'Fermer' : 'Changer'),
   );
   bloc.append(ligne);

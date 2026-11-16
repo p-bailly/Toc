@@ -31,6 +31,8 @@ export const piIA = (t = 22) =>
     ['path', { d: 'M12 8V4M9 13h.01M15 13h.01M9 17h6M2 13v3M22 13v3' }],
     ['circle', { cx: 12, cy: 3.5, r: 1 }],
   ]);
+/** Statistiques : trois barres. */
+export const piBilan = (t = 22) => picto(t, [['path', { d: 'M4 20h16M7 20v-6M12 20V5M17 20v-9' }]], 2.2);
 export const piRegles = (t = 22) =>
   picto(t, [['path', { d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14ZM20 17v4H6.5A2.5 2.5 0 0 1 4 18.5M8 7h8M8 11h6' }]]);
 export const piReglages = (t = 22) =>

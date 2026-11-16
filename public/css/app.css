@@ -2340,3 +2340,23 @@ details > .reglage:first-of-type {
 .consigne .tour-de .puce-pion {
   vertical-align: -0.12em;
 }
+
+/* Niveau d'une IA, en étoiles */
+.etoiles {
+  color: #d98a00;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+/* Statistiques */
+.bilan .ligne-avec-action > .bouton {
+  padding: 0 10px;
+}
+@media (max-width: 520px) {
+  /* Téléphone : dans la liste des parties, les étoiles passent sous le mode de jeu */
+  .bilan [data-finie] .sep {
+    display: none;
+  }
+  .bilan [data-finie] .etoiles {
+    display: block;
+  }
+}
