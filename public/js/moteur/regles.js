@@ -241,8 +241,13 @@ function resoudreRecul(pions, g) {
   return { pos: (p - 4 + NB_CASES) % NB_CASES, captures };
 }
 
+function surCircuit(pions, q) {
+  return pions[q] >= 0 && pions[q] < casesDe(pions);
+}
+
+/** Pion qu'un autre joueur peut échanger (valet) ou pousser (5 adverse) : sur le circuit et non protégé. */
 function echangeable(pions, q) {
-  return pions[q] >= 0 && pions[q] < casesDe(pions) && !protege(pions, q);
+  return surCircuit(pions, q) && !protege(pions, q);
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +373,8 @@ function jouerSurPlateau(etat, siege, coup) {
       const b = coup.cible;
       if (r !== 'V' || !estPion(a, pions) || !estPion(b, pions)) return null;
       if (a >> 2 !== c || b >> 2 === c) return null; // un des siens, jamais deux des siens
-      if (!echangeable(pions, a) || !echangeable(pions, b)) return null;
+      // Son propre pion peut partir de sa case de départ (protégé ou non) ; la cible, elle, ne doit pas être protégée.
+      if (!surCircuit(pions, a) || !echangeable(pions, b)) return null;
       const pa = pions[a];
       const pb = pions[b];
       deplacements.push({ pion: a, de: pa, vers: pb }, { pion: b, de: pb, vers: pa });
@@ -583,7 +589,7 @@ function coupsRang(etat, siege, carte, r) {
     case 'V': {
       const c = couleurActive(etat, siege);
       for (let a = c * 4; a < c * 4 + 4; a++) {
-        if (!echangeable(etat.pions, a)) continue;
+        if (!surCircuit(etat.pions, a)) continue; // même protégé sur sa case de départ
         for (let b = 0; b < etat.pions.length; b++) {
           if (b >> 2 !== c && echangeable(etat.pions, b)) coups.push({ t: 'echange', carte, pion: a, cible: b });
         }

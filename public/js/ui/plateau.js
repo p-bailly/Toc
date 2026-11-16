@@ -75,6 +75,9 @@ function veinage() {
 
 let compteurPlateaux = 0;
 
+/** Nombre de cartes du tas dessinées au centre (les plus récentes). */
+const CARTES_VISIBLES = 8;
+
 const translate = ({ x, y }) => `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
 
 /** Rectangle centré en (x, y), tourné de `angle` degrés autour de son centre. */
@@ -244,9 +247,7 @@ export class Plateau {
    * @param {Object} [o.choix]         { candidats: Set<pion>, choisi, cibles: [{ pion, pos, libelle }], fantome: { pion, pos }, captures: number[] }
    * @param {string[]} [o.sousTitres]  texte sous chaque pseudo (par siège)
    */
-  maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue, suivant = -1 }) {
-    // Joueur qui jouera ensuite (repère discret sur son nom) : -1 s'il n'y en a pas.
-    this.suivant = suivant;
+  maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue }) {
     const n = etat.pions.length >> 2;
     this.preparer(n, siegeVue);
     this.etat = etat;
@@ -305,7 +306,7 @@ export class Plateau {
       const emoji = j.ia ? EMOJI_IA : emojiIcone(j.icone);
       const nom = siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
       const g = s('g', {
-        class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === this.suivant ? ' suivant' : ''),
+        class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
         'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}${actif ? ', à son tour' : ''}`,
@@ -351,11 +352,11 @@ export class Plateau {
       const nom = siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
       const nb = etat.cartesRestantes?.[siege] ?? 0;
       const etatJoueur = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '');
-      const morceaux = [`${nb} carte${nb > 1 ? 's' : ''}`];
+      const morceaux = [String(nb)]; // précédé de l'icône des cartes
       if (j.ia) morceaux.push(nomNiveau(j.niveau));
       if (etatJoueur) morceaux.push(etatJoueur);
       const g = s('g', {
-        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : '') + (siege === this.suivant ? ' suivant' : ''),
+        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
         'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}, ${nb} carte${nb > 1 ? 's' : ''}${actif ? ', à son tour' : ''}`,
@@ -364,23 +365,38 @@ export class Plateau {
       const fond = s('rect', { class: 'fond-etiquette', x: 0, y: -4.4, width: 0, height: 8.8, rx: 4.4 });
       const pastille = s('circle', { class: 'pastille-plateau', cx: 0, cy: 0, r: 3.5, fill: couleurSiege(siege), stroke: couleurFonceeSiege(siege) });
       const initiale = s('text', { class: 'pastille-texte' + (emoji ? ' emoji' : ''), x: 0, y: emoji ? 1.45 : 1.3 }, emoji || (nom.slice(0, 1).toUpperCase() || '?'));
-      const texte = s('text', { class: 'nom-autour', x: 0, y: 1.75 }, s('tspan', { class: 'prenom' }, tronquer(nom, 14)), s('tspan', { class: 'details' }, ' · ' + morceaux.join(' · ')));
-      g.append(fond, pastille, initiale, texte);
+      // Prénom, petite icône de cartes (deux dos), puis leur nombre et le reste (niveau, état).
+      const ICONE = 5.6; // largeur de l'icône
+      const prenom = s('tspan', { class: 'prenom' }, tronquer(nom, 14));
+      const details = s('tspan', { class: 'details', dx: (ICONE + 3.2).toFixed(2) }, morceaux.join(' · '));
+      const texte = s('text', { class: 'nom-autour', x: 0, y: 1.75 }, prenom, details);
+      const icone = s(
+        'g',
+        { class: 'icone-cartes' + (nb ? '' : ' vide'), 'aria-hidden': 'true' },
+        s('rect', { class: 'dos-carte', x: 0, y: -2.7, width: 3.3, height: 4.9, rx: 0.6, transform: 'rotate(-9 1.65 0)' }),
+        s('rect', { class: 'dos-carte', x: 2.1, y: -2.5, width: 3.3, height: 4.9, rx: 0.6, transform: 'rotate(9 3.75 0)' }),
+      );
+      g.append(fond, pastille, initiale, texte, icone);
       c.append(g);
       // Centrage : on mesure le texte une fois posé (repli approximatif s'il n'est pas encore affiché).
-      let largeur = 0;
-      try {
-        largeur = texte.getComputedTextLength();
-      } catch {
-        largeur = 0;
-      }
-      if (!largeur) largeur = (nom.length + morceaux.join(' · ').length + 3) * 2.75;
-      largeur = Math.min(largeur, place.longueur - 12);
+      const mesurer = (el, repli) => {
+        let l = 0;
+        try {
+          l = el.getComputedTextLength();
+        } catch {
+          l = 0;
+        }
+        return l || repli;
+      };
+      const lPrenom = mesurer(prenom, Math.min(nom.length, 14) * 3.1);
+      const lDetails = mesurer(details, morceaux.join(' · ').length * 2.75);
+      const largeur = Math.min(lPrenom + ICONE + 3.2 + lDetails, place.longueur - 12);
       const total = 3.5 * 2 + 1.6 + largeur;
       const x0 = -total / 2;
       pastille.setAttribute('cx', (x0 + 3.5).toFixed(2));
       initiale.setAttribute('x', (x0 + 3.5).toFixed(2));
       texte.setAttribute('x', (x0 + 8.6).toFixed(2));
+      icone.setAttribute('transform', `translate(${(x0 + 8.6 + lPrenom + 1.8).toFixed(2)} 0)`);
       fond.setAttribute('x', (x0 - 1.6).toFixed(2));
       fond.setAttribute('width', (total + 3.2).toFixed(2));
     }
@@ -395,19 +411,48 @@ export class Plateau {
     const yDonne = triangle ? cy + 23 : cy - 24;
     const yQui = triangle ? cy + 28.5 : cy + 28;
     c.append(s('text', { class: 'texte-donne', x: cx, y: yDonne }, `Donne ${etat.donne + 1}`));
-    const carte = etat.pile?.[etat.pile.length - 1];
+    const pile = etat.pile || [];
     const x0 = cx - 11;
     const y0 = cy - 15.5 - (triangle ? 2 : 0);
-    // Sur le carré, le centre est dégagé (noms autour) : la dernière carte y est un peu plus grande.
+    // Sur le carré, le centre est dégagé (noms autour) : les cartes y sont un peu plus grandes.
     const echelle = triangle ? 1 : 1.25;
     const zoom = (el) => (echelle === 1 ? el : s('g', { transform: `translate(${cx} ${cy}) scale(${echelle}) translate(${-cx} ${-cy})` }, el));
-    if (!carte) {
+    if (!pile.length) {
       c.append(zoom(s('rect', { class: 'emplacement-carte', x: x0, y: y0, width: 22, height: 31, rx: 2.4 })));
       return;
     }
+    // Les cartes posées s'accumulent : chacune garde sa place dans le tas (léger décalage et rotation, tirés de
+    // son rang dans la pile, donc stables d'un affichage à l'autre). On dessine les dernières, la plus récente dessus.
+    const yMilieu = y0 + 15.5;
+    const poser = (i, el) => {
+      const hasard = (i * 2654435761) >>> 0;
+      const angle = (((hasard >>> 8) % 19) - 9) * (triangle ? 0.65 : 1);
+      const dx = (((hasard >>> 16) % 7) - 3) * (triangle ? 0.5 : 0.8);
+      const dy = (((hasard >>> 20) % 5) - 2) * (triangle ? 0.45 : 0.6);
+      return s('g', { transform: `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) rotate(${angle} ${cx} ${yMilieu})` }, el);
+    };
+    const dernier = pile.length - 1;
+    for (let i = Math.max(0, dernier - CARTES_VISIBLES + 1); i < dernier; i++) {
+      c.append(s('g', { class: 'carte-dessous', 'aria-hidden': 'true' }, zoom(poser(i, this.faceCarte(pile[i], etat, cx, x0, y0)))));
+    }
+    const g = this.faceCarte(pile[dernier], etat, cx, x0, y0);
+    g.setAttribute('aria-label', `Dernière carte : ${carteCourte(pile[dernier])}, ${pile.length} dans le tas`);
+    // Groupe extérieur sans transformation : c'est lui que l'animation de la carte jouée déplace.
+    this.carteCentre = s('g', { class: 'carte-centre' }, zoom(poser(dernier, g)));
+    c.append(this.carteCentre);
+    const d = etat.dernierCoup;
+    if (d && !triangle) {
+      const qui = joueurs?.[d.siege]?.pseudo || '';
+      const texte = d.coup?.t === 'defausse' ? `défaussée` : tronquer(qui, 12);
+      c.append(s('text', { class: 'texte-donne petit', x: cx, y: yQui }, texte));
+    }
+  }
+
+  /** Face d'une carte posée au centre (22 × 31, coin haut gauche en x0, y0). */
+  faceCarte(carte, etat, cx, x0, y0) {
     const joker = estJoker(carte);
     const rouge = !joker && estRouge(carte);
-    const g = s('g', { class: 'carte-plateau' + (rouge ? ' rouge' : '') + (joker ? ' joker' : ''), 'aria-label': `Dernière carte : ${carteCourte(carte)}` });
+    const g = s('g', { class: 'carte-plateau' + (rouge ? ' rouge' : '') + (joker ? ' joker' : '') });
     g.append(s('rect', { class: 'fond-carte', x: x0, y: y0, width: 22, height: 31, rx: 2.4 }));
     if (joker) {
       g.append(s('text', { class: 'rang-carte joker', x: cx, y: y0 + 7 }, 'JOKER'), s('text', { class: 'symbole-carte', x: cx, y: y0 + 22 }, '★'));
@@ -425,15 +470,7 @@ export class Plateau {
     } else {
       g.append(s('text', { class: 'rang-carte', x: x0 + 2.5, y: y0 + 7.5 }, rangAffiche(carte)), s('text', { class: 'symbole-carte', x: cx, y: y0 + 22 }, symbole(carte)));
     }
-    // Groupe extérieur sans transformation : c'est lui que l'animation de la carte jouée déplace.
-    this.carteCentre = s('g', { class: 'carte-centre' }, zoom(g));
-    c.append(this.carteCentre);
-    const d = etat.dernierCoup;
-    if (d && !triangle) {
-      const qui = joueurs?.[d.siege]?.pseudo || '';
-      const texte = d.coup?.t === 'defausse' ? `défaussée` : tronquer(qui, 12);
-      c.append(s('text', { class: 'texte-donne petit', x: cx, y: yQui }, texte));
-    }
+    return g;
   }
 
   dessinerChoix(choix, positions, siegeVue) {

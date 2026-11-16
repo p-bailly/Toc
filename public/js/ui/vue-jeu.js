@@ -2,7 +2,7 @@
 // « Session » (voir session-locale.js) et interroge le moteur pour tout ce qui est règle.
 //
 // Agencement (comme l'écran de jeu de l'appli Scrabble) : barre du haut, plateau d'un bord à l'autre, main du
-// joueur dans le bac bleu, ligne de consigne, boutons, puis la barre de statut. Sur grand écran, le plateau
+// joueur dans le bac bleu, ligne de consigne (ce qu'il faut faire, à qui le tour), puis les boutons. Sur grand écran, le plateau
 // passe à gauche et le reste forme une colonne à droite.
 
 import { h, remplacer, messageErreur, pluriel, mouvementReduit, lire, ecrire } from './dom.js';
@@ -26,7 +26,7 @@ import {
   coupsLegauxMain,
   rejouerPartie,
 } from '../moteur/index.js';
-import { Plateau, dessinPion } from './plateau.js';
+import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { ouvrirFeuille } from './composants.js';
 import { piRetour, piHistorique, piOk, piAnnuler, piConseil } from './pictos.js';
@@ -74,12 +74,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const main = h('div', { class: 'chevalet main-joueur', role: 'group', 'aria-label': 'Tes cartes' });
   const consigne = h('div', { class: 'apercu consigne', role: 'status', 'aria-live': 'polite' });
   const actions = h('div', { class: 'actions choix-coup' });
-  const statut = h('div', { class: 'statut' });
-  // Ordre des tours (qui joue maintenant, qui ensuite ; pendant l'échange : qui on attend, qui jouera le premier).
-  const ordre = h('div', { class: 'ordre-tours', 'aria-live': 'polite' });
   // Journal visible en permanence sur grand écran (masqué sur téléphone : il reste dans sa feuille).
   const journalPanneau = h('div', { class: 'journal-panneau' });
-  const colonne = h('div', { class: 'colonne-jeu' }, ordre, main, consigne, h('div', { class: 'panneau-bas' }, actions, statut), journalPanneau);
+  const colonne = h('div', { class: 'colonne-jeu' }, main, consigne, h('div', { class: 'panneau-bas' }, actions), journalPanneau);
   const ecran = h('div', { class: 'ecran-jeu' }, barre, zonePlateau, colonne);
   remplacer(racine, ecran);
 
@@ -609,8 +606,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     // Plateau : candidats, cibles, aperçu.
     const choix = calculerChoix(monTour);
     const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
-    plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege, suivant: siegeSuivantAffiche() });
-    rendreOrdre();
+    plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
     rendreJournalPanneau();
     boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
     boutonConseil.hidden = !conseilsDispo || !lireReglages().conseilsIA;
@@ -636,65 +632,6 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     main.classList.toggle('inactive', !aMoi());
 
     rendreConsigne(monTour, jouable, actifCouleur);
-    rendreStatut(actifCouleur);
-  }
-
-  /** Siège qui jouera ensuite (pendant l'échange : celui qui jouera le premier). */
-  function siegeSuivantAffiche() {
-    const { etat } = vue;
-    if (etat.phase === 'echange') return etat.tour;
-    if (etat.phase === 'jeu') return (etat.tour + 1) % nb();
-    return -1;
-  }
-
-  /** « toi » ou le prénom. */
-  function nomCourt(si) {
-    return si === vue.siege ? 'toi' : vue.joueurs[si]?.pseudo || `Joueur ${si + 1}`;
-  }
-
-  /**
-   * Bandeau de l'ordre des tours : « C'est à Léo — ensuite : Camille, Inès, toi » ; pendant l'échange,
-   * « Échange : on attend Léo et Inès » et « Premier à jouer : Camille, puis Inès, puis toi ».
-   */
-  function rendreOrdre() {
-    const { etat, siege } = vue;
-    if (etat.phase === 'fini') {
-      remplacer(ordre);
-      ordre.hidden = true;
-      return;
-    }
-    ordre.hidden = false;
-    const n = nb();
-    const suite = Array.from({ length: n }, (_, k) => (etat.tour + k) % n);
-    const puce = (si, i) =>
-      h(
-        'span',
-        { class: 'puce-ordre' + (i === 0 ? ' premier' : '') + (si === siege ? ' moi' : '') + (etat.phase === 'echange' && etat.echanges[si] ? ' a-donne' : ''), 'data-siege': si },
-        h('span', { class: 'point', style: { background: couleurSiege(si) } }),
-        nomCourt(si) === 'toi' ? 'toi' : nomCourt(si),
-        etat.phase === 'echange' && etat.echanges[si] ? ' ✓' : '',
-      );
-    const lignes = [];
-    if (etat.phase === 'echange') {
-      const attendus = suite.filter((si) => !etat.echanges[si]).map(nomCourt);
-      lignes.push(h('div', { class: 'ordre-ligne note-ordre' }, h('b', {}, 'Échange : '), attendus.length ? `on attend ${enumerer(attendus)}` : 'tout le monde a donné'));
-      lignes.push(h('div', { class: 'ordre-ligne' }, h('span', { class: 'titre-ordre' }, 'Premier à jouer :'), suite.map((si, i) => [i ? h('span', { class: 'sep' }, 'puis') : null, puce(si, i)])));
-      ordre.setAttribute('aria-label', `Échange : ${attendus.length ? 'on attend ' + enumerer(attendus) : 'tout le monde a donné'}. Premier à jouer : ${suite.map(nomCourt).join(', puis ')}.`);
-    } else {
-      const [actuel, ...ensuite] = suite;
-      lignes.push(
-        h(
-          'div',
-          { class: 'ordre-ligne' },
-          h('span', { class: 'titre-ordre' }, 'C’est à'),
-          puce(actuel, 0),
-          h('span', { class: 'sep' }, 'ensuite :'),
-          ensuite.map((si, i) => puce(si, i + 1)),
-        ),
-      );
-      ordre.setAttribute('aria-label', `C’est à ${nomCourt(actuel)}, ensuite : ${ensuite.map(nomCourt).join(', ')}.`);
-    }
-    remplacer(ordre, lignes);
   }
 
   /** Journal toujours visible sur grand écran (les 40 derniers coups). */
@@ -809,7 +746,13 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     }
     if (resume && resume.n === vue.historique?.length && !enPresentation) lignes.push(h('span', { class: 'note resume-retard' }, resume.texte));
     if (avis) lignes.push(h('span', { class: 'avis-jeu' + (avis.erreur ? ' erreur' : ''), role: avis.erreur ? 'alert' : null }, avis.texte));
+    // À qui le tour, quand ce n'est pas à moi d'agir.
+    const ligneTour = () =>
+      etat.tour === siege
+        ? h('span', { class: 'tour-de' }, h('b', {}, 'C’est à toi de jouer.'))
+        : h('span', { class: 'tour-de' }, 'C’est à ', puceCouleur(etat.tour), ' ', h('b', {}, nomSiege(etat.tour)), ' de jouer.');
     if (enPresentation) {
+      if (etat.phase === 'jeu') lignes.push(ligneTour());
       if (restants > 0) {
         boutons.push(
           h(
@@ -844,10 +787,10 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         );
       } else {
         const attendus = Array.from({ length: nb() }, (_, si) => si).filter((si) => !etat.echanges[si]).map(nomSiege);
-        lignes.push(h('span', {}, `Tu as donné ${leCarte(vue.don)} à ${nomDest}. `, attendus.length ? `En attente de ${enumerer(attendus)}.` : ''));
+        lignes.push(h('span', {}, `Tu as donné ${leCarte(vue.don)} à ${nomDest}. `, attendus.length ? `On attend ${enumerer(attendus)}.` : ''));
       }
     } else if (!monTour) {
-      lignes.push(h('span', {}, 'En attente de ', h('b', {}, nomSiege(etat.tour)), '…'));
+      lignes.push(ligneTour());
     } else if (!jouable) {
       lignes.push(h('b', { class: 'ecart-neg' }, 'Aucune carte jouable : défausse une carte.'));
       boutons.push(
@@ -950,55 +893,6 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const par = new Map();
     for (const q of pions) par.set(q >> 2, (par.get(q >> 2) || 0) + 1);
     return [...par].map(([o, n]) => `${pluriel(n, 'pion')} ${o === vue.siege ? 'à toi' : 'de ' + nomSiege(o)}`).join(', ');
-  }
-
-  function rendreStatut(actifCouleur) {
-    const { etat, siege } = vue;
-    const rentres = (si) => etat.pions.slice(si * 4, si * 4 + 4).filter((p) => p >= ALLEE).length;
-    if (nb() === 3) {
-      // Chacun pour soi : l'avancement de chaque joueur, dans l'ordre de jeu à partir de soi.
-      const ordre = [siege, (siege + 1) % 3, (siege + 2) % 3];
-      remplacer(
-        statut,
-        h('div', { class: 'pastille-couleur', title: 'Tes pions' }, s('svg', { viewBox: '-5 -5 10 10', width: 30, height: 30, 'aria-hidden': 'true' }, dessinPionMini(siege))),
-        h(
-          'div',
-          { class: 'milieu avancement-3' },
-          ordre.map((si) =>
-            h(
-              'div',
-              { class: 'ligne-avancement' },
-              h('span', { class: 'texte' + (si === siege ? '' : ' note') }, puceCouleur(si), ` ${nomSiege(si)} · ${rentres(si)}/4`),
-              h('div', { class: 'jauge' }, h('div', { style: { width: `${(rentres(si) / 4) * 100}%`, background: couleurSiege(si) } })),
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-    const nous = rentres(siege) + rentres(partenaire(siege));
-    const eux = rentres((siege + 1) % 4) + rentres((siege + 3) % 4);
-    const p = partenaire(siege);
-    remplacer(
-      statut,
-      h(
-        'div',
-        { class: 'pastille-couleur', title: 'Tes pions' },
-        s('svg', { viewBox: '-5 -5 10 10', width: 30, height: 30, 'aria-hidden': 'true' }, dessinPionMini(actifCouleur)),
-      ),
-      h(
-        'div',
-        { class: 'milieu' },
-        h('div', { class: 'texte' }, h('b', {}, `Toi et ${vue.joueurs[p]?.pseudo || 'partenaire'}`), ` · ${nous}/8 rentrés`),
-        h('div', { class: 'jauge' }, h('div', { style: { width: `${(nous / 8) * 100}%` } })),
-        h('div', { class: 'texte note' }, `Adversaires · ${eux}/8 rentrés`),
-        h('div', { class: 'jauge adverse' }, h('div', { style: { width: `${(eux / 8) * 100}%` } })),
-      ),
-    );
-  }
-
-  function dessinPionMini(si) {
-    return dessinPion(si);
   }
 
   // ─── Conseils de l'IA (entraînement) ──────────────────────────────────────

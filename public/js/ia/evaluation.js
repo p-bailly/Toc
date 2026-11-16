@@ -250,7 +250,7 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
       let victime = -1;
       for (let a = c * 4; a < c * 4 + 4; a++) {
         const pa = pions[a];
-        if (pa < 0 || pa >= N || pa === c * 16) continue;
+        if (pa < 0 || pa >= N) continue; // son propre pion peut partir de sa case de départ
         for (let b = 0; b < nP; b++) {
           if (memeCamp(pions, b >> 2, c)) continue;
           const pb = pions[b];

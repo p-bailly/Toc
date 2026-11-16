@@ -278,7 +278,7 @@ function coupsRang(pions, s, carte, ir, cinqAdverse, sortie, limiteSept, occ) {
     }
     case R_V: {
       for (let a = c * 4; a < c * 4 + 4; a++) {
-        if (!echangeable(pions, a)) continue;
+        if (pions[a] < 0 || pions[a] >= pions.length * 4) continue; // le sien : même protégé sur sa case de départ
         for (let b = 0; b < pions.length; b++) {
           if (b >> 2 !== c && echangeable(pions, b)) {
             const np = pions.slice();

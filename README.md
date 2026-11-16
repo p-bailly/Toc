@@ -44,8 +44,9 @@ Communes aux deux modes :
   (4 cases) s'ouvre sur la case située **3 cases avant la sortie**, à droite vu du joueur : un pion sur sa
   sortie qui recule de 4 puis joue un 5 arrive au fond de l'allée. La base est derrière la case de sortie.
   Repères de comptage sur la 6e et la 12e case après chaque sortie.
-- **Pion protégé** sur sa case de sortie : ni dépassé, ni capturé, ni échangé, ni poussé par un « 5 adverse » ;
-  seule la sortie d'un pion de la même couleur le renvoie.
+- **Pion protégé** sur sa case de sortie : ni dépassé, ni capturé, ni échangé par un autre joueur, ni poussé par
+  un « 5 adverse ». Son propriétaire peut l'échanger avec son valet, et la sortie d'un pion de la même couleur
+  le renvoie.
 - **7** : fractionnable, toujours dépensé en entier (sinon injouable), capture tout pion dépassé, y compris
   les siens.
 - **Allée** : compte exact, pas de dépassement, entrée jamais obligatoire.

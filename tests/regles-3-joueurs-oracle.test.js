@@ -116,7 +116,8 @@ const O = {
       case 'echange': {
         const { pion: x, cible: y } = coup;
         if (r !== 'V' || !estPion(x) || !estPion(y) || a(x) !== siege || a(y) === siege) return null;
-        if (!libre(x) || !libre(y)) return null;
+        // Le sien peut partir de sa case de départ (protégé) ; la cible ne doit pas être protégée.
+        if (!(pions[x] >= 0 && pions[x] < NC) || !libre(y)) return null;
         const np = pions.slice();
         [np[x], np[y]] = [pions[y], pions[x]];
         return np;
