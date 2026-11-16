@@ -12,8 +12,9 @@ permissions:
   pages: write
   id-token: write
 
+# Un groupe par branche : un push sur une branche de travail n'annule pas la publication en cours de main.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
