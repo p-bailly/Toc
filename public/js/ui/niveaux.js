@@ -17,17 +17,14 @@ export const forceNiveau = (id) => {
   const i = NIVEAUX.findIndex((n) => n.id === niveauValide(id));
   return NIVEAUX.length > 1 ? 1 + Math.round((i * 4) / (NIVEAUX.length - 1)) : 5;
 };
-/** Niveau affiché : des étoiles, de 1 à 5 (« ★★★☆☆ »). */
-export const nomNiveau = (id) => {
-  const n = forceNiveau(id);
-  return '★'.repeat(n) + '☆'.repeat(5 - n);
-};
+/** Niveau affiché : de 1 à 5 étoiles pleines (« ★★★ »), sans étoiles vides. */
+export const nomNiveau = (id) => '★'.repeat(forceNiveau(id));
 /** Le même, en toutes lettres pour les lecteurs d'écran : « 3 étoiles sur 5 ». */
 export const niveauEnLettres = (id) => {
   const n = forceNiveau(id);
   return `${n} étoile${n > 1 ? 's' : ''} sur 5`;
 };
-/** Nom d'une place d'IA avec son niveau : « IA Est · ★★★★☆ ». */
+/** Nom d'une place d'IA avec son niveau : « IA Est · ★★★★ ». */
 export const nomAvecNiveau = (place) => (place?.ia ? `${place.pseudo || 'IA'} · ${nomNiveau(place.niveau)}` : place?.pseudo || '');
 
 // ─── Mémoire des derniers choix ─────────────────────────────────────────────

@@ -15,7 +15,7 @@ import { lirePartiesFinies, enregistrerPartieFinie, supprimerPartieFinie, bilanC
 const NOM_MODE = { 4: '2 contre 2', 3: '3 joueurs' };
 const pourcent = (n, total) => (total ? Math.round((n / total) * 100) + ' %' : '–');
 const defaites = (l) => l.parties - l.victoires;
-/** « 2 contre 2 · ★★★★☆ » : le mode et la force des IA adverses. */
+/** « 2 contre 2 · ★★★★ » : le mode et la force des IA adverses. */
 const titreMode = (nb, niveau) => [NOM_MODE[nb], h('span', { class: 'sep' }, ' · '), h('span', { class: 'etoiles', 'aria-label': 'IA ' + niveauEnLettres(niveau) }, nomNiveau(niveau))];
 
 /** Les parties terminées encore posées dans la sauvegarde de chaque mode entrent dans l'historique. */
