@@ -277,20 +277,27 @@ test('7 : le reste profite au partenaire une fois ses propres pions rentrés', (
   assert.deepEqual(aide.options.map((o) => o.pion + ':' + o.pas), ['8:1', '8:2', '8:3', '8:4']);
 });
 
-test('7 : la victoire dispense d\'utiliser les points restants', () => {
+test('7 : les 7 points sont obligatoires, même pour gagner', () => {
   // siège 2 fini ; le dernier pion du siège 0 est à 3 pas de l'allée (entrée 61)
   const e = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: a(0), 9: a(1), 10: a(2), 11: a(3) });
   const coup = { t: 'sept', carte: '7C', etapes: [{ pion: 3, pas: 3, allee: true }] };
-  assert.equal(legal(e, 0, coup), true);
-  assert.equal(appliquerCoup(e, 0, coup).gagnant, 0);
-  const aide = etapesSeptPossibles(e, 0, coup.etapes);
-  assert.deepEqual([aide.reste, aide.complet, aide.options.length], [4, true, 0]);
-  assert.equal(etapesSeptPossibles(e, 0).complet, false);
-  // la carte est jouable même si le pion ne peut rien faire d'autre des 7 points
-  assert.ok(coupsLegaux(e, 0, '7C').some((c) => c.etapes.length === 1 && c.etapes[0].pas === 3));
-  // partie déjà terminée : aucun 7 « vide » n'est proposé
-  const fin = appliquerCoup(e, 0, coup);
-  for (const c of coupsLegaux(fin, 0, '7C')) assert.ok(c.etapes.length > 0);
+  assert.equal(legal(e, 0, coup), false);
+  // seul 7 possible : passer l'entrée et repartir pour un tour
+  const coups = coupsLegaux(e, 0, '7C');
+  assert.equal(coups.length, 1);
+  assert.equal(apercuCoup(e, 0, coups[0]).pions[3], 2);
+  const aide = etapesSeptPossibles(e, 0);
+  assert.equal(aide.complet, false);
+  assert.ok(aide.options.every((o) => !o.allee));
+  // dernier pion à 4 cases du fond de l'allée (une case avant l'entrée : 5 pas, pas 7) : 7 injouable avec lui
+  const f = etat({ 0: a(2), 1: a(1), 2: a(0), 3: 60, 8: a(0), 9: a(1), 10: a(2), 11: a(3) });
+  assert.ok(coupsLegaux(f, 0, '7C').every((c) => apercuCoup(f, 0, c).pions[3] < 64));
+  // en revanche un 7 dépensé en entier peut faire gagner
+  const g = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 55, 8: a(0), 9: a(1), 10: a(2), 11: a(3) });
+  const gagnant = { t: 'sept', carte: '7C', etapes: [{ pion: 3, pas: 7, allee: true }] };
+  assert.equal(legal(g, 0, gagnant), true);
+  assert.equal(appliquerCoup(g, 0, gagnant).gagnant, 0);
+  assert.equal(etapesSeptPossibles(g, 0, gagnant.etapes).complet, true);
 });
 
 test('etapesSeptPossibles ne propose que des étapes qui permettent de finir le 7', () => {

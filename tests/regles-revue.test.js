@@ -547,22 +547,16 @@ test('7 : le reste va au partenaire une fois ses pions rentrés (pendant le 7), 
   }
 });
 
-test('DÉCISION : on peut gagner avec un 7 même s\'il reste des points inutilisables', () => {
+test('DÉCISION : pas de victoire par un 7 dont le reste ne peut plus servir', () => {
   // Siège 0 : trois pions rentrés, le quatrième en 59 (3 pas pour rentrer en a(0)).
-  // Partenaire (siège 2) : déjà fini. Le 7 fait gagner ; les 4 points restants sont perdus.
-  // (Décision du propriétaire : la victoire l'emporte sur « utiliser les 7 points en entier ».)
+  // Partenaire (siège 2) : déjà fini. Le 7 qui ferait gagner laisse 4 points inutilisables :
+  // il est interdit (décision du propriétaire : le 7 doit toujours être dépensé en entier),
+  // et s'il est la seule carte jouable, il oblige à repartir pour un tour.
   const e = etatTourne(0, { 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: a(0), 9: a(1), 10: a(2), 11: a(3) });
-  const gagnant = { t: 'sept', carte: '7C', etapes: [{ pion: 3, pas: 3, allee: true }] };
-  assert.equal(validerCoup(e, 0, gagnant), null);
-  const n = appliquerCoup(e, 0, gagnant);
-  assert.equal(n.phase, 'fini');
-  assert.equal(n.gagnant, 0);
-  // deux issues : gagner, ou passer l'entrée et continuer sur le circuit
-  const finals = coupsLegaux(e, 0, '7C').map((c) => apercuCoup(e, 0, c).pions[3]).sort((x, y) => x - y);
-  assert.deepEqual(finals, [2, a(0)]);
-  // sans victoire à la clé, les 7 points restent obligatoires
-  const f = etatTourne(0, { 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: a(0), 9: a(1), 10: a(2) });
-  assert.notEqual(validerCoup(f, 0, gagnant), null);
+  assert.notEqual(validerCoup(e, 0, { t: 'sept', carte: '7C', etapes: [{ pion: 3, pas: 3, allee: true }] }), null);
+  const coups = coupsLegaux(e, 0, '7C');
+  assert.equal(coups.length, 1); // seul coup : passer l'entrée et continuer sur le circuit
+  assert.equal(apercuCoup(e, 0, coups[0]).pions[3], 2);
 });
 
 test('AMBIGUÏTÉ : le 7 ne peut servir au partenaire tant que ses propres pions ne sont pas rentrés', () => {

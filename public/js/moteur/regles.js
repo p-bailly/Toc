@@ -21,9 +21,9 @@
 //    peut le dépasser ni s'y arrêter (7 et 4 compris), il ne peut être ni échangé ni déplacé
 //    par un adversaire (option « 5 adverse »). Seule la sortie d'un pion de la même couleur
 //    le renvoie à la base.
-//  - 7 : tous les points doivent être utilisés, sauf si le déplacement fait gagner la partie
-//    (les points restants sont alors perdus). Le reste ne peut servir aux pions du partenaire
-//    qu'une fois son propre quatrième pion rentré.
+//  - 7 : les 7 points doivent toujours être utilisés en entier, même pour gagner : si le dernier
+//    pion est à 4 cases du fond de l'allée, le 7 n'est pas jouable avec lui. Le reste ne peut
+//    servir aux pions du partenaire qu'une fois son propre quatrième pion rentré.
 
 import { rang, estCarte, tailleDonne } from './cartes.js';
 import { BASE, ALLEE, NB_CASES, NB_PIONS, LONGUEUR_ALLEE, caseDepart, caseEntree, partenaire, equipe } from './plateau.js';
@@ -76,11 +76,6 @@ export function clonerEtat(etat) {
 function fini(pions, siege) {
   const b = siege * 4;
   return pions[b] >= ALLEE && pions[b + 1] >= ALLEE && pions[b + 2] >= ALLEE && pions[b + 3] >= ALLEE;
-}
-
-/** L'équipe du joueur a-t-elle rentré ses 8 pions ? */
-function gagne(pions, siege) {
-  return fini(pions, siege) && fini(pions, partenaire(siege));
 }
 
 /** Le joueur a-t-il rentré ses 4 pions ? */
@@ -285,7 +280,7 @@ function jouerSurPlateau(etat, siege, coup) {
         poser(e.pion, res.pos, res);
         reste -= e.pas;
       }
-      if (reste !== 0 && !gagne(pions, siege)) return null; // tous les points, sauf si la partie est gagnée
+      if (reste !== 0) return null; // les 7 points doivent toujours être utilisés en entier
       break;
     }
     default:
@@ -374,14 +369,14 @@ function fusionnerEtapes(etapes) {
   return fusion;
 }
 
-/** Toutes les façons distinctes (par plateau final) de jouer un 7 (en entier, ou jusqu'à la victoire). */
+/** Toutes les façons distinctes (par plateau final) de jouer un 7 en entier. */
 function coupsSept(etat, siege, carte, coups) {
   const finals = new Set();
   const vus = new Set();
   const etapes = [];
   const explorer = (pions, reste) => {
     const cle = clePlateau(pions);
-    if (reste === 0 || (reste < 7 && gagne(pions, siege))) {
+    if (reste === 0) {
       if (!finals.has(cle)) {
         finals.add(cle);
         coups.push({ t: 'sept', carte, etapes: fusionnerEtapes(etapes) });
@@ -401,7 +396,7 @@ function coupsSept(etat, siege, carte, coups) {
 }
 
 function septCompletable(pions, siege, reste, memo) {
-  if (reste === 0 || gagne(pions, siege)) return true;
+  if (reste === 0) return true;
   const cle = clePlateau(pions) + '|' + reste;
   if (memo.has(cle)) return memo.get(cle);
   let ok = false;
@@ -420,7 +415,7 @@ function septCompletable(pions, siege, reste, memo) {
  * @param etapes  étapes déjà choisies : [{ pion, pas, allee }, …]
  * @returns {{reste:number, complet:boolean, options:{pion:number, pas:number, allee:boolean, vers:number, captures:number[]}[]}|null}
  *          reste : points non encore utilisés ;
- *          complet : le 7 peut être joué tel quel (reste = 0, ou partie gagnée avec des points restants) ;
+ *          complet : les 7 points sont utilisés, le coup peut être joué (reste = 0) ;
  *          options : étapes suivantes permettant encore de terminer le 7 ;
  *          null si les étapes déjà choisies sont illégales.
  */
@@ -450,7 +445,7 @@ export function etapesSeptPossibles(etat, siege, etapes = []) {
       });
     }
   }
-  return { reste, complet: reste === 0 || (reste < 7 && gagne(pions, siege)), options };
+  return { reste, complet: reste === 0, options };
 }
 
 /**
