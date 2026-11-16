@@ -387,6 +387,17 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       return;
     }
     if (etat.phase !== 'jeu' || etat.tour !== vue.siege) return;
+    if (coupAuto && coupPret === coupAuto) {
+      // Seul coup possible en attente : toucher sa carte le joue tout de suite ; une autre carte reprend la main.
+      const enAttente = coupAuto;
+      clearTimeout(minuterieAuto);
+      coupAuto = null;
+      if (c === enAttente.carte) {
+        envoyer().then((ok) => ok && annoncer(`Joué : ${resumeCoup(enAttente)}`));
+        return;
+      }
+      avis = null;
+    }
     if (carte === c) {
       reinitialiser();
       rendre();
