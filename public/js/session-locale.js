@@ -1,4 +1,5 @@
 // Session de jeu locale : un humain (siège 0) contre trois IA, sans réseau.
+// Option nbJoueurs: 3 : un humain (siège 0) contre deux IA, chacun pour soi.
 //
 // ─── Interface « Session » ────────────────────────────────────────────────────
 // SessionLocale (ici) et la session réseau (reseau/api.js → ouvrirSession) exposent
@@ -26,10 +27,18 @@
 //     recu,          carte reçue du partenaire (connue une fois la phase 'jeu' commencée), ou null
 //     historique,    [{ n, siege, coup, captures }] du plus ancien au plus récent
 //   }
+//
+// À 3 joueurs (options.nbJoueurs = 3, ou partie sauvegardée à 3) : l'interface est la même,
+// mais `joueurs` a 3 éléments (sièges 0 à 2), etat.reglages.nbJoueurs vaut 3, `don` est la
+// carte donnée au voisin de la donne (destinataireDon dans moteur/plateau.js) et `recu` la carte
+// reçue de l'autre voisin (donneurDon). Dans donneesAnalyse, donnes[d].donnee / .recue sont ces
+// mêmes cartes, et reglages contient nbJoueurs: 3 (rejouerPartie le relit).
+// Les IA du jeu à 3 sont provisoires (ia/ia3.js).
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { nouvellePartie, donnerCarte, jouerCoup, partenaire } from './moteur/index.js';
+import { nouvellePartie, donnerCarte, jouerCoup, donneurDon, nombreJoueurs } from './moteur/index.js';
 import { choisirCoup, choisirDon } from './ia/ia.js';
+import { choisirCoup3, choisirDon3 } from './ia/ia3.js';
 
 const CLE_PAR_DEFAUT = 'toc.partieLocale';
 
@@ -37,6 +46,7 @@ export class SessionLocale {
   /**
    * @param {Object} [options]
    * @param {Object} [options.reglages]   { cinqAdverse }
+   * @param {number} [options.nbJoueurs]  4 (défaut) ou 3 (1 humain + 2 IA, chacun pour soi)
    * @param {string} [options.pseudo]     pseudo du joueur humain
    * @param {string} [options.nom]        nom de la partie
    * @param {number} [options.delaiIA]    délai (ms) avant chaque action d'une IA
@@ -63,13 +73,21 @@ export class SessionLocale {
       this.partie = sauvegarde.partie;
     } else {
       this.nom = options.nom || "Partie d'entraînement";
-      this.joueurs = [
-        { pseudo: options.pseudo || 'Vous', ia: false },
-        { pseudo: 'IA Est', ia: true },
-        { pseudo: 'IA Partenaire', ia: true },
-        { pseudo: 'IA Ouest', ia: true },
-      ];
-      this.partie = nouvellePartie(options.reglages || {}, this.rng);
+      const a3 = options.nbJoueurs === 3;
+      this.joueurs = a3
+        ? [
+            { pseudo: options.pseudo || 'Vous', ia: false },
+            { pseudo: 'IA Gauche', ia: true },
+            { pseudo: 'IA Droite', ia: true },
+          ]
+        : [
+            { pseudo: options.pseudo || 'Vous', ia: false },
+            { pseudo: 'IA Est', ia: true },
+            { pseudo: 'IA Partenaire', ia: true },
+            { pseudo: 'IA Ouest', ia: true },
+          ];
+      const reglages = a3 ? { ...(options.reglages || {}), nbJoueurs: 3 } : options.reglages || {};
+      this.partie = nouvellePartie(reglages, this.rng);
       this.sauvegarder();
     }
     this.planifierIA();
@@ -116,7 +134,7 @@ export class SessionLocale {
       etat,
       main: mains[s].slice(),
       don: dons[s],
-      recu: etat.phase === 'echange' ? null : dons[partenaire(s)],
+      recu: etat.phase === 'echange' ? null : dons[donneurDon(etat.donne, s, nombreJoueurs(etat))],
       historique,
     };
   }
@@ -160,20 +178,21 @@ export class SessionLocale {
 
   faireJouerIA() {
     const { etat, mains, dons } = this.partie;
+    const a3 = nombreJoueurs(etat) === 3;
     if (etat.phase === 'echange') {
-      for (let s = 0; s < 4; s++) {
+      for (let s = 0; s < etat.echanges.length; s++) {
         if (this.joueurs[s].ia && !this.partie.etat.echanges[s]) {
-          const carte = choisirDon(this.partie.etat, s, this.partie.mains[s], { rng: this.rng });
+          const carte = (a3 ? choisirDon3 : choisirDon)(this.partie.etat, s, this.partie.mains[s], { rng: this.rng });
           this.partie = donnerCarte(this.partie, s, carte);
         }
       }
     } else if (etat.phase === 'jeu' && this.joueurs[etat.tour].ia) {
       const s = etat.tour;
-      const coup = choisirCoup(etat, s, mains[s], {
+      const coup = (a3 ? choisirCoup3 : choisirCoup)(etat, s, mains[s], {
         rng: this.rng,
         budgetMs: this.budgetIA,
         carteDonnee: dons[s],
-        carteRecue: dons[partenaire(s)],
+        carteRecue: dons[donneurDon(etat.donne, s, nombreJoueurs(etat))],
       });
       this.partie = jouerCoup(this.partie, s, coup, this.rng);
     } else {
@@ -185,12 +204,13 @@ export class SessionLocale {
   async donneesAnalyse() {
     const { etat, historique, archives } = this.partie;
     const s = this.siege;
-    const donnes = (archives || []).map((a) =>
+    const n = nombreJoueurs(etat);
+    const donnes = (archives || []).map((a, d) =>
       a
         ? {
             distribuees: a.mains[s].slice(),
             donnee: a.dons[s],
-            recue: a.dons.every(Boolean) ? a.dons[partenaire(s)] : null,
+            recue: a.dons.every(Boolean) ? a.dons[donneurDon(d, s, n)] : null,
           }
         : null,
     );
