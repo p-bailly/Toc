@@ -19,10 +19,10 @@ export function sauvegardeLocale(nbJoueurs = 4) {
 }
 
 /** Prépare une nouvelle partie d'entraînement (la suivante ouverte en sera une neuve). */
-export function nouvellePartieLocale(reglages, nbJoueurs = 4) {
+export function nouvellePartieLocale(reglages, nbJoueurs = 4, niveaux = null) {
   const mode = MODES_LOCAUX[nbJoueurs];
   SessionLocale.effacerSauvegarde(localStorage, mode.cle);
-  ecrire(mode.options, { cinqAdverse: !!reglages.cinqAdverse });
+  ecrire(mode.options, { cinqAdverse: !!reglages.cinqAdverse, niveaux: niveaux || null });
 }
 
 export function afficher(racine, app, { reste }) {
@@ -39,6 +39,8 @@ export function afficher(racine, app, { reste }) {
       reprendre: true,
       nbJoueurs,
       reglages: { cinqAdverse: !!options.cinqAdverse },
+      // Force des IA (un niveau par siège) ; une partie reprise garde ceux de sa sauvegarde.
+      niveaux: options.niveaux || undefined,
       pseudo: app.joueur?.pseudo || 'Toi',
       delaiIA: app.rapide ? 40 : 900,
       budgetIA: app.rapide ? 15 : 600,
@@ -61,7 +63,9 @@ export function afficher(racine, app, { reste }) {
       rejouer: () => {
         const reglages = vraie.partie?.etat?.reglages || {};
         fermer();
-        nouvellePartieLocale(reglages, nbJoueurs);
+        // Rejouer garde la force des IA de la partie terminée.
+        const niveaux = (vraie.joueurs || []).map((j) => (j.ia ? j.niveau || null : null));
+        nouvellePartieLocale(reglages, nbJoueurs, niveaux);
         ouvrir();
       },
     });

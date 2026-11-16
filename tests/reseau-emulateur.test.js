@@ -243,6 +243,13 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(updateDoc(ref(A), { invites: [B], pseudosInvites: { [B]: 'Bruno' }, majLe: serverTimestamp() })); // inviter un membre
   await assertSucceeds(updateDoc(ref(A), { invites: [X], pseudosInvites: { [X]: 'Intrus' }, majLe: serverTimestamp() }));
   await assertSucceeds(getDoc(ref(X))); // l'invité lit la partie
+  // Niveau des IA : inconnu refusé ; place sans niveau (parties d'avant) acceptée ; l'hôte seul le change.
+  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'invincible' }], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 3 }], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'expert' }], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'maitre' }], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { statut: 'encours', majLe: serverTimestamp() })); // lancer sans être hôte
   await assertFails(deleteDoc(ref(B)));
@@ -256,6 +263,7 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   lancer.update(ref(A), { statut: 'encours', etat: etat0, historique: [], enAttente: [A, B, C], invites: [], majLe: serverTimestamp() });
   await assertSucceeds(lancer.commit());
   await assertFails(getDoc(ref(X))); // non-membre : partie en cours illisible
+  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() })); // figé après le lancement
   await assertFails(getDocs(query(collection(db(X), 'parties'), where('uids', 'array-contains', A))));
   await assertSucceeds(getDocs(query(collection(db(A), 'parties'), where('uids', 'array-contains', A))));
 

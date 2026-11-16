@@ -3,6 +3,7 @@
 import { h, remplacer } from './dom.js';
 import { entete } from './composants.js';
 import { dessinCarte } from './carte.js';
+import { NIVEAUX } from './niveaux.js';
 
 const section = (titre, ...contenu) => [h('h2', {}, titre), h('div', { class: 'carte regles' }, contenu)];
 const liste = (...items) => h('ul', {}, items.map((i) => h('li', {}, i)));
@@ -82,6 +83,7 @@ export function afficher(racine) {
           'Valet : touche ton pion, puis le pion à échanger. 7 : avance pas à pas ; le compteur indique les points restants et les pions qui retourneront à la base ; le 7 part quand le dernier point est placé.',
           'Joker : choisis d’abord la carte qu’il copie, puis joue comme avec cette carte.',
           'En ligne, la partie attend le joueur dont c’est le tour, sans limite de temps : l’appli te prévient quand c’est à toi.',
+          `Force des IA : contre l’IA, tu choisis le niveau des adversaires (et de ton partenaire en 2 contre 2) ; en ligne, l’hôte choisit celui de chaque IA. Du plus faible au plus fort : ${NIVEAUX.map((n) => n.nom).join(', ')}. Les conseils et l’analyse utilisent toujours la meilleure force.`,
           'Conseils de l’IA (désactivés au départ, à activer dans les Réglages) : dans les parties contre l’IA, un bouton « Conseil » propose les meilleurs coups avec leurs raisons ; dans l’analyse de fin de partie, le choix de l’IA et le bilan de tes coups. Jamais pendant une partie en ligne.',
         ),
       ),

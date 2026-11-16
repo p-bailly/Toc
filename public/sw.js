@@ -4,7 +4,7 @@
 // indéfiniment). Seules les requêtes GET de même origine passent ici : Firebase, Firestore, gstatic, googleapis
 // et les autres domaines ne sont jamais interceptés.
 // Incrémenter VERSION quand la liste de la coquille change.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const COQUE = `toc-coque-${VERSION}`;
 
 const FICHIERS = [
@@ -51,6 +51,7 @@ const FICHIERS = [
   './js/ui/analyse-boucle.js',
   './js/ui/analyse-worker.js',
   './js/ui/analyseur.js',
+  './js/ui/niveaux.js',
 ];
 
 self.addEventListener('install', (event) => {

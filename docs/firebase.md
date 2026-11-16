@@ -63,7 +63,8 @@ pseudos recopiés dans ses parties (`joueurs[i].pseudo`) ne changent pas. Le nom
   visible), `icone`, `verrouille`, `stats { jouees, gagnees }`, `comptees` (parties déjà comptées),
   `creeLe`.
 - `parties/{code}` : le code d'invitation (6 caractères sans 0/O/1/I/L) est l'identifiant. Nom,
-  hôte, statut, réglages, places (4, ou 3), `uids`, invitations, état public du moteur, historique
+  hôte, statut, réglages, places (4, ou 3 ; une IA a son `niveau` de force : `debutant`, `amateur`,
+  `confirme`, `expert` ou `champion`, absent = champion), `uids`, invitations, état public du moteur, historique
   des coups (rejouable par `rejouerPartie`), `enAttente` (qui doit jouer).
 - `parties/{code}/donnes/{donne}_{siège}` et `…/dons/{donne}_{siège}` : cartes distribuées et carte
   donnée (au partenaire ; au voisin à 3), **jamais modifiées** une fois écrites. 12 documents de
@@ -85,7 +86,8 @@ Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le mot
 - une partie en cours n'est lisible que par ses membres (et ses invités) ; seules ses parties et ses
   invitations se listent ;
 - en salle d'attente, chacun ne déplace que sa propre place ; seul l'hôte place des IA, invite, lance
-  ou supprime ; joueurs, hôte, code et réglages sont figés après le lancement ;
+  ou supprime, et choisit le niveau des IA (un des cinq niveaux) ; joueurs (niveaux compris), hôte,
+  code et réglages sont figés après le lancement ;
 - un coup n'est écrit que par le joueur dont c'est le tour (ou par un membre pour une IA), avec un
   numéro de coup qui augmente exactement de 1, un historique qui ne fait que s'allonger, et une
   structure d'état cohérente (tour suivant, donne, pile, échange…) ;

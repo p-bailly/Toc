@@ -9,7 +9,10 @@
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
 
 import { donneurDon, nombreJoueurs } from '../moteur/index.js';
-import { ConflitIA, ErreurToc, chemins, enErreurToc, nbJoueursDe, reglagesPartie, siegeDe } from './commun.js';
+import { ConflitIA, ErreurToc, chemins, enErreurToc, nbJoueursDe, niveauDe, reglagesPartie, siegeDe } from './commun.js';
+
+/** Joueur tel que la vue le montre : { pseudo, ia } et, pour une IA, son niveau. */
+const vueJoueur = (j) => (j?.ia ? { pseudo: j.pseudo ?? '?', ia: true, niveau: niveauDe(j) } : { pseudo: j?.pseudo ?? '?', ia: false });
 import { comptabiliserPartie } from './comptes.js';
 import { chargerMain, creerLecteurMains, donnerCarte, jouerCoup } from './parties.js';
 
@@ -23,9 +26,11 @@ export class SessionReseau {
     this.ctx = ctx;
     this.id = id;
     this.ia = options.ia;
-    this.delaiIA = options.delaiIA ?? 900;
+    // Rythme des IA (voir planifierIA) : 0,7 s de pause avant chaque action d'une IA pour le client qui
+    // vient d'agir, plus son calcul (budget 0,5 s, le plus souvent bien moins) et la transaction.
+    this.delaiIA = options.delaiIA ?? 700;
     this.attenteAutres = options.attenteAutres ?? [1500, 4000]; // délai supplémentaire (min, max) des autres clients
-    this.budgetIA = options.budgetIA ?? 600;
+    this.budgetIA = options.budgetIA ?? 500;
     this.rng = options.rng || ctx.rng || Math.random;
     this.lire = creerLecteurMains(ctx.magasin, id);
     this.abonnes = new Set();
@@ -39,6 +44,7 @@ export class SessionReseau {
     this.iaEnCours = false;
     this.comptee = false;
     this.ferme = false;
+    this.attentes = []; // { n, fin } : actions en attente de la vue correspondante
     this.desabonner = null;
   }
 
@@ -90,7 +96,7 @@ export class SessionReseau {
       enLigne: true,
       nom: p.nom,
       siege,
-      joueurs: p.joueurs.map((j) => ({ pseudo: j?.pseudo ?? '?', ia: !!j?.ia })),
+      joueurs: p.joueurs.map(vueJoueur),
       etat: p.etat,
       main: prive.main,
       don: prive.don,
@@ -99,6 +105,13 @@ export class SessionReseau {
       statut: p.statut,
     };
     for (const cb of this.abonnes) cb(this.vueCourante);
+    this.libererAttentes();
+    // Une action d'IA prévue pour un état dépassé n'a plus lieu d'être : on replanifie sur l'état reçu
+    // (sinon la minuterie périmée se déclenchait pour rien et ajoutait un second délai complet).
+    if (this.minuterie && this.prevu !== p.etat.numCoup) {
+      clearTimeout(this.minuterie);
+      this.minuterie = null;
+    }
     if (p.statut === 'finie') this.compter();
     this.planifierIA();
   }
@@ -113,14 +126,41 @@ export class SessionReseau {
     return () => this.abonnes.delete(cb);
   }
 
+  // donner() et jouer() ne se résolvent qu'une fois la vue mise à jour (l'instantané de la partie arrive
+  // un peu après la fin de la transaction) : sinon l'écran proposerait encore, un instant, de donner ou
+  // de jouer, et un second toucher serait refusé.
   async donner(carte) {
     const n = await donnerCarte(this.ctx, this.id, this.vueCourante.siege, carte, { lire: this.lire });
     this.apresAction(n);
+    await this.attendreVue(n);
   }
 
   async jouer(coup) {
     const n = await jouerCoup(this.ctx, this.id, this.vueCourante.siege, coup, { lire: this.lire });
     this.apresAction(n);
+    await this.attendreVue(n);
+  }
+
+  /** Résout quand la vue publiée en est au coup n (10 s au plus). */
+  attendreVue(n, delai = 10000) {
+    if (this.ferme || (this.partie && this.partie.etat.numCoup >= n)) return Promise.resolve();
+    return new Promise((fin) => {
+      const a = { n, fin };
+      a.minuterie = setTimeout(() => {
+        this.attentes = this.attentes.filter((x) => x !== a);
+        fin();
+      }, delai);
+      this.attentes.push(a);
+    });
+  }
+
+  libererAttentes() {
+    const numCoup = this.partie?.etat.numCoup ?? -1;
+    for (const a of this.attentes.filter((x) => this.ferme || x.n <= numCoup)) {
+      clearTimeout(a.minuterie);
+      a.fin();
+    }
+    this.attentes = this.attentes.filter((x) => !this.ferme && x.n > numCoup);
   }
 
   /** Ce client vient d'agir : c'est à lui d'enchaîner les IA, sans attendre. */
@@ -189,13 +229,15 @@ export class SessionReseau {
       const a3 = nombreJoueurs(etat) === 3;
       const choisirDon = a3 ? this.ia.choisirDon3 : this.ia.choisirDon;
       const choisirCoup = a3 ? this.ia.choisirCoup3 : this.ia.choisirCoup;
+      const niveau = niveauDe(this.partie.joueurs[s]); // place sans niveau (partie d'avant) : champion
       if (etat.phase === 'echange') {
-        const carte = choisirDon(etat, s, prive.main, { rng: this.rng });
+        const carte = choisirDon(etat, s, prive.main, { rng: this.rng, niveau });
         n = await donnerCarte(this.ctx, this.id, s, carte, { lire: this.lire, numCoupAttendu: numCoup });
       } else {
         const coup = choisirCoup(etat, s, prive.main, {
           rng: this.rng,
           budgetMs: this.budgetIA,
+          niveau,
           carteDonnee: prive.don,
           carteRecue: prive.recu,
         });
@@ -244,7 +286,7 @@ export class SessionReseau {
       }
       return {
         reglages: reglagesPartie(p.reglages?.cinqAdverse, nbJoueursDe(p.reglages)),
-        joueurs: p.joueurs.map((j) => ({ pseudo: j?.pseudo ?? '?', ia: !!j?.ia })),
+        joueurs: p.joueurs.map(vueJoueur),
         siege,
         historique: p.historique || [],
         donnes: await Promise.all(lectures),
@@ -256,6 +298,7 @@ export class SessionReseau {
 
   fermer() {
     this.ferme = true;
+    this.libererAttentes();
     if (this.minuterie) clearTimeout(this.minuterie);
     this.minuterie = null;
     if (this.desabonner) this.desabonner();

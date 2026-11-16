@@ -124,7 +124,7 @@ function resumeDe(p) {
     hote: p.hote,
     reglages: { ...p.reglages },
     nbJoueurs: p.joueurs.length,
-    joueurs: p.joueurs.map((j) => (j ? { uid: j.uid, pseudo: j.pseudo, ia: !!j.ia } : null)),
+    joueurs: p.joueurs.map((j) => (j ? { uid: j.uid, pseudo: j.pseudo, ia: !!j.ia, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) } : null)),
     invites: (p.invites || []).map((i) => ({ ...i })),
     refus: (p.refus || []).map((i) => ({ ...i })),
     monSiege,
@@ -337,13 +337,27 @@ function exigerHote(p) {
   if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
 }
 
-export async function ajouterIA(id, siege) {
+const NIVEAUX_IDS = ['debutant', 'amateur', 'confirme', 'expert', 'champion'];
+
+export async function ajouterIA(id, siege, niveau) {
   await attendre();
   const p = exigerPartie(id);
   exigerHote(p);
   if (p.joueurs[siege]) throw new Error('Cette place est déjà prise.');
   const noms = ['IA Nord', 'IA Est', 'IA Sud', 'IA Ouest'];
-  p.joueurs[siege] = { uid: null, pseudo: noms[siege], ia: true };
+  p.joueurs[siege] = { uid: null, pseudo: noms[siege], ia: true, niveau: NIVEAUX_IDS.includes(niveau) ? niveau : 'champion' };
+  p.majLe = Date.now();
+  changer();
+}
+
+/** Hôte : change le niveau d'une IA assise (partie en attente). */
+export async function changerNiveauIA(id, siege, niveau) {
+  await attendre();
+  const p = exigerPartie(id);
+  exigerHote(p);
+  if (!p.joueurs[siege]?.ia) throw new Error('Il n’y a pas d’IA à cette place.');
+  if (!NIVEAUX_IDS.includes(niveau)) throw new Error('Niveau inconnu.');
+  p.joueurs[siege].niveau = niveau;
   p.majLe = Date.now();
   changer();
 }
@@ -574,7 +588,7 @@ function trouverAction() {
       return {
         ia: !!p.joueurs[s].ia,
         faire: () => {
-          const carte = (p.joueurs.length === 3 ? choisirDon3 : choisirDon)(p.partie.etat, s, p.partie.mains[s]);
+          const carte = (p.joueurs.length === 3 ? choisirDon3 : choisirDon)(p.partie.etat, s, p.partie.mains[s], { niveau: p.joueurs[s].niveau });
           p.partie = donnerCarte(p.partie, s, carte);
           suivreDonnes(p);
           p.majLe = Date.now();
@@ -589,6 +603,7 @@ function trouverAction() {
           const n = p.joueurs.length;
           const coup = (n === 3 ? choisirCoup3 : choisirCoup)(p.partie.etat, s, p.partie.mains[s], {
             budgetMs: Math.max(10, 250 * vitesse),
+            niveau: p.joueurs[s].niveau,
             carteDonnee: p.partie.dons[s],
             carteRecue: p.partie.dons[donneurDon(p.partie.etat.donne, s, n)],
           });
@@ -623,7 +638,7 @@ export async function ouvrirSession(id) {
       statut: q.statut,
       nom: q.nom,
       siege,
-      joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid })),
+      joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) })),
       etat: copie(etat),
       main: mains[siege].slice(),
       don: dons[siege],
@@ -668,7 +683,7 @@ export async function ouvrirSession(id) {
       const q = exigerPartie(id);
       return {
         reglages: { ...q.reglages },
-        joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid })),
+        joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) })),
         siege,
         historique: copie(q.partie.historique),
         donnes: (q.donnes || []).map((d, k) => ({ distribuees: d.mains[siege].slice(), donnee: d.dons[siege], recue: d.dons[donneurDon(k, siege, q.joueurs.length)] })),

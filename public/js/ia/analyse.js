@@ -307,7 +307,7 @@ export class AnalyseCoup extends AnalyseBase {
     }
     // candidats simulés : les meilleurs selon l'évaluation statique, plus le coup joué
     const s0 = this.candidats[0].statique;
-    this.actifs = this.candidats.filter((c, i) => i < (options.candidatsMax ?? CANDIDATS_MAX) && c.statique >= s0 - ECART_STATIQUE_MAX);
+    this.actifs = this.candidats.filter((c, i) => i < (options.candidatsMax ?? CANDIDATS_MAX) && c.statique >= s0 - (options.ecartStatique ?? ECART_STATIQUE_MAX));
     if (this.joue && !this.actifs.includes(this.joue)) this.actifs.push(this.joue);
   }
 

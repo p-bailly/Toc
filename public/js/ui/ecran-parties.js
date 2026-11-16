@@ -10,6 +10,7 @@ import { notificationVoulue, lireReglages } from './reglages.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
 import { emojiIcone } from './icones.js';
+import { nomNiveau } from './niveaux.js';
 
 const CLE_CODE = 'toc.codeARejoindre';
 const CLE_OPTIONS = 'toc.optionsEnLigne';
@@ -327,7 +328,8 @@ function rappelNotifications(redessiner) {
   );
 }
 
-const nomPlace = (p) => (p ? p.pseudo || (p.ia ? 'IA' : '?') : null);
+/** Nom d'une place ; une IA porte son niveau : « IA Est (Expert) ». */
+const nomPlace = (p) => (p ? (p.ia ? `${p.pseudo || 'IA'} (${nomNiveau(p.niveau)})` : p.pseudo || '?') : null);
 
 function ligneInvitation(p, app) {
   const hote = p.joueurs?.find((j) => j && j.uid === p.hote);

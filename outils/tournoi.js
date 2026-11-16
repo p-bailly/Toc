@@ -16,12 +16,14 @@
 //   --cinq        oui | non | les2 (alterne l'option « 5 adverse » d'une graine à l'autre)
 //   --graine      graine de départ (défaut 1)
 //   --fils        nombre de fils d'exécution parallèles (défaut : nombre de cœurs − 1)
+//   --journal     fichier où ajouter une ligne JSON par tournoi (pour outils/elo.js)
 //
 // Affiche le taux de victoire de A, un intervalle de confiance à 95 %, la durée des parties
 // et les temps de réflexion par coup (moyen, 95e centile, maximum) de chaque joueur.
 
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import os from 'node:os';
+import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { nouvellePartie, donnerCarte, jouerCoup, generateurAleatoire, donneurDon } from '../public/js/moteur/index.js';
 import { fabriquerJoueur } from './joueurs.js';
@@ -146,6 +148,14 @@ if (!isMainThread) {
     console.log(`${titre.padEnd(22)} A gagne ${v}/${n} = ${(100 * p).toFixed(1)} % (± ${(100 * ic).toFixed(1)})${nuls ? `, ${nuls} inachevées` : ''}`);
   };
   resume(resultats, 'Total');
+  if (args.journal) {
+    const finies = resultats.filter((r) => r.victoireA !== null);
+    const ligne = {
+      joueurs: nJ, a: cfg.a, b: cfg.b, budget: cfg.budget, graine: cfg.graine,
+      parties: finies.length, victoiresA: finies.filter((r) => r.victoireA).length,
+    };
+    appendFileSync(args.journal, JSON.stringify(ligne) + '\n');
+  }
   resume(resultats.filter((r) => !r.cinq), 'Sans 5 adverse');
   resume(resultats.filter((r) => r.cinq), 'Avec 5 adverse');
   const stats = (t) => {

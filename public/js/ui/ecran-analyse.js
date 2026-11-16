@@ -9,7 +9,7 @@ import { enteteRetour } from './composants.js';
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { piRetour } from './pictos.js';
-import { carteCourte, decrireAction, trierMain, rangAvecArticle } from './libelles.js';
+import { carteCourte, decrireAction, trierMain, rangAvecArticle, leCarte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
 import { apercuCoup } from '../moteur/regles.js';
@@ -339,11 +339,11 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
 
   function descriptionCoup(coup) {
     if (!coup) return '';
-    if (coup.t === 'defausse') return estJoker(coup.carte) ? 'Défausser le joker' : `Défausser le ${carteCourte(coup.carte)}`;
+    if (coup.t === 'defausse') return `Défausser ${leCarte(coup.carte)}`;
     const carte = estJoker(coup.carte) ? `Joker comme ${rangAvecArticle(coup.comme)}` : carteCourte(coup.carte);
     return `${carte} : ${decrireAction(coup, siege, joueurs)}`;
   }
-  const nomDon = (c) => `Donner ${estJoker(c) ? 'le joker' : 'le ' + carteCourte(c)}`;
+  const nomDon = (c) => `Donner ${leCarte(c)}`;
   const descriptionCandidat = (it, c) => (it.type === 'don' ? nomDon(c.carte) : descriptionCoup(c.coup));
   const descriptionItem = (it) => (it.type === 'don' ? nomDon(it.carte) : descriptionCoup(it.coup));
 

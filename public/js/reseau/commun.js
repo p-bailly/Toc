@@ -36,6 +36,23 @@ export function verifierPseudo(pseudo) {
   return p;
 }
 
+// ─── Niveaux de force des IA ────────────────────────────────────────────────
+// Mêmes identifiants que NIVEAUX dans js/ia/ia.js (liste recopiée ici pour que la couche réseau ne
+// dépende pas du module de l'IA). Une place d'IA sans niveau (parties d'avant) vaut 'champion'.
+
+export const NIVEAUX_IA = ['debutant', 'amateur', 'confirme', 'expert', 'champion'];
+export const NIVEAU_IA_DEFAUT = 'champion';
+
+/** Niveau d'une place d'IA (champ absent : champion). */
+export const niveauDe = (place) => (place && NIVEAUX_IA.includes(place.niveau) ? place.niveau : NIVEAU_IA_DEFAUT);
+
+/** Vérifie un niveau demandé (absent : champion) ; lève une Error en français s'il est inconnu. */
+export function verifierNiveau(niveau) {
+  if (niveau === undefined || niveau === null) return NIVEAU_IA_DEFAUT;
+  if (!NIVEAUX_IA.includes(niveau)) throw new ErreurToc(`Niveau d’IA inconnu : ${niveau}.`);
+  return niveau;
+}
+
 // ─── Codes d'invitation ─────────────────────────────────────────────────────
 
 /** Sans 0/O, 1/I/L : aucun caractère ambigu. 31^6 ≈ 887 millions de codes. */
@@ -185,7 +202,9 @@ export function resumePartie(id, d, uid) {
     hote: d.hote,
     reglages: reglagesPartie(d.reglages?.cinqAdverse, nbJoueurs),
     nbJoueurs,
-    joueurs: (d.joueurs || Array(nbJoueurs).fill(null)).map((p) => (p ? { uid: p.uid ?? null, pseudo: p.pseudo, ia: !!p.ia } : null)),
+    joueurs: (d.joueurs || Array(nbJoueurs).fill(null)).map((p) =>
+      p ? (p.ia ? { uid: null, pseudo: p.pseudo, ia: true, niveau: niveauDe(p) } : { uid: p.uid ?? null, pseudo: p.pseudo, ia: false }) : null,
+    ),
     monSiege,
     aMoiDeJouer: d.statut === 'encours' && monSiege >= 0 && siegeDoitAgir(etat, monSiege),
     gagnant: etat && etat.gagnant !== undefined ? etat.gagnant : null,

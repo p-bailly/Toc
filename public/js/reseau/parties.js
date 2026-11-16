@@ -32,6 +32,7 @@ import {
   calculerEnAttente,
   nbJoueursDe,
   reglagesPartie,
+  verifierNiveau,
   chemins,
   codeValide,
   nouveauCode,
@@ -190,8 +191,10 @@ export async function choisirSiege(ctx, id, siege) {
   });
 }
 
-export async function ajouterIA(ctx, id, siege) {
+/** Hôte : place une IA sur un siège libre, avec son niveau de force (absent : champion). */
+export async function ajouterIA(ctx, id, siege, niveau) {
   exigerSiege(siege);
+  const n = verifierNiveau(niveau);
   await transaction(ctx, async (tx) => {
     const p = await lirePartie(tx, id);
     exigerSiege(siege, p);
@@ -199,7 +202,25 @@ export async function ajouterIA(ctx, id, siege) {
     exigerHote(ctx, p);
     if (p.joueurs[siege] !== null) throw new ErreurToc('Ce siège est déjà pris.');
     const joueurs = p.joueurs.slice();
-    joueurs[siege] = { uid: null, pseudo: (p.joueurs.length === 3 ? NOMS_IA_3 : NOMS_IA)[siege], ia: true };
+    joueurs[siege] = { uid: null, pseudo: (p.joueurs.length === 3 ? NOMS_IA_3 : NOMS_IA)[siege], ia: true, niveau: n };
+    tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
+  });
+}
+
+/** Hôte : change le niveau d'une IA déjà placée (partie en attente). */
+export async function changerNiveauIA(ctx, id, siege, niveau) {
+  exigerSiege(siege);
+  const n = verifierNiveau(niveau);
+  await transaction(ctx, async (tx) => {
+    const p = await lirePartie(tx, id);
+    exigerSiege(siege, p);
+    exigerAttente(p);
+    exigerHote(ctx, p);
+    const place = p.joueurs[siege];
+    if (!place?.ia) throw new ErreurToc("Ce siège n'est pas tenu par une IA.");
+    if (place.niveau === n) return;
+    const joueurs = p.joueurs.slice();
+    joueurs[siege] = { uid: null, pseudo: place.pseudo, ia: true, niveau: n };
     tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
   });
 }

@@ -33,6 +33,12 @@ export function carteCourte(carte) {
   return `${NOMS_RANGS[r] ?? r} ${symbole(carte)}`;
 }
 
+/** Carte avec son article : « l’As ♠ », « le 7 ♥ », « le joker » (majuscule initiale si `debut`). */
+export function leCarte(carte, debut = false) {
+  const t = estJoker(carte) ? 'le joker' : rang(carte) === 'A' ? `l’${carteCourte(carte)}` : `le ${carteCourte(carte)}`;
+  return debut ? t[0].toUpperCase() + t.slice(1) : t;
+}
+
 /** Ordre d'affichage d'une main : par valeur (As, 2 … 10, Valet, Dame, Roi), puis par couleur. */
 const ORDRE_RANGS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'V', 'D', 'R'];
 export function trierMain(main) {
@@ -135,7 +141,7 @@ export function libelleChoix(coup, siege, joueurs, { depuisAllee = false } = {})
     case 'echange':
       return `Échanger avec ${nomDe(joueurs, coup.cible >> 2)}`;
     case 'defausse':
-      return estJoker(coup.carte) ? 'Défausser le joker' : `Défausser le ${carteCourte(coup.carte)}`;
+      return `Défausser ${leCarte(coup.carte)}`;
     default:
       return 'Jouer';
   }
