@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BASE, ALLEE, etatInitial, coupsLegaux, apercuCoup, validerCoup, nouvellePartie, donnerCarte, jouerCoup,
+  BASE, ALLEE, etatInitial, appliquerCoup, coupsLegaux, apercuCoup, validerCoup, nouvellePartie, donnerCarte, jouerCoup,
   generateurAleatoire, partenaire, coupsLegauxMain,
 } from '../public/js/moteur/index.js';
 import { choisirCoup, choisirDon } from '../public/js/ia/ia.js';
@@ -36,7 +36,7 @@ test('moteur rapide de l’IA : mêmes coups (mêmes plateaux) que le moteur de 
       const s = p.etat.tour;
       for (const r of RANGS) {
         const carte = r + 'P';
-        const cle = (pions, coup) => pions.join(',') + (coup.t === 'sept' ? '' : JSON.stringify(coup));
+        const cle = (pions, coup) => pions.join(',') + JSON.stringify(coup);
         const ref = coupsLegaux(p.etat, s, carte).map((c) => cle(apercuCoup(p.etat, s, c).pions, c)).sort();
         const ia = coupsCarte(p.etat.pions, s, carte, p.etat.reglages.cinqAdverse).map((c) => cle(c.pions, c.coup)).sort();
         assert.deepEqual(ia, ref);
@@ -93,7 +93,8 @@ test('reproductible avec un rng et un nombre d’itérations fixés', () => {
   assert.deepEqual(c1, c2);
 });
 
-const OPTS = { budgetMs: 150, rng: generateurAleatoire(1) };
+// Nombre d'itérations fixé (et budget large) : résultats indépendants de la vitesse de la machine.
+const OPTS = { budgetMs: 5000, iterations: 60, rng: generateurAleatoire(1) };
 
 test('tactique : capturer un pion adverse quand c’est gratuit', () => {
   // Pion 0 en 20, pion adverse 4 en 25 ; un 5 le capture.
@@ -127,14 +128,25 @@ test('tactique : manœuvre du 4 (pion sur sa case de départ, recul vers l’all
 });
 
 test('tactique : le 7 capture par dépassement et rentre un pion', () => {
-  // Pion 0 en 57 (4 cases avant l'entrée 61), pion adverse 4 en 59 : 7 = 4 + 3 rentre
-  // en passant sur l'adversaire, qui est renvoyé à la base.
-  const e = etat({ 0: 57, 1: 20, 4: 59 }, { restes: [3, 3, 3, 3] });
+  // Pion 0 en 57 (4 cases avant l'entrée 61), pion adverse 4 en 58 : 7 = 4 + 3 rentre
+  // en passant sur l'adversaire, qui est renvoyé à la base (le 2 et le 3 ne le capturent pas).
+  const e = etat({ 0: 57, 1: 20, 4: 58 }, { restes: [3, 3, 3, 3] });
   const c = choisirCoup(e, 0, ['7P', '2C', '3T'], { ...OPTS });
   assert.equal(c.t, 'sept');
   const ap = apercuCoup(e, 0, c);
   assert.equal(ap.pions[4], BASE);
   assert.ok(ap.pions[0] >= ALLEE);
+});
+
+test('tactique : le 7 qui fait gagner la partie est joué, même avec des points restants', () => {
+  // Partenaire (siège 2) rentré ; siège 0 : trois pions rentrés, le dernier 2 cases avant
+  // l'entrée (61) : 2 + 1 le rentre et gagne, il reste 4 points.
+  const e = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: a(0), 9: a(1), 10: a(2), 11: a(3), 4: 40 }, { restes: [3, 3, 3, 3] });
+  const main = ['7P', '9C', '2T'];
+  const c = choisirCoup(e, 0, main, { ...OPTS });
+  const n = appliquerCoup(e, 0, c, main);
+  assert.equal(n.phase, 'fini');
+  assert.equal(n.gagnant, 0);
 });
 
 test('tactique : défausse forcée, on garde l’as', () => {

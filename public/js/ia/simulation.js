@@ -162,7 +162,25 @@ function genererAvance(pions, occ, c, carte, pas, sortie) {
   }
 }
 
-/** Énumère toutes les façons distinctes (par plateau final) de jouer un 7 en entier. */
+/** Regroupe les étapes consécutives d'un même pion (comme le moteur). */
+function fusionnerEtapes(etapes) {
+  const fusion = [];
+  for (const e of etapes) {
+    const d = fusion[fusion.length - 1];
+    if (d && d.pion === e.pion) {
+      d.pas += e.pas;
+      d.allee = e.allee;
+    } else fusion.push({ pion: e.pion, pas: e.pas, allee: e.allee });
+  }
+  return fusion;
+}
+
+const gagnePions = (pions, s) => finiPions(pions, s) && finiPions(pions, (s + 2) & 3);
+
+/**
+ * Énumère toutes les façons distinctes (par plateau final) de jouer un 7 : en entier, ou
+ * jusqu'à la victoire de l'équipe (les points restants sont alors perdus).
+ */
 function genererSept(pions, s, carte, sortie, limite) {
   const finals = new Set();
   const vus = new Set();
@@ -171,10 +189,10 @@ function genererSept(pions, s, carte, sortie, limite) {
   const explorer = (pi, reste) => {
     if (sortie.length >= limite) return;
     const cle = pi.join(',');
-    if (reste === 0) {
+    if (reste === 0 || (reste < 7 && gagnePions(pi, s))) {
       if (!finals.has(cle)) {
         finals.add(cle);
-        sortie.push({ coup: { t: 'sept', carte, etapes: etapes.map((e) => ({ ...e })) }, pions: pi, captures: captTot.slice() });
+        sortie.push({ coup: { t: 'sept', carte, etapes: fusionnerEtapes(etapes) }, pions: pi, captures: captTot.slice() });
       }
       return;
     }
