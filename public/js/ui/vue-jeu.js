@@ -144,7 +144,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const cleVu = () => (vueReelle?.enLigne ? `toc.vu.${vueReelle.id}` : null);
 
   const desabonner = session.abonner((v) => {
-    vueReelle = v; console.log('DBG abonner', v.historique?.length, nHisto, enPresentation);
+    vueReelle = v;
     if (nHisto < 0) {
       // Ouverture : en ligne, on reprend là où le joueur s'était arrêté (coups joués en son absence) ;
       // en entraînement, rien n'a bougé pendant son absence.
@@ -201,6 +201,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   /** Présente un par un les coups pas encore montrés, à partir de l'historique (rejoué par le moteur). */
+  let resume = null; // résumé des coups passés sans les voir
   async function presenter() {
     enPresentation = true;
     passer = false;
@@ -244,7 +245,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       // Le coup d'un autre joueur reste affiché le temps de le lire ; le sien, juste le temps de l'animation.
       await attendre(duree + (mien ? Math.min(150, r.lecture) : r.lecture));
     }
-    if (passer && enRetard > 1) annoncer(resumeRetard(nHisto, vueReelle.historique), { duree: 7000 });
+    // Résumé des coups passés : il reste affiché jusqu'au coup suivant (le message du coup unique ne l'efface pas).
+    resume = passer && enRetard > 1 ? { texte: resumeRetard(nHisto, vueReelle.historique), n: vueReelle.historique.length } : null;
     nHisto = vueReelle.historique.length;
     restants = 0;
     enPresentation = false;
@@ -794,6 +796,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         ),
       );
     }
+    if (resume && resume.n === vue.historique?.length && !enPresentation) lignes.push(h('span', { class: 'note resume-retard' }, resume.texte));
     if (avis) lignes.push(h('span', { class: 'avis-jeu' + (avis.erreur ? ' erreur' : ''), role: avis.erreur ? 'alert' : null }, avis.texte));
     if (enPresentation) {
       if (restants > 0) {
