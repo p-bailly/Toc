@@ -778,7 +778,7 @@ details > .reglage:first-of-type {
 }
 .table-attente {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-areas:
     '. haut .'
     'gauche tapis droite'
@@ -807,7 +807,7 @@ details > .reglage:first-of-type {
 }
 .tapis-table {
   grid-area: tapis;
-  aspect-ratio: 1;
+  min-height: 90px;
   border-radius: 8px;
   background: var(--tapis);
   border: 3px solid var(--cadre);
