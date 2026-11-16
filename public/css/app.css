@@ -956,15 +956,30 @@ details > .reglage:first-of-type {
   font-size: max(22px, 52cqw);
   padding-top: 8%;
 }
+/* Habillés : le personnage (figures.js) occupe le centre, entre les deux coins. */
 .carte-jeu .symbole-central.figure {
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-weight: 800;
-  font-size: max(15px, 32cqw);
-  margin: 27% 31%;
-  border: 1.5px solid currentColor;
-  border-radius: 4px;
+  display: block;
+  inset: 6% 26%;
   padding: 0;
-  opacity: 0.85;
+}
+/* Coins plus fins, pour laisser la place au personnage. */
+.carte-jeu.habille .coin {
+  font-size: max(9px, 18cqw);
+}
+.carte-jeu.habille .coin b {
+  font-size: max(12px, 24cqw);
+}
+.carte-jeu.habille .coin.haut {
+  left: 5%;
+}
+.carte-jeu.habille .coin.bas {
+  right: 5%;
+}
+.carte-jeu .symbole-central.figure svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 .carte-jeu.choisie {
   translate: 0 -8px;
@@ -1288,6 +1303,16 @@ details > .reglage:first-of-type {
 .plateau-toc .symbole-carte {
   font-size: 12px;
   text-anchor: middle;
+}
+.plateau-toc .symbole-carte.coin {
+  font-size: 5.6px;
+}
+/* Personnage d'un habillé sur la carte du centre : sa couleur suit celle de la carte. */
+.plateau-toc .carte-plateau {
+  color: #101214;
+}
+.plateau-toc .carte-plateau.rouge {
+  color: #cf2f25;
 }
 
 /* Main du joueur : le bac bleu de l'appli Scrabble. */

@@ -11,6 +11,7 @@ import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
 import { nomNiveau } from './niveaux.js';
+import { estHabille, contenuFigure, CADRE_FIGURE } from './figures.js';
 
 const COTE = 17 * CELLULE;
 /** Rayon d'un trou crème (case du circuit, de l'allée, emplacement de base) et d'un pion. */
@@ -309,6 +310,15 @@ export class Plateau {
       g.append(s('text', { class: 'rang-carte joker', x: cx, y: y0 + 7 }, 'JOKER'), s('text', { class: 'symbole-carte', x: cx, y: y0 + 22 }, '★'));
       const copie = etat.jokers?.[carte];
       if (copie) g.append(s('text', { class: 'copie-joker', x: cx, y: y0 + 28.5 }, `= ${copie === 'V' ? 'Valet' : copie === 'D' ? 'Dame' : copie === 'R' ? 'Roi' : copie === 'A' ? 'As' : copie}`));
+    } else if (estHabille(rangAffiche(carte))) {
+      // Habillé : rang et couleur en coin, personnage à droite.
+      const figure = s('svg', { class: 'figure-carte', x: x0 + 8.4, y: y0 + 3.6, width: 11.6, height: 23.8, viewBox: CADRE_FIGURE });
+      figure.innerHTML = contenuFigure(rangAffiche(carte));
+      g.append(
+        s('text', { class: 'rang-carte', x: x0 + 2.2, y: y0 + 7.5 }, rangAffiche(carte)),
+        s('text', { class: 'symbole-carte coin', x: x0 + 4.4, y: y0 + 13.4 }, symbole(carte)),
+        figure,
+      );
     } else {
       g.append(s('text', { class: 'rang-carte', x: x0 + 2.5, y: y0 + 7.5 }, rangAffiche(carte)), s('text', { class: 'symbole-carte', x: cx, y: y0 + 22 }, symbole(carte)));
     }
