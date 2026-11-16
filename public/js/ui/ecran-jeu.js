@@ -6,6 +6,7 @@
 import { SessionLocale } from '../session-locale.js';
 import { monterJeu } from './vue-jeu.js';
 import { lire, ecrire } from './dom.js';
+import { lireReglages, rythme } from './reglages.js';
 
 /** Clé de sauvegarde et d'options de chaque mode. */
 export const MODES_LOCAUX = {
@@ -42,7 +43,8 @@ export function afficher(racine, app, { reste }) {
       // Force des IA (un niveau par siège) ; une partie reprise garde ceux de sa sauvegarde.
       niveaux: options.niveaux || undefined,
       pseudo: app.joueur?.pseudo || 'Toi',
-      delaiIA: app.rapide ? 40 : 900,
+      // Délai des IA accordé à la « Vitesse du jeu » (la file de présentation donne le rythme à l'écran).
+      delaiIA: app.rapide ? 40 : rythme(lireReglages().vitesse).delaiIA,
       budgetIA: app.rapide ? 15 : 600,
     });
     // Le joueur connecté voit son icône à sa place sur le plateau.
@@ -58,6 +60,7 @@ export function afficher(racine, app, { reste }) {
       session: enveloppe,
       retour: '#/ia',
       conseils: true,
+      essais: !!app.rapide,
       analyse: mode.analyse,
       libelleRetour: 'Retour au menu Contre l’IA',
       rejouer: () => {

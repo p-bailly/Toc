@@ -80,3 +80,20 @@ test('géométrie : positions des pions et chemins d’animation', () => {
   }
   assert.deepEqual(versSvg({ u: 0, v: 0 }), { x: 5, y: 5 });
 });
+
+test('géométrie : noms autour du plateau carré, hors du bois et dans le cadre', async () => {
+  const { geometrie } = await import('../public/js/ui/geometrie.js');
+  const G = geometrie(4);
+  assert.ok(G.etiquettesAutour);
+  const c = G.cadre;
+  const b = G.bord;
+  const places = [0, 1, 2, 3].map((cote) => G.placeEtiquette(cote));
+  // Toi en bas, partenaire en haut, adversaires à gauche (texte qui monte) et à droite (texte qui descend).
+  assert.ok(places[0].y > b.y + b.h && places[0].angle === 0);
+  assert.ok(places[2].y < b.y && places[2].angle === 0);
+  assert.ok(places[1].x < b.x && places[1].angle === -90);
+  assert.ok(places[3].x > b.x + b.l && places[3].angle === 90);
+  for (const p of places) assert.ok(p.x >= c.x && p.x <= c.x + c.l && p.y >= c.y && p.y <= c.y + c.h);
+  // Les bandes latérales restent étroites : le plateau garde au moins 88 % de la largeur.
+  assert.ok(b.l / c.l >= 0.88);
+});

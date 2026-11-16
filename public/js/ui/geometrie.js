@@ -142,11 +142,6 @@ export function chemin(pion, de, vers, sens = 'avant', nbJoueurs = 4) {
   return etapes;
 }
 
-/** Petite flèche du sens de parcours le long du côté du joueur du bas (entre son étiquette et sa base). */
-export function positionFlecheSens(cote) {
-  return tourner({ u: 5.75, v: 14.9 }, cote);
-}
-
 // ─── Plateau triangulaire (jeu à 3) ─────────────────────────────────────────
 
 /** Pas entre deux cases (unités SVG), comme une case du plateau carré. */
@@ -196,7 +191,7 @@ const T_BASE = [
 /**
  * Géométrie du plateau à `nbJoueurs` joueurs (4 : carré, 3 : triangle), en coordonnées SVG.
  * Méthodes : coteDe, caseCircuit, caseAllee, emplacementBase, centreBase, positionPion, angleCote,
- * flecheSens, boiteEtiquette, centre (défausse) ; champs : nbJoueurs, nbCases, cadre (viewBox),
+ * boiteEtiquette, centre (défausse) ; champs : nbJoueurs, nbCases, cadre (viewBox),
  * TAILLE_BASE (côté du carré de base).
  */
 export function geometrie(nbJoueurs = 4) {
@@ -214,7 +209,13 @@ const GEO_CARRE = {
   nbJoueurs: 4,
   nbCases: 64,
   forme: 'carre',
-  cadre: { x: -3, y: -3, l: 176, h: 176 },
+  // Cadre : le plateau (bord en bois de -4,5 à 174,5) et, autour, les bandes des noms des joueurs : 11 unités en
+  // haut et en bas (texte horizontal), 9,5 sur les côtés (texte vertical) pour garder le plateau aussi grand que
+  // possible sur un téléphone.
+  cadre: { x: -14, y: -15.5, l: 198, h: 201 },
+  /** Bord extérieur du cadre en bois (les noms sont au-delà). */
+  bord: { x: -4.5, y: -4.5, l: 179, h: 179 },
+  etiquettesAutour: true,
   TAILLE_BASE: 27,
   coteDe: (siege, vue) => coteDe(siege, vue),
   angleCote: (cote) => cote * 90,
@@ -225,8 +226,17 @@ const GEO_CARRE = {
   positionPion(pion, pos, vue) {
     return positionPionGeo(this, pion, pos, vue);
   },
-  flecheSens: (cote) => ({ ...versSvg(positionFlecheSens(cote)), angle: cote * 90 + 180 }),
   boiteEtiquette: (cote) => boiteEtiquette(cote),
+  /**
+   * Nom d'un joueur autour du plateau, centré sur son côté : toi en bas, ton partenaire en haut, les adversaires
+   * à gauche (texte qui monte) et à droite (texte qui descend).
+   */
+  placeEtiquette: (cote) => [
+    { x: 85, y: 180, angle: 0, longueur: 176 },
+    { x: -9.25, y: 85, angle: -90, longueur: 176 },
+    { x: 85, y: -10, angle: 0, longueur: 176 },
+    { x: 179.25, y: 85, angle: 90, longueur: 176 },
+  ][cote],
   centre: { x: 85, y: 85 },
 };
 
@@ -251,14 +261,6 @@ const GEO_TRIANGLE = {
   },
   positionPion(pion, pos, vue) {
     return positionPionGeo(this, pion, pos, vue);
-  },
-  flecheSens(cote) {
-    // Une flèche par côté, à l'intérieur, entre la 5e et la 6e case après la sortie.
-    const a = caseTriangleRelative(5);
-    const b = caseTriangleRelative(6);
-    const { G } = TRIANGLE;
-    const p = tournerTriangle({ x: a.x + (G.x - a.x) * 0.2, y: a.y + (G.y - a.y) * 0.2 }, cote);
-    return { ...p, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + cote * 120 };
   },
   /** Étiquettes hors du triangle : la sienne en bas à gauche, les adversaires dans les coins du haut. */
   boiteEtiquette(cote) {

@@ -24,7 +24,7 @@ export function afficher(racine) {
           'Chaque joueur a une case de sortie au milieu de son côté (petit carré de sa couleur) et, juste derrière, sa base de 4 pions non sortis (grand carré de sa couleur).',
           'Son allée d’arrivée (rectangle de sa couleur, 4 cases) part vers le centre depuis une case d’entrée située 3 cases avant la sortie, à droite de celle-ci. Depuis sa case de sortie, un 4 recule le pion une case avant l’entrée ; un 5 l’amène ensuite au fond de l’allée.',
           'Les cases au bord foncé (6e et 12e après chaque sortie) aident à compter.',
-          'Un pion posé sur sa propre case de sortie est protégé (bouclier) : personne ne peut le dépasser (son propriétaire non plus), l’échanger ni le renvoyer à la base. Seule exception : son propriétaire qui sort un nouveau pion le renvoie à la base.',
+          'Un pion posé sur sa propre case de sortie est protégé : personne ne peut le dépasser (son propriétaire non plus), l’échanger ni le renvoyer à la base. Seule exception : son propriétaire qui sort un nouveau pion le renvoie à la base.',
         ),
       ),
       section(
@@ -71,7 +71,7 @@ export function afficher(racine) {
           'Chacun pour soi : pas d’équipe, ni de partenaire. Le premier qui rentre ses 4 pions gagne.',
           'Plateau en triangle de 48 cases (3 côtés de 16). Chaque joueur garde la disposition du jeu à 4 : sortie au milieu de son côté, entrée 3 cases avant, allée de 4 cases vers l’intérieur, repères sur la 6e et la 12e case. Seule différence : la base est à l’extérieur du triangle, accolée à la case de sortie.',
           '54 cartes, dont 2 jokers. Donnes de 5, 4, 4 puis 5 cartes ; on remélange ensuite.',
-          'Au début de chaque donne, chacun donne une carte à un voisin : à celui de gauche (le joueur suivant) les donnes paires — la 1re, la 3e… —, à celui de droite les autres.',
+          'Au début de chaque donne, chacun donne une carte à un voisin : à celui de gauche (le joueur suivant) à la 1re donne, à la 3e, et ainsi de suite ; à celui de droite aux autres donnes.',
           'Joker : il copie une carte déjà posée (jouée ou défaussée) pendant la donne en cours et se joue exactement comme elle. Un joker défaussé n’offre rien à copier ; sans carte utile à copier, il n’est pas jouable.',
           'Le valet échange un de tes pions avec celui de n’importe quel autre joueur ; le 7 ne sert qu’à tes propres pions ; avec l’option « 5 adverse », le 5 peut pousser le pion de n’importe quel autre joueur.',
         ),

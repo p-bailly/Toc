@@ -168,7 +168,7 @@ export function afficher(racine, app) {
           'div',
           { class: 'carte carte-info' },
           h('b', {}, 'Jouer avec tes proches ?'),
-          h('span', { class: 'note' }, 'Choisis un nom d’utilisateur dans « Mes parties » pour créer une partie et inviter tes proches.'),
+          h('span', { class: 'note' }, 'Indique ton prénom dans « Mes parties » pour créer une partie et inviter tes proches.'),
           h('a', { class: 'bouton', href: '#/parties', onclick: () => ecrire('toc.sansCompte', false) }, 'Créer mon compte'),
         ),
       );
