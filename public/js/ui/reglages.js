@@ -25,8 +25,8 @@ const DEFAUT = {
   notifTour: true,
   notifInvitations: true,
   notifFin: true,
-  /** Demander « Jouer ce coup ? » avant d'envoyer un coup. */
-  confirmerCoup: true,
+  /** Demander « Jouer ce coup ? » avant d'envoyer un coup (désactivé par défaut : un seul toucher). */
+  confirmerCoup: false,
   /** Animer les déplacements des pions. */
   animations: true,
   /** Entraînement : après chaque coup, dire si l'IA aurait joué pareil. */
