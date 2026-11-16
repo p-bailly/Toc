@@ -44,6 +44,16 @@ test('session locale : une partie complète humain (aléatoire) + 3 IA, avec sau
     assert.ok(main.includes(tour.coup.carte));
   }
   assert.equal(mesTours, mainsVues.size);
+  // Hors ligne, les mains de tous les sièges sont fournies : chaque joueur a bien en main la carte qu'il joue.
+  assert.equal(donnees.donnesParSiege.length, 4);
+  assert.deepEqual(donnees.donnesParSiege[donnees.siege], donnees.donnes);
+  for (const tour of rejeu.tours) {
+    const donnes = donnees.donnesParSiege[tour.siege];
+    assert.equal(donnes.length, donnees.donnes.length);
+    const main = mainAvantCoup(donnes, tour.avant);
+    assert.equal(main.length, tour.avant.cartesRestantes[tour.siege]);
+    assert.ok(main.includes(tour.coup.carte), `siège ${tour.siege} : ${tour.coup.carte} dans ${main}`);
+  }
 
   const reprise = new SessionLocale({ reprendre: true, stockage });
   assert.equal(reprise.vue().etat.phase, 'fini');

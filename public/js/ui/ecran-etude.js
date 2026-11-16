@@ -1,11 +1,13 @@
 // Analyse de fin de partie (routes #/analyse/locale et #/analyse/ID), sur le modèle de l'analyse de l'appli
-// Scrabble : un plateau que l'on fait défiler tour par tour (les coups et les cartes données du joueur), le coup
-// joué et le coup préféré de l'IA, leurs raisons, un qualificatif, et une barre d'évaluation « comme aux échecs »
-// qui s'affine tant que le tour reste affiché. Une vue d'ensemble (courbe et bilan) se remplit en arrière-plan.
+// Scrabble : un plateau que l'on fait défiler tour par tour (les coups et les cartes données d'un joueur), chaque
+// coup rejoué avec l'animation du plateau, le coup préféré de l'IA, un qualificatif, et une barre d'évaluation
+// « comme aux échecs » qui s'affine tant que le tour reste affiché. Une vue d'ensemble (courbe et bilan) se
+// remplit en arrière-plan. Tout se compte en « pions d'avance » (voir etude-calcul.js). On analyse ses propres
+// coups, ou ceux d'un autre joueur quand ses mains sont connues (parties contre l'IA sur cet appareil).
 // Les calculs tournent dans un Web Worker (voir etude-pilote.js).
 
-import { h, s, remplacer, messageErreur, pluriel } from './dom.js';
-import { enteteRetour } from './composants.js';
+import { h, s, remplacer, messageErreur, mouvementReduit } from './dom.js';
+import { enteteRetour, interrupteur } from './composants.js';
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { piRetour } from './pictos.js';
@@ -13,13 +15,15 @@ import { carteCourte, decrireAction, trierMain, rangAvecArticle, leCarte } from 
 import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
 import { partieFinie } from './parties-finies.js';
-import { apercuCoup } from '../moteur/regles.js';
+import { appliquerCoup } from '../moteur/regles.js';
 import { lancerAnalyse } from './etude-pilote.js';
-import { lireReglages, modifierReglages } from './reglages.js';
-import { interrupteur } from './composants.js';
-import { toursDuJoueur, qualifier, candidatJoue, bilan, formatCases, QUALIFICATIFS, SEUILS } from './etude-calcul.js';
+import { lireReglages, modifierReglages, rythme } from './reglages.js';
+import { PIONS, couleurSiege } from './couleurs.js';
+import {
+  toursDuJoueur, siegesAnalysables, qualifier, candidatJoue, bilan, enPions, formatPions, etatApresCoup, graduations, graduationsTours, QUALIFICATIFS,
+} from './etude-calcul.js';
 
-/** Résultats gardés en mémoire (par partie) pour ne pas recalculer en revenant sur l'écran. */
+/** Résultats gardés en mémoire (par partie, puis par joueur analysé) pour ne pas recalculer en revenant sur l'écran. */
 const memoire = new Map();
 
 export function afficher(racine, app, { reste }) {
@@ -63,23 +67,28 @@ export function afficher(racine, app, { reste }) {
       message('L’analyse n’est pas encore disponible dans cette version de l’appli.');
       return;
     }
-    let items;
+    // Tours de chaque joueur dont les mains sont connues (le joueur local d'abord).
+    const tours = new Map();
     try {
       const rejeu = moteur.rejouerPartie(donnees.reglages, donnees.historique);
-      items = toursDuJoueur(donnees, rejeu, moteur.mainAvantCoup);
+      for (const sg of siegesAnalysables(donnees)) {
+        const items = toursDuJoueur(donnees, rejeu, moteur.mainAvantCoup, sg);
+        if (items.length) tours.set(sg, items);
+      }
     } catch (e) {
       message('Impossible de rejouer cette partie : ' + messageErreur(e));
       return;
     }
-    if (!items.length) {
+    if (!tours.has(donnees.siege)) {
       message('Aucun coup à analyser dans cette partie.');
       return;
     }
     if (ferme) return;
     const cle = locale ? id + '-' + donnees.historique.length + '-' + JSON.stringify(donnees.historique[0]?.coup || '') : id;
-    const resultats = memoire.get(cle) || new Map();
-    memoire.set(cle, resultats);
-    detruireVue = monterVue(contenu, { donnees, items, resultats, retour, lancer: (taches, surMsg) => (analyse = lancerAnalyse(taches, surMsg)) });
+    const parSiege = memoire.get(cle) || new Map();
+    memoire.set(cle, parSiege);
+    const resultatsDe = (sg) => parSiege.get(sg) || parSiege.set(sg, new Map()).get(sg);
+    detruireVue = monterVue(contenu, { donnees, tours, resultatsDe, retour, lancer: (taches, surMsg) => (analyse = lancerAnalyse(taches, surMsg)) });
   })();
 
   return () => {
@@ -134,23 +143,45 @@ async function donneesEnLigne(app, id) {
 
 // ─── Vue ────────────────────────────────────────────────────────────────────
 
-function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
+const FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆' };
+/** Temps (ms) pendant lequel la position d'avant le coup reste affichée avant que le coup se joue. */
+const PAUSE_AVANT = 380;
+const memeChoix = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+const animationsActives = () => lireReglages().animations && !mouvementReduit();
+
+function monterVue(contenu, { donnees, tours, resultatsDe, retour, lancer }) {
   const { siege, joueurs } = donnees;
+  const nb = (joueurs?.length || 4) === 3 || donnees.reglages?.nbJoueurs === 3 ? 3 : 4;
+  const a3 = nb === 3;
   // À 3, l'évaluation est celle du joueur seul : un joueur neutre a 1 chance sur 3, pas 1 sur 2.
-  const a3 = (joueurs?.length || 4) === 3 || donnees.reglages?.nbJoueurs === 3;
   const neutre = a3 ? 1 / 3 : 0.5;
+  const pions = (cases, options) => formatPions(cases, nb, options);
+  const sieges = [...tours.keys()];
+
+  /** Joueur analysé (le joueur local au départ), ses tours et leurs résultats. */
+  let joueur = siege;
+  let items = tours.get(joueur);
+  let resultats = resultatsDe(joueur);
   let actuel = 0;
-  let montre = 'joue'; // 'joue' | 'meilleur' | index de candidat
+  /** Ce que montre le plateau à la place du coup joué : { coup } ou { carte } d'un candidat de l'IA, ou null. */
+  let autre = null;
   // Conseils de l'IA (réglage « conseilsIA », désactivé par défaut) : sans eux, l'analyse montre seulement le
   // déroulé de la partie et l'évaluation, sans choix de l'IA, raisons, qualificatifs ni bilan des erreurs.
   let conseils = lireReglages().conseilsIA;
-  const zoneInterrupteur = h('div', { class: 'zone-conseils' });
-  const noteSeuils = h('p', { class: 'note' });
   let dispo = true;
-  let mode = '';
+  let auRepos = false;
+
+  const moi = () => joueur === siege;
+  const nomJoueur = (sg) => (sg === siege ? 'Toi' : joueurs?.[sg]?.pseudo || `Joueur ${sg + 1}`);
+  const libelleAvantage = () => {
+    if (a3) return moi() ? 'Ton avance' : `Avance de ${nomJoueur(joueur)}`;
+    return joueur % 2 === siege % 2 ? 'Avantage de ton équipe' : 'Avantage de l’équipe adverse';
+  };
 
   const plateau = new Plateau({});
   const zoneProgres = h('div', { class: 'liste' });
+  const zoneJoueur = h('div', { class: 'zone-joueur' });
+  const zoneInterrupteur = h('div', { class: 'zone-conseils' });
   const zoneBilan = h('div', { class: 'bilan-analyse' });
   const zoneCourbe = h('div', { class: 'courbe-analyse' });
   const titreTour = h('div', { class: 'principal centre' });
@@ -158,7 +189,8 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
   const precedent = h('button', { type: 'button', class: 'bouton-icone', 'aria-label': 'Tour précédent', onclick: () => aller(actuel - 1) }, piRetour());
   const suivant = h('button', { type: 'button', class: 'bouton-icone suivant', 'aria-label': 'Tour suivant', onclick: () => aller(actuel + 1) }, piRetour());
   const zoneEval = h('div', { class: 'evaluation' });
-  const zoneMain = h('div', { class: 'main-analyse', 'aria-label': 'Ta main à ce moment' });
+  const zoneActions = h('div', { class: 'actions actions-coup' });
+  const zoneMain = h('div', { class: 'main-analyse' });
   const zoneCoups = h('div', { class: 'liste' });
   const visionneuse = h(
     'div',
@@ -166,7 +198,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     h('div', { class: 'nav-tours' }, precedent, titreTour, suivant),
     curseur,
     zoneEval,
-    h('div', { class: 'zone-plateau' }, plateau.el),
+    h('div', { class: 'bloc-plateau' }, h('div', { class: 'zone-plateau' }, plateau.el), zoneActions),
     zoneMain,
     zoneCoups,
   );
@@ -174,20 +206,61 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     contenu,
     enteteRetour('Analyse de la partie', retour),
     zoneProgres,
+    zoneJoueur,
     h('h2', {}, 'Vue d’ensemble'),
-    zoneCourbe,
+    h(
+      'div',
+      { class: 'bloc-courbe' },
+      zoneCourbe,
+      h('p', { class: 'note note-pion' }, '1 pion d’avance : l’équivalent d’un pion rentré de plus que l’adversaire (un tour complet, de la base à l’arrivée).'),
+    ),
     zoneInterrupteur,
     zoneBilan,
-    h('h2', {}, 'Tour par tour'),
+    h('h2', { class: 'titre-tours' }, 'Tour par tour'),
     visionneuse,
-    noteSeuils,
   );
+
+  /** Choix du joueur analysé : proposé seulement quand les mains des autres joueurs sont connues. */
+  function majChoixJoueur() {
+    if (sieges.length < 2) {
+      remplacer(zoneJoueur, h('p', { class: 'note' }, 'Seuls tes coups sont analysés : les mains des autres joueurs restent secrètes.'));
+      return;
+    }
+    remplacer(
+      zoneJoueur,
+      h('span', { class: 'note' }, 'Joueur analysé'),
+      h(
+        'div',
+        { class: 'choix-joueur a-' + sieges.length, role: 'group', 'aria-label': 'Joueur analysé' },
+        sieges.map((sg) =>
+          h(
+            'button',
+            { type: 'button', class: sg === joueur ? 'actif' : '', 'aria-pressed': String(sg === joueur), 'data-joueur': sg, onclick: () => choisirJoueur(sg) },
+            h('span', { class: 'puce-pion', style: { '--c': couleurSiege(sg) }, 'aria-hidden': 'true' }, FORMES[PIONS[sg].forme]),
+            nomJoueur(sg),
+          ),
+        ),
+      ),
+    );
+  }
+
+  function choisirJoueur(sg) {
+    if (sg === joueur || !tours.has(sg)) return;
+    joueur = sg;
+    items = tours.get(sg);
+    resultats = resultatsDe(sg);
+    actuel = 0;
+    autre = null;
+    auRepos = false;
+    curseur.max = String(Math.max(0, items.length - 1));
+    analyseur.charger(taches());
+    majChoixJoueur();
+    majTout();
+    aller(0);
+  }
 
   /** Ligne discrète « Afficher les conseils de l'IA » : elle active le réglage sur place. */
   function majInterrupteur() {
-    noteSeuils.textContent = conseils
-      ? `Qualificatif selon l’écart avec le choix préféré de l’IA, en cases d’avance (l’incertitude de l’analyse est déduite) : jusqu’à ${fmt(SEUILS.meilleur)}, meilleur coup ; jusqu’à ${fmt(SEUILS.bon)}, bon coup ; jusqu’à ${fmt(SEUILS.imprecision)}, imprécision ; au-delà, erreur.`
-      : '';
     remplacer(
       zoneInterrupteur,
       dispo
@@ -196,14 +269,16 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
             { class: 'ligne-conseils' + (conseils ? ' actifs' : '') },
             interrupteur({
               titre: 'Afficher les conseils de l’IA',
-              texte: conseils ? 'Le choix de l’IA, ses raisons et le bilan de tes coups.' : 'Le choix de l’IA à chaque tour, ses raisons, et le bilan de tes coups.',
+              texte: 'Le choix de l’IA à chaque tour et le bilan des coups.',
               actif: conseils,
               surChange: (v) => {
                 modifierReglages({ conseilsIA: v });
                 conseils = v;
-                montre = 'joue';
+                const revenir = !!autre;
+                autre = null;
                 derniereCle = '';
                 majTout();
+                if (revenir) montrerSurPlateau();
               },
             }),
           )
@@ -214,11 +289,55 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
   function aller(i, defiler = false) {
     if (i < 0 || i >= items.length) return;
     actuel = i;
-    montre = 'joue';
-    analyseur.cibler(items[i].id);
+    autre = null;
+    analyseur.cibler(idTache(items[i]));
     majTour();
     majCourbe();
+    montrerSurPlateau();
     if (defiler) visionneuse.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Montre un autre choix que le coup joué (candidat de l'IA), ou revient au coup joué (null) : le coup est rejoué. */
+  function montrer(choix) {
+    autre = choix;
+    majTour();
+    montrerSurPlateau();
+  }
+
+  // ─── Plateau : le coup se joue sous les yeux, depuis la position d'avant ───
+  let minuterieCoup = null;
+  function montrerSurPlateau() {
+    clearTimeout(minuterieCoup);
+    minuterieCoup = null;
+    plateau.arreterAnimations();
+    const it = items[actuel];
+    const base = { siegeVue: siege, siegeLocal: siege, joueurs };
+    // Position d'avant, sans les marques du coup précédent (celui d'un autre joueur).
+    const avant = { ...it.etat, dernierCoup: null };
+    if (it.type !== 'coup') {
+      plateau.maj({ ...base, etat: avant });
+      return;
+    }
+    let apres = it.apres;
+    if (autre?.coup) {
+      try {
+        apres = appliquerCoup(it.etat, joueur, autre.coup);
+      } catch {
+        autre = null;
+      }
+    }
+    const fin = etatApresCoup(it.etat, apres);
+    // Sans animation (réglage, ou mouvement réduit demandé au système) : la position d'arrivée, directement.
+    if (!animationsActives()) {
+      plateau.maj({ ...base, etat: fin });
+      return;
+    }
+    plateau.maj({ ...base, etat: avant });
+    minuterieCoup = setTimeout(() => {
+      minuterieCoup = null;
+      plateau.maj({ ...base, etat: fin });
+      plateau.animer(fin.dernierCoup, siege, rythme(lireReglages().vitesse));
+    }, PAUSE_AVANT);
   }
 
   // ─── Analyse en arrière-plan ───
@@ -231,28 +350,28 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
       majTout();
     }, 250);
   };
-  const taches = items.map((it) => ({
-    id: it.id,
-    type: it.type,
-    etat: it.etat,
-    siege,
-    main: it.main,
-    options: it.options,
-    fait: !!resultats.get(it.id)?.stable,
-  }));
-  const analyseur = lancer(taches, (msg) => {
-    if (msg.type === 'pret') {
-      dispo = msg.dispo;
-      programmer();
-    } else if (msg.type === 'resultat') {
-      resultats.set(msg.id, msg.resultat);
-      programmer();
-    } else if (msg.type === 'erreur') {
-      resultats.set(msg.id, { erreur: msg.message, stable: true });
-      programmer();
-    } else if (msg.type === 'repos') programmer();
+  const idTache = (it) => `${it.siege}:${it.id}`;
+  const taches = () =>
+    items.map((it) => ({
+      id: idTache(it),
+      type: it.type,
+      etat: it.etat,
+      siege: it.siege,
+      main: it.main,
+      options: it.options,
+      fait: !!resultats.get(it.id)?.stable,
+    }));
+  const ranger = (id, resultat) => {
+    const [sg, i] = String(id).split(':').map(Number);
+    resultatsDe(sg).set(i, resultat);
+  };
+  const analyseur = lancer(taches(), (msg) => {
+    if (msg.type === 'pret') dispo = msg.dispo;
+    else if (msg.type === 'resultat') ranger(msg.id, msg.resultat);
+    else if (msg.type === 'erreur') ranger(msg.id, { erreur: msg.message, stable: true });
+    else if (msg.type === 'repos') auRepos = true;
+    programmer();
   });
-  analyseur.cibler(items[0].id);
 
   const touche = (e) => {
     if (e.target.closest?.('input, textarea')) return;
@@ -260,9 +379,14 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     else if (e.key === 'ArrowRight') aller(actuel + 1);
   };
   window.addEventListener('keydown', touche);
+  // La courbe est dessinée à la largeur réelle de l'écran (texte des axes à taille fixe) : on la refait si elle change.
+  let largeurCourbe = 0;
+  const redimensionner = () => {
+    if (zoneCourbe.clientWidth !== largeurCourbe) majCourbe();
+  };
+  window.addEventListener('resize', redimensionner);
 
   function majTout() {
-    mode = analyseur.mode();
     majProgres();
     majInterrupteur();
     majBilan();
@@ -272,23 +396,24 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
 
   function majProgres() {
     if (!dispo) {
-      remplacer(zoneProgres, h('div', { class: 'apercu' }, 'L’IA ne sait pas encore analyser les coups dans cette version : tu peux revoir tes tours, sans évaluation.'));
+      remplacer(zoneProgres, h('div', { class: 'apercu' }, 'L’IA ne sait pas encore analyser les coups dans cette version : tu peux revoir les tours, sans évaluation.'));
       return;
     }
+    const n = items.length;
     const faits = items.filter((it) => resultats.has(it.id)).length;
     const stables = items.filter((it) => resultats.get(it.id)?.stable).length;
-    const texte =
-      faits < items.length
-        ? `Première passe… ${faits} / ${items.length} tours`
-        : stables < items.length
-          ? `Analyse affinée : ${stables} / ${items.length} tours stables`
-          : 'Analyse terminée';
+    if (stables >= n || (auRepos && faits >= n)) {
+      remplacer(zoneProgres);
+      return;
+    }
     remplacer(
       zoneProgres,
-      h('div', { class: 'note' }, texte, mode === 'principal' ? ' (calcul sur le fil principal)' : ''),
-      faits < items.length || stables < items.length ? h('div', { class: 'jauge', 'aria-hidden': 'true' }, h('div', { style: { width: `${(100 * (faits + stables)) / (2 * items.length)}%` } })) : null,
+      h('div', { class: 'note' }, faits < n ? `Analyse en cours : ${faits} tours sur ${n}` : 'L’analyse s’affine…'),
+      h('div', { class: 'jauge', 'aria-hidden': 'true' }, h('div', { style: { width: `${(100 * (faits + stables)) / (2 * n)}%` } })),
     );
   }
+
+  const titreItem = (it) => `Tour ${it.id + 1} · donne ${it.donne + 1}`;
 
   function majBilan() {
     if (!dispo || !conseils) {
@@ -301,9 +426,9 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     const couteux = b.couteux.map((c) =>
       h(
         'button',
-        { type: 'button', class: 'ligne', onclick: () => aller(c.id, true) },
-        h('div', { class: 'principal' }, h('div', { class: 'mot' }, titreItem(items[c.id])), h('div', { class: 'note' }, descriptionItem(items[c.id]))),
-        h('span', { class: 'pts ecart-neg' }, '−' + fmt(c.ecart)),
+        { type: 'button', class: 'ligne', 'data-couteux': c.id, onclick: () => aller(c.id, true) },
+        h('div', { class: 'principal' }, h('div', { class: 'mot' }, descriptionItem(items[c.id])), h('div', { class: 'note' }, titreItem(items[c.id]))),
+        h('span', { class: 'pts ecart-neg' }, pions(-c.ecart)),
       ),
     );
     remplacer(
@@ -314,122 +439,162 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     );
   }
 
+  /**
+   * Courbe de l'avantage au fil des tours du joueur analysé. Axe vertical : l'avantage en pions (zéro marqué) ;
+   * axe horizontal : le numéro du tour. Toucher la courbe ouvre le tour.
+   */
   function majCourbe() {
-    const L = 320;
-    const H = 90;
+    largeurCourbe = zoneCourbe.clientWidth;
+    const L = Math.max(280, Math.round(largeurCourbe || 340));
+    const H = L >= 520 ? 230 : 200;
+    const m = { g: 40, d: 12, h: 28, b: 42 };
     const n = items.length;
-    const x = (i) => (n <= 1 ? L / 2 : 8 + (i * (L - 16)) / (n - 1));
-    const y = (p) => H - 8 - p * (H - 16);
-    const svg = s('svg', { viewBox: `0 0 ${L} ${H}`, class: 'courbe', role: 'img', 'aria-label': a3 ? 'Tes chances de gagner au fil de la partie' : 'Chances de victoire de ton équipe au fil de la partie' });
-    svg.append(
-      s('rect', { class: 'fond-courbe', x: 0, y: 0, width: L, height: H, rx: 6 }),
-      s('line', { class: 'mi-courbe', x1: 0, x2: L, y1: y(neutre), y2: y(neutre) }),
-      s('text', { class: 'legende-courbe', x: L - 4, y: y(neutre) - 3, 'text-anchor': 'end' }, a3 ? 'égalité : 1 chance sur 3' : 'égalité : 50 %'),
-      s('text', { class: 'legende-courbe', x: 4, y: 12 }, '100 %'),
-      s('text', { class: 'legende-courbe', x: 4, y: H - 3 }, '0 %'),
-    );
-    const points = [];
+    const valeurs = items.map((it) => {
+      const r = resultats.get(it.id);
+      return r && !r.erreur && typeof r.evaluation === 'number' ? enPions(r.evaluation, nb) : null;
+    });
+    const connues = valeurs.filter((v) => v !== null);
+    const axe = graduations(Math.min(0, ...connues), Math.max(0, ...connues));
+    const x = (i) => (n <= 1 ? (m.g + L - m.d) / 2 : m.g + (i * (L - m.g - m.d)) / (n - 1));
+    const y = (v) => m.h + ((axe.max - v) * (H - m.h - m.b)) / (axe.max - axe.min);
+    const bas = H - m.b;
+    const signe = (v) => (v === 0 ? '0' : (v > 0 ? '+' : '−') + Math.abs(v).toLocaleString('fr-FR'));
+    const titreX = moi() ? 'Tes tours de jeu' : `Tours de jeu de ${nomJoueur(joueur)}`;
+    const svg = s('svg', { viewBox: `0 0 ${L} ${H}`, class: 'courbe', role: 'img', 'aria-label': `${libelleAvantage()}, en pions, au fil de la partie` });
+    svg.append(s('text', { class: 'titre-axe', x: 2, y: 13 }, 'Avantage (en pions)'));
+    for (const v of axe.valeurs) {
+      svg.append(
+        s('line', { class: v === 0 ? 'zero-courbe' : 'grille-courbe', x1: m.g, x2: L - m.d, y1: y(v), y2: y(v) }),
+        s('text', { class: 'graduation' + (v === 0 ? ' zero' : ''), x: m.g - 7, y: y(v) + 4, 'text-anchor': 'end' }, signe(v)),
+      );
+    }
+    for (const t of graduationsTours(n, L >= 520 ? 10 : 6)) {
+      svg.append(
+        s('line', { class: 'grille-courbe', x1: x(t - 1), x2: x(t - 1), y1: bas, y2: bas + 4 }),
+        s('text', { class: 'graduation', x: x(t - 1), y: bas + 17, 'text-anchor': 'middle' }, String(t)),
+      );
+    }
+    svg.append(s('text', { class: 'titre-axe', x: (m.g + L - m.d) / 2, y: H - 5, 'text-anchor': 'middle' }, titreX));
+    const points = valeurs.map((v, i) => (v === null ? null : [x(i), y(v)])).filter(Boolean);
+    if (points.length > 1) svg.append(s('polyline', { class: 'ligne-courbe', points: points.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ') }));
+    svg.append(s('line', { class: 'curseur-courbe', x1: x(actuel), x2: x(actuel), y1: m.h, y2: bas }));
+    // Avec les conseils : les imprécisions et les erreurs sont marquées sur la courbe (mêmes couleurs que le bilan).
+    const qualifs = items.map((it) => {
+      const r = resultats.get(it.id);
+      return conseils && r && !r.erreur ? qualifier(candidatJoue(r), r.candidats?.[0]) : null;
+    });
+    valeurs.forEach((v, i) => {
+      const q = qualifs[i];
+      if (v !== null && (q === 'imprecision' || q === 'erreur')) svg.append(s('circle', { class: 'point-courbe qualif-' + QUALIFICATIFS[q].classe, cx: x(i), cy: y(v), r: 3.2 }));
+    });
+    if (valeurs[actuel] !== null) svg.append(s('circle', { class: 'point-courbe actuel', cx: x(actuel), cy: y(valeurs[actuel]), r: 5 }));
+    const pas = n <= 1 ? L - m.g - m.d : (L - m.g - m.d) / (n - 1);
     items.forEach((it, i) => {
       const r = resultats.get(it.id);
-      const p = probabilite(r);
-      if (p !== null) points.push([x(i), y(p), i, r]);
-    });
-    if (points.length > 1) svg.append(s('polyline', { class: 'ligne-courbe', points: points.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ') }));
-    svg.append(s('line', { class: 'curseur-courbe', x1: x(actuel), x2: x(actuel), y1: 2, y2: H - 2 }));
-    for (const [a, b, i, r] of points) {
-      const q = conseils ? qualifier(candidatJoue(r), r.candidats?.[0]) : null;
-      svg.append(s('circle', { class: 'point-courbe ' + (q ? 'qualif-' + QUALIFICATIFS[q].classe : ''), cx: a, cy: b, r: i === actuel ? 4 : 2.6 }));
-    }
-    const pas = n <= 1 ? L : (L - 16) / (n - 1);
-    items.forEach((it, i) => {
-      const zone = s('rect', { class: 'zone-courbe', x: x(i) - pas / 2, y: 0, width: pas, height: H, 'data-tour': i });
+      const detail = valeurs[i] === null ? '' : ` : ${pions(r.evaluation, { signe: true })}${qualifs[i] ? ' · ' + QUALIFICATIFS[qualifs[i]].nom : ''}`;
+      const zone = s('rect', { class: 'zone-courbe', x: x(i) - pas / 2, y: 0, width: pas, height: H, 'data-tour': i }, s('title', {}, `Tour ${i + 1}${detail}`));
       zone.addEventListener('click', () => aller(i));
       svg.append(zone);
     });
     remplacer(zoneCourbe, svg);
   }
 
-  function titreItem(it) {
-    if (it.type === 'don') return `Donne ${it.donne + 1} · carte donnée`;
-    return `Donne ${it.donne + 1} · coup n° ${it.n}`;
-  }
-
   function descriptionCoup(coup) {
     if (!coup) return '';
     if (coup.t === 'defausse') return `Défausser ${leCarte(coup.carte)}`;
     const carte = estJoker(coup.carte) ? `Joker comme ${rangAvecArticle(coup.comme)}` : carteCourte(coup.carte);
-    return `${carte} : ${decrireAction(coup, siege, joueurs)}`;
+    return `${carte} : ${decrireAction(coup, joueur, joueurs)}`;
   }
   const nomDon = (c) => `Donner ${leCarte(c)}`;
   const descriptionCandidat = (it, c) => (it.type === 'don' ? nomDon(c.carte) : descriptionCoup(c.coup));
   const descriptionItem = (it) => (it.type === 'don' ? nomDon(it.carte) : descriptionCoup(it.coup));
+  /** Ce qu'un candidat de l'IA donne à montrer : son coup, ou sa carte pour un don. */
+  const choixDe = (it, c) => (it.type === 'don' ? { carte: c.carte } : { coup: c.coup });
+
+  /** Joue sur le plateau le coup que l'IA préfère à ce tour (le premier candidat de l'analyse, à l'instant du toucher). */
+  function montrerChoixIA() {
+    const it = items[actuel];
+    const meilleur = resultats.get(it.id)?.candidats?.[0];
+    if (meilleur) montrer(choixDe(it, meilleur));
+  }
 
   let derniereCle = '';
+  let derniereCleActions = '';
   function majTour(depuisResultat = false) {
     const it = items[actuel];
     const r = resultats.get(it.id);
-    const cleRendu = `${actuel}|${montre}|${r ? r.iterations + '|' + r.stable : '-'}`;
+    const cleRendu = `${joueur}|${actuel}|${JSON.stringify(autre)}|${r ? r.iterations + '|' + r.stable : '-'}`;
     if (depuisResultat && cleRendu === derniereCle) return;
     derniereCle = cleRendu;
 
     curseur.value = String(actuel);
     precedent.disabled = actuel === 0;
     suivant.disabled = actuel === items.length - 1;
-    remplacer(titreTour, h('div', {}, h('b', {}, titreItem(it))), h('div', { class: 'note' }, `${actuel + 1} / ${items.length}`));
+    remplacer(
+      titreTour,
+      h('div', {}, h('b', {}, `Tour ${actuel + 1} sur ${items.length}`)),
+      h('div', { class: 'note' }, `Donne ${it.donne + 1}${it.type === 'don' ? ' · carte donnée' : ''}`),
+    );
 
-    // Coup affiché sur le plateau.
     const candidats = r?.candidats || [];
     const meilleur = candidats[0];
     const joueCand = candidatJoue(r);
-    let coupMontre = null;
-    if (it.type === 'coup') {
-      if (montre === 'joue') coupMontre = it.coup;
-      else if (montre === 'meilleur') coupMontre = meilleur?.coup || it.coup;
-      else coupMontre = candidats[montre]?.coup || it.coup;
-    }
-    const { pions, choix } = choixPour(coupMontre, it.etat, siege);
-    plateau.maj({ siegeVue: siege, etat: it.etat, joueurs, pions, choix, siegeLocal: siege });
+    const qualif = conseils && dispo && r && !r.erreur ? qualifier(joueCand, meilleur) : null;
+    const autreChoixIA = conseils && !!meilleur && !meilleur.joue && qualif !== 'meilleur';
+    const surIA = autreChoixIA && memeChoix(autre, choixDe(it, meilleur));
 
-    // Main du joueur à ce moment, carte jouée en évidence.
-    let carteMontree = it.type === 'don' ? it.carte : coupMontre?.carte;
-    if (it.type === 'don' && montre !== 'joue') carteMontree = (montre === 'meilleur' ? meilleur : candidats[montre])?.carte || it.carte;
-    remplacer(
-      zoneMain,
-      h('span', { class: 'note' }, it.type === 'don' ? 'Ta main avant l’échange :' : 'Ta main :'),
-      h('div', { class: 'cartes-analyse' }, trierMain(it.main || []).map((c) => dessinCarte(c, { petite: true, choisie: c === carteMontree }))),
-    );
-
-    // Barre d'évaluation.
+    // Barre d'évaluation : remplie selon les chances de gagner, chiffrée en pions d'avance.
     if (!dispo) remplacer(zoneEval);
     else if (!r) remplacer(zoneEval, h('div', { class: 'note' }, 'Analyse de ce tour…'));
     else if (r.erreur) remplacer(zoneEval, h('div', { class: 'apercu erreur' }, 'Analyse impossible : ' + r.erreur));
     else {
       const p = probabilite(r);
+      const texte = `${libelleAvantage()} : ${pions(r.evaluation, { signe: true })}`;
       remplacer(
         zoneEval,
         h(
           'div',
-          { class: 'barre-eval', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': p === null ? null : Math.round(p * 100), 'aria-label': a3 ? 'Tes chances de gagner' : 'Chances de victoire de ton équipe' },
+          { class: 'barre-eval', role: 'img', 'aria-label': texte },
           h('div', { class: 'part-nous', style: { width: `${(p ?? neutre) * 100}%` } }),
-          h('div', { class: 'repere-neutre', style: { left: `${neutre * 100}%` }, title: a3 ? 'Égalité entre les trois joueurs' : 'Égalité' }),
-          h('span', { class: 'texte-eval' }, p === null ? '' : `${a3 ? 'Tes chances : ' : ''}${Math.round(p * 100)} %`),
-        ),
-        h(
-          'div',
-          { class: 'note ligne-eval' },
-          h('span', {}, a3 ? 'Ton avance : ' : `Avantage de ton équipe : `, h('b', {}, `${formatCases(r.evaluation)} cases`), typeof r.marge === 'number' ? ` ± ${fmt(r.marge)}` : ''),
-          h('span', {}, `${(r.iterations || 0).toLocaleString('fr-FR')} simulations · ${r.stable ? 'stable' : 's’affine…'}`),
+          h('div', { class: 'repere-neutre', style: { left: `${neutre * 100}%` } }),
+          h('span', { class: 'texte-eval', 'aria-hidden': 'true' }, texte),
         ),
       );
     }
 
-    // Coup joué, coup préféré de l'IA, autres candidats.
+    // Sous le plateau : rejouer le coup, voir celui de l'IA. Les boutons ne sont refaits que s'ils changent (un
+    // résultat d'analyse qui arrive pendant qu'on appuie ne doit pas avaler le toucher).
+    const rejouable = it.type === 'coup' && (!!autre || animationsActives());
+    const voirIA = it.type === 'coup' && autreChoixIA;
+    const cleActions = `${joueur}|${actuel}|${rejouable}|${!!autre}|${voirIA}|${surIA}`;
+    if (cleActions !== derniereCleActions) {
+      derniereCleActions = cleActions;
+      remplacer(
+        zoneActions,
+        rejouable ? h('button', { type: 'button', class: 'bouton large', 'data-action': 'rejouer-coup', onclick: () => montrer(null) }, autre ? 'Revoir le coup joué' : 'Rejouer le coup') : null,
+        voirIA
+          ? h('button', { type: 'button', class: 'bouton large' + (surIA ? ' actif' : ''), 'aria-pressed': String(!!surIA), 'data-action': 'coup-ia', onclick: montrerChoixIA }, 'Voir le coup de l’IA')
+          : null,
+      );
+    }
+
+    // Main du joueur à ce moment, en grand, la carte jouée (ou montrée) en évidence.
+    const carteMontree = it.type === 'don' ? (autre?.carte ?? it.carte) : (autre?.coup ?? it.coup).carte;
+    const titreMain = `${moi() ? 'Ta main' : `Main de ${nomJoueur(joueur)}`}${it.type === 'don' ? ' avant l’échange' : ''}`;
+    remplacer(
+      zoneMain,
+      h('span', { class: 'note' }, titreMain),
+      h('div', { class: 'cartes-analyse', role: 'group', 'aria-label': titreMain }, trierMain(it.main || []).map((c) => dessinCarte(c, { choisie: c === carteMontree }))),
+    );
+
+    // Coup joué, coup préféré de l'IA, autres candidats. Les raisons de l'IA s'adressent au joueur (« tu… ») :
+    // elles ne sont montrées que pour ses propres coups.
+    const raisons = (c) => (moi() && c?.raisons?.length ? h('ul', { class: 'raisons' }, c.raisons.map((x) => h('li', {}, x))) : null);
     const lignes = [];
-    const qualif = conseils && dispo && r && !r.erreur ? qualifier(joueCand, meilleur) : null;
     lignes.push(
       h(
         'button',
-        { type: 'button', class: 'ligne' + (montre === 'joue' ? ' choisie' : ''), onclick: () => ((montre = 'joue'), majTour()) },
+        { type: 'button', class: 'ligne' + (conseils && !autre ? ' choisie' : ''), 'data-ligne': 'joue', onclick: () => montrer(null) },
         h(
           'div',
           { class: 'principal' },
@@ -438,9 +603,9 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
           // Le coût du coup joué (écart avec le choix de l'IA), et ses raisons seulement s'il est bon : une
           // « Erreur » n'apparaît jamais à côté de phrases qui le décrivent comme un bon coup.
           joueCand && qualif && qualif !== 'meilleur' && typeof joueCand.ecart === 'number'
-            ? h('div', { class: 'note cout-coup' + (qualif === 'bon' ? '' : ' ecart-neg') }, `Coûte ${fmt(joueCand.ecart)} case${joueCand.ecart >= 2 ? 's' : ''} par rapport au choix de l’IA`)
+            ? h('div', { class: 'note cout-coup' + (qualif === 'bon' ? '' : ' ecart-neg') }, `Coûte ${pions(joueCand.ecart)} par rapport au choix de l’IA`)
             : null,
-          conseils && joueCand?.raisons?.length && (qualif === 'meilleur' || qualif === 'bon') ? h('ul', { class: 'raisons' }, joueCand.raisons.map((x) => h('li', {}, x))) : null,
+          qualif === 'meilleur' || qualif === 'bon' ? raisons(joueCand) : null,
         ),
         qualif ? h('span', { class: 'badge qualif-' + QUALIFICATIFS[qualif].classe }, QUALIFICATIFS[qualif].nom) : null,
       ),
@@ -449,34 +614,27 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
       remplacer(zoneCoups, lignes);
       return;
     }
-    if (meilleur && !meilleur.joue && qualif !== 'meilleur') {
+    if (autreChoixIA) {
       lignes.push(
         h(
           'button',
-          { type: 'button', class: 'meilleur-coup' + (montre === 'meilleur' ? ' choisi' : ''), onclick: () => ((montre = 'meilleur'), majTour()) },
-          h(
-            'div',
-            { class: 'principal' },
-            h('div', { class: 'etiquette' }, 'Le choix de l’IA'),
-            h('div', { class: 'mot' }, descriptionCandidat(it, meilleur)),
-            meilleur.raisons?.length ? h('ul', { class: 'raisons' }, meilleur.raisons.map((x) => h('li', {}, x))) : null,
-          ),
-          null,
+          { type: 'button', class: 'meilleur-coup' + (surIA ? ' choisi' : ''), 'data-ligne': 'ia', onclick: () => montrer(choixDe(it, meilleur)) },
+          h('div', { class: 'principal' }, h('div', { class: 'etiquette' }, 'Le choix de l’IA'), h('div', { class: 'mot' }, descriptionCandidat(it, meilleur)), raisons(meilleur)),
         ),
       );
     } else if (meilleur && qualif === 'meilleur') {
       lignes.push(h('div', { class: 'apercu ok' }, 'C’est aussi le choix de l’IA.'));
     }
-    const autres = candidats.map((c, i) => [c, i]).filter(([c, i]) => i > 0 && !c.joue).slice(0, 2);
+    const autres = candidats.filter((c, i) => i > 0 && !c.joue).slice(0, 2);
     if (autres.length) {
       lignes.push(h('div', { class: 'note' }, 'Autres possibilités :'));
-      for (const [c, i] of autres) {
+      for (const c of autres) {
         lignes.push(
           h(
             'button',
-            { type: 'button', class: 'ligne' + (montre === i ? ' choisie' : ''), onclick: () => ((montre = i), majTour()) },
-            h('div', { class: 'principal' }, h('div', { class: 'mot' }, descriptionCandidat(it, c)), c.raisons?.length ? h('div', { class: 'note' }, c.raisons[0]) : null),
-            typeof c.ecart === 'number' ? h('span', { class: 'pts' }, '−' + fmt(c.ecart)) : null,
+            { type: 'button', class: 'ligne' + (memeChoix(autre, choixDe(it, c)) ? ' choisie' : ''), onclick: () => montrer(choixDe(it, c)) },
+            h('div', { class: 'principal' }, h('div', { class: 'mot' }, descriptionCandidat(it, c))),
+            typeof c.ecart === 'number' ? h('span', { class: 'pts' }, pions(-c.ecart)) : null,
           ),
         );
       }
@@ -484,9 +642,15 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     remplacer(zoneCoups, lignes);
   }
 
+  majChoixJoueur();
   majTout();
   aller(0);
-  return () => window.removeEventListener('keydown', touche);
+  return () => {
+    clearTimeout(minuterieCoup);
+    plateau.arreterAnimations();
+    window.removeEventListener('keydown', touche);
+    window.removeEventListener('resize', redimensionner);
+  };
 }
 
 function probabilite(r) {
@@ -494,30 +658,4 @@ function probabilite(r) {
   if (typeof r.probaVictoire === 'number') return Math.min(1, Math.max(0, r.probaVictoire));
   if (typeof r.evaluation === 'number') return 1 / (1 + Math.exp(-r.evaluation / 8));
   return null;
-}
-
-const fmt = (x) => (typeof x === 'number' ? x.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : '–');
-
-/** Pions affichés et marques du plateau pour montrer un coup (fantôme à l'arrivée, croix sur les captures). */
-function choixPour(coup, etat, siege) {
-  if (!coup || coup.t === 'defausse') return { pions: null, choix: null };
-  let a = null;
-  try {
-    a = apercuCoup(etat, siege, coup);
-  } catch {
-    a = null;
-  }
-  if (!a) return { pions: null, choix: null };
-  if (coup.t === 'sept') {
-    const bouges = new Set(a.deplacements.filter((d) => !d.capture).map((d) => d.pion));
-    return { pions: a.pions, choix: { candidats: bouges, choisi: null, cibles: [], captures: [] } };
-  }
-  if (coup.t === 'echange') {
-    return { pions: null, choix: { candidats: new Set([coup.pion, coup.cible]), choisi: coup.pion, fantome: { pion: coup.pion, pos: etat.pions[coup.cible] }, cibles: [], captures: [] } };
-  }
-  const dep = a.deplacements.filter((d) => d.pion === coup.pion && !d.capture).pop();
-  return {
-    pions: null,
-    choix: { candidats: new Set([coup.pion]), choisi: coup.pion, fantome: dep ? { pion: coup.pion, pos: dep.vers } : null, cibles: [], captures: a.captures || [] },
-  };
 }
