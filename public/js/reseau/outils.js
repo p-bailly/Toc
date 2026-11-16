@@ -33,6 +33,7 @@ export async function avecReseau(ctx, action) {
 }
 
 export const RELANCES_REFUS = 3;
+const CODES_RELANCE = ['permission-denied', 'aborted', 'failed-precondition'];
 
 /**
  * Transaction Firestore avec les garanties ci-dessus.
@@ -48,7 +49,8 @@ export async function transaction(ctx, fn) {
     try {
       return await avecReseau(ctx, () => ctx.magasin.transaction(fn));
     } catch (e) {
-      if (e.cause?.code !== 'permission-denied' || essai >= RELANCES_REFUS) throw e;
+      // Refus dû à une écriture concurrente, ou conflit qui a épuisé les essais du SDK : on relance.
+      if (!CODES_RELANCE.includes(e.cause?.code) || essai >= RELANCES_REFUS) throw e;
       const rng = ctx.rng || Math.random;
       await new Promise((r) => setTimeout(r, (ctx.pauseRelance ?? 150) * (1 + rng()) * (essai + 1)));
     }

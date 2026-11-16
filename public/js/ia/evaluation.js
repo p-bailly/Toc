@@ -32,6 +32,8 @@ export const POIDS_DEFAUT = {
   menaceValet: 0.5, // part de la menace du valet prise en compte
   victoire: 100, // bonus d'une partie gagnée, ajouté à l'évaluation (en cases) du plateau final
   poidsTete: 0.65, // jeu à 3 : poids du meilleur adversaire (le second a 1 − poidsTete)
+  adversaires: 1, // jeu à 3 : poids global des adversaires
+  primeRentres: 0, // jeu à 3 : bonus × (pions rentrés)² de chaque joueur (course à l'arrivée)
   // Valeur des cartes gardées en main
   sortieUtile: 11, // as ou roi quand un pion attend en base (première carte de sortie)
   sortieSup: 5, // cartes de sortie supplémentaires utiles
@@ -293,11 +295,18 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
     if (g >= 0) score += g === e ? P.victoire : -P.victoire;
     return score;
   }
+  if (P.primeRentres) {
+    for (let x = 0; x < 3; x++) {
+      let k = 0;
+      for (let g = x * 4; g < x * 4 + 4; g++) if (pions[g] >= ALLEE) k++;
+      forces[x] += P.primeRentres * k * k;
+    }
+  }
   const a = forces[(persp + 1) % 3];
   const b = forces[(persp + 2) % 3];
   const tete = a > b ? a : b;
   const autre = a > b ? b : a;
-  let score = forces[persp] - (P.poidsTete * tete + (1 - P.poidsTete) * autre);
+  let score = forces[persp] - P.adversaires * (P.poidsTete * tete + (1 - P.poidsTete) * autre);
   if (g >= 0) score += g === persp ? P.victoire : -P.victoire;
   return score;
 }

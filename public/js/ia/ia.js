@@ -1,8 +1,11 @@
-// Intelligence artificielle du Toc.
-// L'IA ne connaît que l'état public, sa propre main et la carte qu'elle a donnée à son
-// partenaire (elle ne triche pas). Elle compte les cartes : celles qu'elle n'a pas vues
-// (ni dans la pile, ni dans sa main, ni données) sont dans les mains des autres ou dans
-// les donnes suivantes du cycle.
+// Intelligence artificielle du Toc, pour le jeu à 4 (deux équipes) comme pour le jeu à 3
+// (chacun pour soi, jokers) : le mode est lu dans l'état (nombreJoueurs), les appelants n'ont
+// rien à distinguer.
+// L'IA ne connaît que l'état public, sa propre main et la carte qu'elle a donnée (à son
+// partenaire à 4, à son voisin à 3) : elle ne triche pas. Elle compte les cartes : celles
+// qu'elle n'a pas vues (ni dans la pile, ni dans sa main, ni données) sont dans les mains des
+// autres ou dans les donnes suivantes du cycle (52 cartes et 3 donnes à 4 ; 54 cartes et
+// 4 donnes à 3).
 //
 // Architecture (voir les fichiers du dossier) :
 //   simulation.js  moteur de règles rapide (génération des coups avec le plateau obtenu)
@@ -21,10 +24,11 @@ import { noterDons } from './conseils.js';
 import { AnalyseCoup, AnalyseDon } from './analyse.js';
 
 /**
- * Choisit la carte à donner au partenaire en début de donne.
- * Pour chaque carte : gain qu'en tirerait le partenaire (meilleur coup avec cette carte sur le
- * plateau actuel, sortie surtout s'il a des pions en base) moins la perte pour soi (gain de la
- * carte pour soi, atténué si l'on en garde une autre du même rang).
+ * Choisit la carte à donner en début de donne (voir conseils.js, noterDons).
+ * À 4 : gain qu'en tirerait le partenaire (meilleur coup avec cette carte sur le plateau actuel,
+ * sortie surtout s'il a des pions en base) moins la perte pour soi (atténuée si l'on garde une
+ * autre carte du même rang). À 3 : le voisin est un adversaire ; on donne la carte qui coûte le
+ * moins à soi et rapporte le moins au voisin (jamais un joker sauf contrainte).
  * @param {Object} etat    état public (phase 'echange')
  * @param {number} siege   siège de l'IA
  * @param {string[]} main  main de l'IA

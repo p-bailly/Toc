@@ -47,7 +47,7 @@ const ECART_STATIQUE_MAX = 40;
  * Coefficients ajustés par maximum de vraisemblance sur des positions de parties IA contre IA
  * (outils/calibrage.js).
  */
-export const CALIBRAGE = { k: 0.127, k3: 0.15, b3: -0.69 };
+export const CALIBRAGE = { k: 0.127, k3: 0.171, b3: -0.75 };
 
 export function probaDepuisEvaluation(v, pions, siege) {
   const g = equipeGagnantePions(pions);
@@ -279,7 +279,7 @@ export class AnalyseCoup extends AnalyseBase {
     this.siege = siege;
     this.main = main.slice();
     this.prep = preparer(etat, siege, main, options);
-    const coups = coupsMain(etat.pions, siege, main, this.prep.cinq);
+    const coups = coupsMain(etat.pions, siege, main, this.prep.cinq, Infinity, this.prep.copiables);
     this.candidats = coups.map((res) => {
       const mainApres = retirerRang(main, res.ir);
       return {

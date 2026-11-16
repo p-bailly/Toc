@@ -68,7 +68,12 @@ async function environnement() {
   return env;
 }
 
-// Partie partagée par les deux séries de tests.
+// Sessions ouvertes, fermées après chaque test (même en cas d'échec : leurs IA continueraient).
+const ouvertes = [];
+test.afterEach(() => {
+  while (ouvertes.length) ouvertes.pop().fermer();
+});
+
 let partage = null;
 
 test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vraies règles', { skip: !actif && 'émulateur absent', timeout: 600000 }, async () => {
@@ -120,6 +125,7 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   for (let i = 0; i < 3; i++) {
     const s = await clients[i].client.ouvrirSession(id);
     sessions.push(s);
+    ouvertes.push(s);
     s.abonner((v) => (vues[i] = v));
   }
   assert.deepEqual(vues.map((v) => v.siege), [0, 3, 1]);
@@ -328,7 +334,8 @@ test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !acti
   const { assertFails, assertSucceeds } = rut;
   const { doc, getDoc, updateDoc, setDoc, writeBatch, serverTimestamp } = fs;
 
-  // 1. Partie complète 2 humains + 1 IA avec le vrai client.
+  // 1. Partie complète 2 humains + 1 IA avec le vrai client (TOC_SANS_PARTIE=1 : seulement la triche).
+  if (!process.env.TOC_SANS_PARTIE) {
   const clients = [];
   for (const nom of ['Alice', 'Bruno']) {
     const c = nouveauClient(40 + clients.length);
@@ -345,6 +352,7 @@ test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !acti
   for (let i = 0; i < 2; i++) {
     const s = await clients[i].client.ouvrirSession(id);
     sessions.push(s);
+    ouvertes.push(s);
     s.abonner((v) => (vues[i] = v));
   }
   const debut = Date.now();
@@ -390,6 +398,7 @@ test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !acti
   }
   sessions.forEach((s) => s.fermer());
   console.log(`# émulateur à 3 : partie ${id} finie, donne ${fin.donne}, coup ${fin.numCoup}, gagnant ${fin.gagnant}`);
+  }
 
   // 2. Triche à 3.
   const contextes = new Map();
@@ -401,7 +410,7 @@ test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !acti
   for (const [u, p] of [[A, 'Alice'], [B, 'Bruno'], [C, 'Chloé']]) {
     await assertSucceeds(setDoc(doc(db(u), 'joueurs', u), { pseudo: p, visible: true, recherche: p.toLowerCase(), stats: { jouees: 0, gagnees: 0 }, comptees: [], creeLe: serverTimestamp() }));
   }
-  const code = 'TRIXYZ';
+  const code = 'TRAXYZ';
   const pA = { uid: A, pseudo: 'Alice', ia: false };
   const base = {
     nom: 'Triche à 3', code, hote: A, statut: 'attente', reglages: { cinqAdverse: false, nbJoueurs: 3 },

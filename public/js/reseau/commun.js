@@ -96,6 +96,7 @@ export function messageErreur(e) {
       return HORS_LIGNE;
     case 'aborted':
     case 'firestore/aborted':
+    case 'failed-precondition':
       return "Trop d'actions en même temps sur cette partie : réessaie.";
     case 'not-found':
       return "Cette partie n'existe plus.";

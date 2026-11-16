@@ -239,8 +239,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     reinitialiser();
     carte = c;
     if (!mainJouable(etat, vue.siege, vue.main)) {
-      coupPret = { t: 'defausse', carte: c };
-      rendre();
+      preparer({ t: 'defausse', carte: c });
       return;
     }
     const coups = coupsLegaux(etat, vue.siege, c);
@@ -378,7 +377,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   function preparer(coup) {
     coupPret = coup;
     if (coup.pion !== undefined) pion = coup.pion;
-    if (!lireReglages().confirmerCoup && coup.t !== 'defausse') {
+    if (!lireReglages().confirmerCoup) {
       envoyer();
       return;
     }
