@@ -14,6 +14,8 @@ import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
 import { apercuCoup } from '../moteur/regles.js';
 import { lancerAnalyse } from './analyseur.js';
+import { lireReglages, modifierReglages } from './reglages.js';
+import { interrupteur } from './composants.js';
 import { toursDuJoueur, qualifier, candidatJoue, bilan, formatCases, QUALIFICATIFS, SEUILS } from './analyse-calcul.js';
 
 /** Résultats gardés en mémoire (par partie) pour ne pas recalculer en revenant sur l'écran. */
@@ -122,6 +124,11 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
   const neutre = a3 ? 1 / 3 : 0.5;
   let actuel = 0;
   let montre = 'joue'; // 'joue' | 'meilleur' | index de candidat
+  // Conseils de l'IA (réglage « conseilsIA », désactivé par défaut) : sans eux, l'analyse montre seulement le
+  // déroulé de la partie et l'évaluation, sans choix de l'IA, raisons, qualificatifs ni bilan des erreurs.
+  let conseils = lireReglages().conseilsIA;
+  const zoneInterrupteur = h('div', { class: 'zone-conseils' });
+  const noteSeuils = h('p', { class: 'note' });
   let dispo = true;
   let mode = '';
 
@@ -152,15 +159,40 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     zoneProgres,
     h('h2', {}, 'Vue d’ensemble'),
     zoneCourbe,
+    zoneInterrupteur,
     zoneBilan,
     h('h2', {}, 'Tour par tour'),
     visionneuse,
-    h(
-      'p',
-      { class: 'note' },
-      `Qualificatif selon l’écart avec le choix préféré de l’IA, en cases d’avance (l’incertitude de l’analyse est déduite) : jusqu’à ${fmt(SEUILS.meilleur)}, meilleur coup ; jusqu’à ${fmt(SEUILS.bon)}, bon coup ; jusqu’à ${fmt(SEUILS.imprecision)}, imprécision ; au-delà, erreur.`,
-    ),
+    noteSeuils,
   );
+
+  /** Ligne discrète « Afficher les conseils de l'IA » : elle active le réglage sur place. */
+  function majInterrupteur() {
+    noteSeuils.textContent = conseils
+      ? `Qualificatif selon l’écart avec le choix préféré de l’IA, en cases d’avance (l’incertitude de l’analyse est déduite) : jusqu’à ${fmt(SEUILS.meilleur)}, meilleur coup ; jusqu’à ${fmt(SEUILS.bon)}, bon coup ; jusqu’à ${fmt(SEUILS.imprecision)}, imprécision ; au-delà, erreur.`
+      : '';
+    remplacer(
+      zoneInterrupteur,
+      dispo
+        ? h(
+            'div',
+            { class: 'ligne-conseils' + (conseils ? ' actifs' : '') },
+            interrupteur({
+              titre: 'Afficher les conseils de l’IA',
+              texte: conseils ? 'Le choix de l’IA, ses raisons et le bilan de tes coups.' : 'Le choix de l’IA à chaque tour, ses raisons, et le bilan de tes coups.',
+              actif: conseils,
+              surChange: (v) => {
+                modifierReglages({ conseilsIA: v });
+                conseils = v;
+                montre = 'joue';
+                derniereCle = '';
+                majTout();
+              },
+            }),
+          )
+        : null,
+    );
+  }
 
   function aller(i, defiler = false) {
     if (i < 0 || i >= items.length) return;
@@ -215,6 +247,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
   function majTout() {
     mode = analyseur.mode();
     majProgres();
+    majInterrupteur();
     majBilan();
     majCourbe();
     majTour(true);
@@ -241,7 +274,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
   }
 
   function majBilan() {
-    if (!dispo) {
+    if (!dispo || !conseils) {
       remplacer(zoneBilan);
       return;
     }
@@ -287,7 +320,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
     if (points.length > 1) svg.append(s('polyline', { class: 'ligne-courbe', points: points.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ') }));
     svg.append(s('line', { class: 'curseur-courbe', x1: x(actuel), x2: x(actuel), y1: 2, y2: H - 2 }));
     for (const [a, b, i, r] of points) {
-      const q = qualifier(candidatJoue(r), r.candidats?.[0]);
+      const q = conseils ? qualifier(candidatJoue(r), r.candidats?.[0]) : null;
       svg.append(s('circle', { class: 'point-courbe ' + (q ? 'qualif-' + QUALIFICATIFS[q].classe : ''), cx: a, cy: b, r: i === actuel ? 4 : 2.6 }));
     }
     const pas = n <= 1 ? L : (L - 16) / (n - 1);
@@ -375,7 +408,7 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
 
     // Coup joué, coup préféré de l'IA, autres candidats.
     const lignes = [];
-    const qualif = dispo && r && !r.erreur ? qualifier(joueCand, meilleur) : null;
+    const qualif = conseils && dispo && r && !r.erreur ? qualifier(joueCand, meilleur) : null;
     lignes.push(
       h(
         'button',
@@ -390,11 +423,15 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
           joueCand && qualif && qualif !== 'meilleur' && typeof joueCand.ecart === 'number'
             ? h('div', { class: 'note cout-coup' + (qualif === 'bon' ? '' : ' ecart-neg') }, `Coûte ${fmt(joueCand.ecart)} case${joueCand.ecart >= 2 ? 's' : ''} par rapport au choix de l’IA`)
             : null,
-          joueCand?.raisons?.length && (qualif === 'meilleur' || qualif === 'bon') ? h('ul', { class: 'raisons' }, joueCand.raisons.map((x) => h('li', {}, x))) : null,
+          conseils && joueCand?.raisons?.length && (qualif === 'meilleur' || qualif === 'bon') ? h('ul', { class: 'raisons' }, joueCand.raisons.map((x) => h('li', {}, x))) : null,
         ),
         qualif ? h('span', { class: 'badge qualif-' + QUALIFICATIFS[qualif].classe }, QUALIFICATIFS[qualif].nom) : null,
       ),
     );
+    if (!conseils) {
+      remplacer(zoneCoups, lignes);
+      return;
+    }
     if (meilleur && !meilleur.joue && qualif !== 'meilleur') {
       lignes.push(
         h(

@@ -82,6 +82,7 @@ export function afficher(racine) {
           'Valet : touche ton pion, puis le pion à échanger. 7 : avance pas à pas ; le compteur indique les points restants et les pions qui retourneront à la base ; le 7 part quand le dernier point est placé.',
           'Joker : choisis d’abord la carte qu’il copie, puis joue comme avec cette carte.',
           'En ligne, la partie attend le joueur dont c’est le tour, sans limite de temps : l’appli te prévient quand c’est à toi.',
+          'Conseils de l’IA (désactivés au départ, à activer dans les Réglages) : dans les parties contre l’IA, un bouton « Conseil » propose les meilleurs coups avec leurs raisons ; dans l’analyse de fin de partie, le choix de l’IA et le bilan de tes coups. Jamais pendant une partie en ligne.',
         ),
       ),
     ),
