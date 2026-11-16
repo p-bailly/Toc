@@ -1,0 +1,57 @@
+# Vérifie chaque pull request avant sa fusion : tous les tests, puis la couche réseau contre
+# l'émulateur Firebase avec les vraies règles de sécurité.
+name: Vérification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Le projet n'a aucune dépendance : rien à installer.
+      - run: npm test
+
+  # Les tests des règles Firestore et du vrai SDK ont besoin de l'émulateur (ignorés dans le job ci-dessus).
+  emulateur:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: emulateurs-firebase-${{ runner.os }}
+      # Paquets installés hors du dépôt (voir l'en-tête de tests/reseau-emulateur.test.js). Versions épinglées :
+      # sans version, npm prend une version de rules-unit-testing incompatible avec firebase 13.
+      - name: Outils Firebase
+        run: |
+          mkdir -p "$RUNNER_TEMP/outils" && cd "$RUNNER_TEMP/outils"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools@15.36.0
+      - name: Tests contre l'émulateur
+        env:
+          TOC_MODULES: ${{ runner.temp }}/outils/node_modules
+        run: >
+          "$RUNNER_TEMP/outils/node_modules/.bin/firebase" emulators:exec --only auth,firestore --project demo-toc
+          "node --test tests/reseau-emulateur.test.js"

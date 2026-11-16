@@ -24,18 +24,31 @@ depuis `https://www.gstatic.com/firebasejs/…`.
 
 ## 3. Publier les règles et le site
 
-Depuis la racine du dépôt (Node.js installé) :
+**Les règles de sécurité** : console Firebase → Firestore Database → onglet **Règles** → coller le
+contenu de `firestore.rules` → **Publier**. (Ou, depuis un ordinateur où l'on est connecté :
+`npx firebase-tools deploy --only firestore:rules --project <projet>`.)
 
-```sh
-cp .firebaserc.exemple .firebaserc        # puis y mettre l'identifiant du projet
-npx firebase-tools login
-npx firebase-tools deploy --only firestore:rules,hosting
-```
+**Le site**, comme l'appli Scrabble, est publié par **GitHub Pages** à chaque push sur la branche par
+défaut (`.github/workflows/deploy.yml`, dossier `public/` publié tel quel) :
 
-Le site est servi à `https://<projet>.web.app` (dossier `public/`, sans étape de build ;
-`index.html`, `sw.js` et les modules sont servis avec `Cache-Control: no-cache`, donc revalidés à
-chaque chargement). Ce domaine est autorisé d'office pour la connexion ; si le site est hébergé
-ailleurs, l'ajouter dans Authentication → Paramètres → **Domaines autorisés**.
+1. Dépôt GitHub → *Settings → Pages* → Source : **GitHub Actions** (à faire une fois).
+2. La configuration Firebase vient du fichier versionné `public/js/firebase-config.js` s'il est
+   rempli ; sinon de la variable de dépôt `FIREBASE_CONFIG` (*Settings → Secrets and variables →
+   Actions → Variables*), qui contient l'objet `firebaseConfig` en JSON strict. Sans l'un ni l'autre,
+   le site est publié en mode hors ligne (jeu contre l'IA seulement).
+3. Le site est servi à `https://<compte>.github.io/<dépôt>/`. Pour une adresse à soi : un CNAME
+   (par ex. `toc`) vers `<compte>.github.io.` chez le fournisseur du domaine, puis *Settings → Pages* →
+   domaine personnalisé + *Enforce HTTPS*.
+
+La connexion par nom d'utilisateur ne demande pas de déclarer ce domaine à Firebase.
+
+Chaque pull request est vérifiée par `.github/workflows/verification.yml` : tous les tests, puis la
+couche réseau contre l'émulateur Firebase avec les vraies règles.
+
+*Autre possibilité : Firebase Hosting* (`firebase.json` est prêt) —
+`cp .firebaserc.exemple .firebaserc`, y mettre l'identifiant du projet, puis
+`npx firebase-tools login` et `npx firebase-tools deploy --only firestore:rules,hosting` ; le site est
+alors servi à `https://<projet>.web.app`.
 
 **Republier les règles à chaque modification de `firestore.rules`**
 (`npx firebase-tools deploy --only firestore:rules`), sinon les actions sont refusées
@@ -117,7 +130,7 @@ dépôt** (Java requis) :
 
 ```sh
 mkdir -p ~/toc-outils && cd ~/toc-outils && npm init -y
-npm install firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools
+npm install firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools@15.36.0
 cd /chemin/vers/Toc
 TOC_MODULES=~/toc-outils/node_modules ~/toc-outils/node_modules/.bin/firebase \
   emulators:exec --only auth,firestore --project demo-toc "node --test tests/reseau-emulateur.test.js"

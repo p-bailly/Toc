@@ -19,7 +19,8 @@ npm test             # tous les tests (Node 22, aucune dépendance à installer)
   onglet « Contre l'IA », en 2 contre 2 ou à 3 joueurs.
 - `http://localhost:5173/?demo` remplace le réseau par une API factice en mémoire : tous les écrans
   en ligne (connexion, Mes parties, invitations, salle d'attente, jeu, analyse) se parcourent sans Firebase.
-- Mise en place de Firebase et déploiement : `docs/firebase.md`.
+- Mise en place de Firebase et déploiement : `docs/firebase.md`. Le site est publié par GitHub Pages à chaque
+  push sur la branche par défaut ; chaque pull request est vérifiée (tests, puis émulateur Firebase).
 
 ## Organisation
 
