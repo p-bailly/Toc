@@ -1,12 +1,14 @@
-// Plateau de Toc en SVG : tapis vert dans un cadre bleu nuit (comme le plateau de l'appli Scrabble), circuit de
-// 64 cases, allées d'arrivée, bases, étiquettes des joueurs, défausse au centre, pions animés.
+// Plateau de Toc en SVG, habillage « Bois verni » : bois clair verni (dégradé et veinage), cadre brun, cases
+// percées dans le bois, blocs de couleur peints (base, sortie, allée), étoiles peintes pour les repères de
+// comptage, pions en billes. Noms des joueurs autour du plateau carré (dans les coins libres pour le triangle),
+// défausse au centre, pions animés.
 // Le plateau n'applique aucune règle : il affiche ce qu'on lui donne et signale les touchers (pions, cibles).
 
 import { s } from './dom.js';
 import { BASE, caseDepart } from '../moteur/plateau.js';
 import { estProtege } from '../moteur/regles.js';
 import { CELLULE, geometrie, chemin, TRIANGLE } from './geometrie.js';
-import { PIONS, couleurSiege } from './couleurs.js';
+import { PIONS, couleurSiege, couleurFonceeSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
@@ -14,39 +16,76 @@ import { nomNiveau } from './niveaux.js';
 import { estHabille, contenuFigure, CADRE_FIGURE } from './figures.js';
 
 const COTE = 17 * CELLULE;
-/** Rayon d'un trou crème (case du circuit, de l'allée, emplacement de base) et d'un pion. */
-const RAYON_TROU = 3.75;
-const RAYON_PION = 3.35;
+/** Rayon d'un trou percé (case du circuit, de l'allée, emplacement de base) et d'une bille. */
+const RAYON_TROU = 3.4;
+const RAYON_PION = 3.15;
 
 /**
- * Dessin d'un pion (sans position) : disque à la couleur du joueur, contour foncé (lisible même posé sur un fond
- * de sa couleur), reflet, et une petite forme claire propre à chaque couleur (lisible sans les couleurs).
+ * Dessin d'un pion (sans position) : une bille brillante à la couleur du joueur, au contour plus sombre (lisible
+ * même posée sur un bloc de sa couleur), avec son reflet et une petite ombre portée.
  */
 export function dessinPion(siege, { fantome = false } = {}) {
-  const couleur = couleurSiege(siege);
   return s(
     'g',
     { class: 'dessin-pion' + (fantome ? ' fantome' : '') },
-    s('ellipse', { class: 'ombre-pion', cx: 0, cy: 1.3, rx: RAYON_PION, ry: 1.6 }),
-    s('circle', { class: 'corps-pion', r: RAYON_PION, fill: couleur }),
-    s('circle', { class: 'reflet-pion', cx: -1.1, cy: -1.2, r: 0.85 }),
-    forme(PIONS[siege].forme),
+    s('circle', { class: 'ombre-pion', cx: 0, cy: 0.65, r: RAYON_PION }),
+    s('circle', { class: 'corps-pion', r: RAYON_PION, fill: couleurSiege(siege), stroke: couleurFonceeSiege(siege) }),
+    s('circle', { class: 'reflet-pion', cx: -1, cy: -1.12, r: 1.05 }),
   );
 }
 
-function forme(nom) {
-  const attrs = { class: 'forme-pion' };
-  switch (nom) {
-    case 'carre':
-      return s('rect', { ...attrs, x: -1.05, y: -0.75, width: 2.1, height: 2.1, rx: 0.25 });
-    case 'triangle':
-      return s('path', { ...attrs, d: 'M0.2 -1.05 L1.6 1.45 L-1.2 1.45 Z' });
-    case 'losange':
-      return s('path', { ...attrs, d: 'M0.2 -1.3 L1.5 0.3 L0.2 1.9 L-1.1 0.3 Z' });
-    default:
-      return s('circle', { ...attrs, cx: 0.2, cy: 0.35, r: 1.05 });
+/** Étoile à cinq branches (repère de comptage peint sous le trou). */
+function cheminEtoile(x, y, R) {
+  let d = '';
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const r = i % 2 ? R * 0.5 : R;
+    d += (i ? 'L' : 'M') + (x + r * Math.cos(a)).toFixed(2) + ' ' + (y + r * Math.sin(a)).toFixed(2);
   }
+  return d + 'Z';
 }
+
+// ─── Veinage du bois ────────────────────────────────────────────────────────
+// Le veinage (bruit de Perlin étiré) est calculé UNE fois, rendu dans une image partagée par tous les plateaux,
+// puis posé en motif : aucun filtre SVG n'est recalculé pendant les animations des billes.
+
+const ZONE_VEINAGE = { x: -12, y: -12, l: 196, h: 196 };
+let promesseVeinage = null;
+
+function veinage() {
+  if (promesseVeinage) return promesseVeinage;
+  promesseVeinage = new Promise((resoudre) => {
+    try {
+      // Même procédé que la maquette validée, à son échelle (40 unités par case, ici 10) : 4 pixels par unité.
+      const L = ZONE_VEINAGE.l * 4;
+      const H = ZONE_VEINAGE.h * 4;
+      const source =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${H}" viewBox="0 0 ${L} ${H}">` +
+        '<filter id="b" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.009 0.32" numOctaves="3" seed="7"/>' +
+        '<feColorMatrix type="matrix" values="0 0 0 0 0.38  0 0 0 0 0.2  0 0 0 0 0.06  0 0 0 0.9 -0.18"/><feComposite operator="in" in2="SourceGraphic"/></filter>' +
+        `<rect width="${L}" height="${H}" fill="#000" filter="url(#b)"/></svg>`;
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const toile = document.createElement('canvas');
+          toile.width = L;
+          toile.height = H;
+          toile.getContext('2d').drawImage(image, 0, 0);
+          resoudre(toile.toDataURL('image/png'));
+        } catch {
+          resoudre(null);
+        }
+      };
+      image.onerror = () => resoudre(null);
+      image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(source);
+    } catch {
+      resoudre(null);
+    }
+  });
+  return promesseVeinage;
+}
+
+let compteurPlateaux = 0;
 
 /** Petit bouclier blanc posé sur un pion protégé (sur sa case de sortie). */
 function bouclier() {
@@ -71,6 +110,24 @@ export class Plateau {
     this.siegeVue = null;
     this.geo = null;
     this.svg = s('svg', { class: 'plateau-toc', role: 'img', 'aria-label': 'Plateau de jeu' });
+    // Dégradés et motif propres à ce plateau (identifiants uniques).
+    const id = 'plt' + ++compteurPlateaux;
+    this.idBois = id + '-bois';
+    this.idTrou = id + '-trou';
+    this.idVeinage = id + '-veinage';
+    const imageVeinage = s('image', { x: ZONE_VEINAGE.x, y: ZONE_VEINAGE.y, width: ZONE_VEINAGE.l, height: ZONE_VEINAGE.h, preserveAspectRatio: 'none' });
+    this.svg.append(
+      s(
+        'defs',
+        {},
+        s('radialGradient', { id: this.idBois, cx: '50%', cy: '42%', r: '70%' }, s('stop', { offset: 0, class: 'stop-bois' }), s('stop', { offset: 1, class: 'stop-bois-2' })),
+        s('radialGradient', { id: this.idTrou, cx: '50%', cy: '35%', r: '65%' }, s('stop', { offset: 0, class: 'stop-trou-centre' }), s('stop', { offset: 1, class: 'stop-trou' })),
+        s('pattern', { id: this.idVeinage, patternUnits: 'userSpaceOnUse', x: ZONE_VEINAGE.x, y: ZONE_VEINAGE.y, width: ZONE_VEINAGE.l, height: ZONE_VEINAGE.h }, imageVeinage),
+      ),
+    );
+    veinage().then((url) => {
+      if (url) imageVeinage.setAttribute('href', url);
+    });
     this.coucheFond = s('g', { class: 'fond' });
     this.coucheDernier = s('g', { class: 'couche-dernier' });
     this.coucheEtiquettes = s('g', { class: 'etiquettes' });
@@ -132,22 +189,23 @@ export class Plateau {
     const n = geo.nbJoueurs;
     const f = this.coucheFond;
     f.replaceChildren();
+    const bois = `url(#${this.idBois})`;
+    const motif = `url(#${this.idVeinage})`;
     if (geo.forme === 'triangle') {
       const { A, B, C } = TRIANGLE;
       const points = [A, B, C].map((p) => `${p.x},${p.y}`).join(' ');
       f.append(
         s('polygon', { class: 'cadre cadre-triangle', points }),
-        s('polygon', { class: 'tapis tapis-triangle', points }),
+        s('polygon', { class: 'tapis tapis-triangle', points, style: { fill: bois, stroke: bois } }),
+        s('polygon', { class: 'veinage veinage-triangle', points, style: { fill: motif, stroke: motif } }),
       );
-      // Filet intérieur : le triangle réduit vers le centre.
-      const G = TRIANGLE.G;
-      const r = (p) => ({ x: G.x + (p.x - G.x) * 0.8, y: G.y + (p.y - G.y) * 0.8 });
-      f.append(s('polygon', { class: 'filet', points: [A, B, C].map(r).map((p) => `${p.x},${p.y}`).join(' ') }));
     } else {
+      const b = geo.bord;
       f.append(
-        s('rect', { class: 'cadre', x: -3, y: -3, width: COTE + 6, height: COTE + 6, rx: 3.5 }),
-        s('rect', { class: 'tapis', x: 0, y: 0, width: COTE, height: COTE, rx: 2 }),
-        s('rect', { class: 'filet', x: CELLULE * 1.05, y: CELLULE * 1.05, width: COTE - CELLULE * 2.1, height: COTE - CELLULE * 2.1, rx: 1.6 }),
+        s('rect', { class: 'cadre', x: b.x, y: b.y, width: b.l, height: b.h, rx: 7 }),
+        s('rect', { class: 'tapis', x: -0.75, y: -0.75, width: COTE + 1.5, height: COTE + 1.5, rx: 3.5, style: { fill: bois } }),
+        s('rect', { class: 'veinage', x: -0.75, y: -0.75, width: COTE + 1.5, height: COTE + 1.5, rx: 3.5, style: { fill: motif } }),
+        s('rect', { class: 'filet', x: CELLULE * 1.24, y: CELLULE * 1.24, width: COTE - CELLULE * 2.48, height: COTE - CELLULE * 2.48, rx: 2.5 }),
       );
     }
     const g = s('g', { class: 'cases' });
@@ -158,7 +216,7 @@ export class Plateau {
       g.append(rectTourne('zone-base', geo.centreBase(o, siegeVue), geo.TAILLE_BASE, geo.TAILLE_BASE, angle, { rx: 3, fill: couleurSiege(o) }));
       for (let k = 0; k < 4; k++) {
         const b = geo.emplacementBase(o, k, siegeVue);
-        g.append(s('circle', { class: 'trou trou-fonce', cx: b.x, cy: b.y, r: RAYON_TROU + 0.25 }));
+        g.append(s('circle', { class: 'trou', cx: b.x, cy: b.y, r: RAYON_TROU + 0.4, style: { fill: `url(#${this.idTrou})` } }));
       }
       // Allée : un rectangle de sa couleur qui englobe les 4 trous.
       const a0 = geo.caseAllee(o, 0, siegeVue);
@@ -167,25 +225,28 @@ export class Plateau {
       g.append(rectTourne('zone-allee', milieu, 9.8, 3 * CELLULE + 9.8, angle, { rx: 2.6, fill: couleurSiege(o) }));
       for (let k = 0; k < 4; k++) {
         const p = geo.caseAllee(o, k, siegeVue);
-        g.append(s('circle', { class: 'trou trou-fonce', cx: p.x, cy: p.y, r: RAYON_TROU - 0.35 }));
+        g.append(s('circle', { class: 'trou', cx: p.x, cy: p.y, r: RAYON_TROU, style: { fill: `url(#${this.idTrou})` } }));
       }
       // Sortie : petit carré plein de sa couleur.
       g.append(rectTourne('zone-sortie', geo.caseCircuit(caseDepart(o), siegeVue), 9.8, 9.8, angle, { rx: 2, fill: couleurSiege(o) }));
       // Flèche claire du sens de parcours, le long de son côté.
       const fl = geo.flecheSens(cote);
-      g.append(s('path', { class: 'fleche-sens', d: 'M-2.2 0 H2.2 M0.7 -1.5 L2.2 0 L0.7 1.5', transform: `translate(${fl.x.toFixed(2)} ${fl.y.toFixed(2)}) rotate(${fl.angle.toFixed(1)})` }));
+      g.append(s('path', { class: 'fleche-sens', d: 'M-2.25 0 H2.25 M0.75 -1.5 L2.25 0 L0.75 1.5', transform: `translate(${fl.x.toFixed(2)} ${fl.y.toFixed(2)}) rotate(${fl.angle.toFixed(1)})` }));
     }
     const departs = new Set(Array.from({ length: n }, (_, o) => caseDepart(o)));
     for (let i = 0; i < geo.nbCases; i++) {
       const p = geo.caseCircuit(i, siegeVue);
       const repere = i % 16 === 6 || i % 16 === 12;
       const depart = departs.has(i);
+      // Repère de comptage : une étoile peinte sombre sous le trou.
+      if (repere) g.append(s('path', { class: 'etoile-repere', d: cheminEtoile(p.x, p.y, 5.25) }));
       g.append(
         s('circle', {
-          class: 'trou' + (repere ? ' repere' : '') + (depart ? ' trou-fonce' : ''),
+          class: 'trou' + (repere ? ' repere' : '') + (depart ? ' trou-sortie' : ''),
           cx: p.x,
           cy: p.y,
-          r: depart ? RAYON_TROU - 0.35 : RAYON_TROU,
+          r: RAYON_TROU,
+          style: { fill: `url(#${this.idTrou})` },
           'data-case': i,
         }),
       );
@@ -247,6 +308,10 @@ export class Plateau {
     const c = this.coucheEtiquettes;
     c.replaceChildren();
     const n = this.geo.nbJoueurs;
+    if (this.geo.etiquettesAutour) {
+      this.dessinerNomsAutour(etat, joueurs, siegeVue, sousTitres, siegeLocal);
+      return;
+    }
     for (let siege = 0; siege < n; siege++) {
       const cote = this.geo.coteDe(siege, siegeVue);
       const b = this.geo.boiteEtiquette(cote);
@@ -283,6 +348,57 @@ export class Plateau {
       const sous = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '') || (j.ia ? nomNiveau(j.niveau) : '');
       if (sous) g.append(s('text', { class: 'sous-plateau', x: b.x + 3, y: b.y + 30.5 }, tronquer(sous, 15)));
       c.append(g);
+    }
+  }
+
+  /**
+   * 2 contre 2 : les noms autour du plateau, sur une ligne : pastille (couleur, icône ou initiale), prénom, nombre
+   * de cartes, état (à toi, joue…, a donné ✓, a fini ✓) et niveau d'une IA ; celui dont c'est le tour est encadré.
+   */
+  dessinerNomsAutour(etat, joueurs, siegeVue, sousTitres, siegeLocal) {
+    const c = this.coucheEtiquettes;
+    for (let siege = 0; siege < 4; siege++) {
+      const cote = this.geo.coteDe(siege, siegeVue);
+      const place = this.geo.placeEtiquette(cote);
+      const j = joueurs?.[siege] || {};
+      const actif = etat.phase === 'jeu' && etat.tour === siege;
+      const attend = etat.phase === 'echange' && !etat.echanges?.[siege];
+      const emoji = j.ia ? EMOJI_IA : emojiIcone(j.icone);
+      const nom = siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
+      const nb = etat.cartesRestantes?.[siege] ?? 0;
+      const etatJoueur = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '');
+      const morceaux = [`${nb} carte${nb > 1 ? 's' : ''}`];
+      if (j.ia) morceaux.push(nomNiveau(j.niveau));
+      if (etatJoueur) morceaux.push(etatJoueur);
+      const g = s('g', {
+        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : ''),
+        'data-siege': siege,
+        'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
+        'aria-label': `${nom}${j.ia ? ', IA ' + nomNiveau(j.niveau) : ''}, ${nb} carte${nb > 1 ? 's' : ''}${actif ? ', à son tour' : ''}`,
+        transform: `translate(${place.x} ${place.y}) rotate(${place.angle})`,
+      });
+      const fond = s('rect', { class: 'fond-etiquette', x: 0, y: -4.4, width: 0, height: 8.8, rx: 4.4 });
+      const pastille = s('circle', { class: 'pastille-plateau', cx: 0, cy: 0, r: 3.5, fill: couleurSiege(siege), stroke: couleurFonceeSiege(siege) });
+      const initiale = s('text', { class: 'pastille-texte' + (emoji ? ' emoji' : ''), x: 0, y: emoji ? 1.45 : 1.3 }, emoji || (nom.slice(0, 1).toUpperCase() || '?'));
+      const texte = s('text', { class: 'nom-autour', x: 0, y: 1.75 }, s('tspan', { class: 'prenom' }, tronquer(nom, 14)), s('tspan', { class: 'details' }, ' · ' + morceaux.join(' · ')));
+      g.append(fond, pastille, initiale, texte);
+      c.append(g);
+      // Centrage : on mesure le texte une fois posé (repli approximatif s'il n'est pas encore affiché).
+      let largeur = 0;
+      try {
+        largeur = texte.getComputedTextLength();
+      } catch {
+        largeur = 0;
+      }
+      if (!largeur) largeur = (nom.length + morceaux.join(' · ').length + 3) * 2.75;
+      largeur = Math.min(largeur, place.longueur - 12);
+      const total = 3.5 * 2 + 1.6 + largeur;
+      const x0 = -total / 2;
+      pastille.setAttribute('cx', (x0 + 3.5).toFixed(2));
+      initiale.setAttribute('x', (x0 + 3.5).toFixed(2));
+      texte.setAttribute('x', (x0 + 8.6).toFixed(2));
+      fond.setAttribute('x', (x0 - 1.6).toFixed(2));
+      fond.setAttribute('width', (total + 3.2).toFixed(2));
     }
   }
 

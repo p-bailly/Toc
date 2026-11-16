@@ -20,10 +20,24 @@
   --contour: #0f2238;
   --ring: #1f62c0;
   /* Pions : bleu et jaune (partenaires) contre rouge et violet */
-  --pion-0: #1f62c0;
-  --pion-1: #e03a33;
-  --pion-2: #f0b400;
-  --pion-3: #7a5bb8;
+  --pion-0: #2f6fb5;
+  --pion-1: #c8372d;
+  --pion-2: #e6a91b;
+  --pion-3: #3f8f4f;
+  --pion-0-fonce: #153251;
+  --pion-1-fonce: #5a1914;
+  --pion-2-fonce: #674c0c;
+  --pion-3-fonce: #1c4024;
+  /* Plateau en bois verni */
+  --bois: #dcb57f;
+  --bois-2: #cfa368;
+  --bois-cadre: #7a4c22;
+  --bois-filet: #b98a52;
+  --bois-texte: #4a2c10;
+  --trou: #5b3a1b;
+  --trou-centre: #321f0f;
+  --trou-bord: #3c240e;
+  --veinage-opacite: 1;
   /* Main (bac bleu) */
   --rack: #1b5ea6;
   --carte-fond: #fffdf6;
@@ -60,10 +74,20 @@
   --tile-edge: #a08e58;
   --contour: #06131f;
   --ring: #7fb0f5;
-  --pion-0: #3b7ee0;
-  --pion-1: #ea4a42;
-  --pion-2: #f4c01c;
-  --pion-3: #9073d4;
+  --pion-0: #2f6fb5;
+  --pion-1: #c8372d;
+  --pion-2: #e6a91b;
+  --pion-3: #3f8f4f;
+  /* Le plateau reste en bois, plus sombre et moins saturé pour ne pas éblouir. */
+  --bois: #a98a63;
+  --bois-2: #957652;
+  --bois-cadre: #4a2e14;
+  --bois-filet: #7d5d3a;
+  --bois-texte: #2a180a;
+  --trou: #4a2f16;
+  --trou-centre: #24160a;
+  --trou-bord: #2a180a;
+  --veinage-opacite: 0.8;
   --rack: #0f4a85;
   --carte-fond: #f7f2e4;
   --chip: #1f3f66;
@@ -2018,4 +2042,180 @@ details > .reglage:first-of-type {
 }
 .liste-niveaux .ligne.choisie {
   background: var(--chip);
+}
+
+/* ═══ Habillage « Bois verni » : bois clair verni, trous percés, couleurs peintes, pions en billes ═══
+   (règles placées en fin de fichier : elles remplacent celles du tapis vert plus haut). */
+.plateau-toc .stop-bois {
+  stop-color: var(--bois);
+}
+.plateau-toc .stop-bois-2 {
+  stop-color: var(--bois-2);
+}
+.plateau-toc .stop-trou {
+  stop-color: var(--trou);
+}
+.plateau-toc .stop-trou-centre {
+  stop-color: var(--trou-centre);
+}
+.plateau-toc .cadre {
+  fill: var(--bois-cadre);
+}
+.plateau-toc .cadre-triangle {
+  fill: var(--bois-cadre);
+  stroke: var(--bois-cadre);
+  stroke-width: 21.5;
+}
+.plateau-toc .tapis-triangle {
+  stroke-width: 14.5;
+  stroke-linejoin: round;
+}
+.plateau-toc .veinage {
+  opacity: var(--veinage-opacite);
+  pointer-events: none;
+}
+.plateau-toc .veinage-triangle {
+  stroke-width: 14.5;
+  stroke-linejoin: round;
+}
+.plateau-toc .filet {
+  fill: none;
+  stroke: var(--bois-filet);
+  stroke-opacity: 0.55;
+  stroke-width: 0.5;
+}
+/* Cases : trous percés dans le bois */
+.plateau-toc .trou,
+.plateau-toc .trou.repere,
+.plateau-toc .trou.trou-fonce {
+  stroke: var(--trou-bord);
+  stroke-width: 0.38;
+}
+.plateau-toc .etoile-repere {
+  fill: var(--trou-bord);
+}
+/* Blocs de couleur peints : base, case de sortie, allée */
+.plateau-toc .zone-base,
+.plateau-toc .zone-allee,
+.plateau-toc .zone-sortie {
+  stroke: var(--trou-bord);
+  stroke-width: 0.62;
+}
+.plateau-toc .fleche-sens {
+  stroke: var(--bois-texte);
+  stroke-opacity: 0.7;
+  stroke-width: 0.75;
+  opacity: 1;
+}
+.plateau-toc .texte-donne {
+  fill: var(--bois-texte);
+  opacity: 1;
+  font-weight: 700;
+}
+.plateau-toc .emplacement-carte {
+  stroke: var(--bois-texte);
+  stroke-opacity: 0.45;
+}
+.plateau-toc .carte-plateau .fond-carte {
+  fill: #fffaf0;
+  stroke: var(--trou-bord);
+}
+/* Pions en billes */
+.plateau-toc .ombre-pion {
+  fill: #000;
+  opacity: 0.28;
+}
+.plateau-toc .corps-pion {
+  stroke-width: 0.55;
+}
+.plateau-toc .reflet-pion {
+  fill: #fff;
+  opacity: 0.6;
+}
+.plateau-toc .bouclier {
+  stroke: #0f2238;
+  transform: translate(2.3px, -2.8px) scale(0.85);
+}
+/* Marques de la saisie et du dernier coup, bien visibles sur le bois */
+.plateau-toc .dernier-arrivee {
+  stroke: #e98a00;
+  stroke-width: 1.3;
+}
+.plateau-toc .dernier-depart {
+  stroke: #e98a00;
+  stroke-width: 0.85;
+}
+.plateau-toc .pion.candidat .corps-pion {
+  stroke: #fff;
+  stroke-width: 0.85;
+}
+.plateau-toc .marque-cible {
+  fill: rgba(255, 255, 255, 0.4);
+  stroke: #fff;
+  stroke-width: 0.9;
+}
+.plateau-toc .marque-cible.choisie {
+  stroke: #e98a00;
+}
+/* Noms autour du plateau carré (hors du bois : couleurs de l'interface) */
+.plateau-toc .etiquette-autour .fond-etiquette {
+  fill: transparent;
+  stroke: none;
+}
+.plateau-toc .etiquette-autour.actif .fond-etiquette {
+  fill: color-mix(in srgb, var(--dernier) 22%, var(--surface));
+  stroke: var(--dernier);
+  stroke-width: 0.7;
+}
+.plateau-toc .pastille-plateau {
+  stroke-width: 0.5;
+}
+.plateau-toc .pastille-texte {
+  fill: #fff;
+  font-size: 4.3px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+.plateau-toc .pastille-texte.emoji {
+  font-size: 4.4px;
+}
+.plateau-toc .nom-autour {
+  fill: var(--text);
+  font-size: 5.3px;
+}
+.plateau-toc .nom-autour .prenom {
+  font-weight: 800;
+}
+.plateau-toc .nom-autour .details {
+  fill: var(--muted);
+  font-weight: 600;
+}
+.plateau-toc .etiquette-autour.actif .nom-autour .details {
+  fill: var(--text);
+}
+/* Petit plateau du logo et des tapis de la salle d'attente : en bois aussi */
+.logo {
+  background: radial-gradient(circle at 50% 42%, #dcb57f, #cfa368);
+  border-color: #7a4c22;
+}
+.logo span {
+  background: radial-gradient(circle at 35% 30%, #8fb4e0 0 18%, #2f6fb5 22%);
+  border: 2px solid #153251;
+  box-shadow: none;
+}
+.tapis-table {
+  background: radial-gradient(circle at 50% 42%, var(--bois), var(--bois-2));
+  border-color: var(--bois-cadre);
+  color: var(--bois-texte);
+}
+.tapis-table .note {
+  color: var(--bois-texte);
+}
+.tapis-triangle-attente {
+  background: radial-gradient(circle at 50% 60%, var(--bois), var(--bois-2));
+  box-shadow: inset 0 0 0 3px var(--bois-cadre);
+}
+.pastille-couleur {
+  background: radial-gradient(circle at 50% 42%, var(--bois), var(--bois-2));
+  border-color: var(--bois-cadre);
 }

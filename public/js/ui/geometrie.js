@@ -214,7 +214,13 @@ const GEO_CARRE = {
   nbJoueurs: 4,
   nbCases: 64,
   forme: 'carre',
-  cadre: { x: -3, y: -3, l: 176, h: 176 },
+  // Cadre : le plateau (bord en bois de -4,5 à 174,5) et, autour, les bandes des noms des joueurs : 11 unités en
+  // haut et en bas (texte horizontal), 9,5 sur les côtés (texte vertical) pour garder le plateau aussi grand que
+  // possible sur un téléphone.
+  cadre: { x: -14, y: -15.5, l: 198, h: 201 },
+  /** Bord extérieur du cadre en bois (les noms sont au-delà). */
+  bord: { x: -4.5, y: -4.5, l: 179, h: 179 },
+  etiquettesAutour: true,
   TAILLE_BASE: 27,
   coteDe: (siege, vue) => coteDe(siege, vue),
   angleCote: (cote) => cote * 90,
@@ -227,6 +233,16 @@ const GEO_CARRE = {
   },
   flecheSens: (cote) => ({ ...versSvg(positionFlecheSens(cote)), angle: cote * 90 + 180 }),
   boiteEtiquette: (cote) => boiteEtiquette(cote),
+  /**
+   * Nom d'un joueur autour du plateau, centré sur son côté : toi en bas, ton partenaire en haut, les adversaires
+   * à gauche (texte qui monte) et à droite (texte qui descend).
+   */
+  placeEtiquette: (cote) => [
+    { x: 85, y: 180, angle: 0, longueur: 176 },
+    { x: -9.25, y: 85, angle: -90, longueur: 176 },
+    { x: 85, y: -10, angle: 0, longueur: 176 },
+    { x: 179.25, y: 85, angle: 90, longueur: 176 },
+  ][cote],
   centre: { x: 85, y: 85 },
 };
 
