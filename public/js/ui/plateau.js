@@ -1,12 +1,11 @@
 // Plateau de Toc en SVG, habillage « Bois verni » : bois clair verni (dégradé et veinage), cadre brun, cases
-// percées dans le bois, blocs de couleur peints (base, sortie, allée), étoiles peintes pour les repères de
+// percées dans le bois, blocs de couleur peints (base, sortie, allée), anneaux clairs incrustés pour les repères de
 // comptage, pions en billes. Noms des joueurs autour du plateau carré (dans les coins libres pour le triangle),
 // défausse au centre, pions animés.
 // Le plateau n'applique aucune règle : il affiche ce qu'on lui donne et signale les touchers (pions, cibles).
 
 import { s } from './dom.js';
 import { BASE, caseDepart } from '../moteur/plateau.js';
-import { estProtege } from '../moteur/regles.js';
 import { CELLULE, geometrie, chemin, TRIANGLE } from './geometrie.js';
 import { PIONS, couleurSiege, couleurFonceeSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
@@ -32,17 +31,6 @@ export function dessinPion(siege, { fantome = false } = {}) {
     s('circle', { class: 'corps-pion', r: RAYON_PION, fill: couleurSiege(siege), stroke: couleurFonceeSiege(siege) }),
     s('circle', { class: 'reflet-pion', cx: -1, cy: -1.12, r: 1.05 }),
   );
-}
-
-/** Étoile à cinq branches (repère de comptage peint sous le trou). */
-function cheminEtoile(x, y, R) {
-  let d = '';
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    const r = i % 2 ? R * 0.5 : R;
-    d += (i ? 'L' : 'M') + (x + r * Math.cos(a)).toFixed(2) + ' ' + (y + r * Math.sin(a)).toFixed(2);
-  }
-  return d + 'Z';
 }
 
 // ─── Veinage du bois ────────────────────────────────────────────────────────
@@ -86,11 +74,6 @@ function veinage() {
 }
 
 let compteurPlateaux = 0;
-
-/** Petit bouclier blanc posé sur un pion protégé (sur sa case de sortie). */
-function bouclier() {
-  return s('path', { class: 'bouclier', d: 'M0 -2.1 l1.75 0.7 v1.3 c0 1.15 -0.75 1.85 -1.75 2.2 c-1 -0.35 -1.75 -1.05 -1.75 -2.2 v-1.3 z' });
-}
 
 const translate = ({ x, y }) => `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
 
@@ -169,7 +152,7 @@ export class Plateau {
       this.couchePions.replaceChildren();
       this.pions = [];
       for (let g = 0; g < 4 * nbJoueurs; g++) {
-        const el = s('g', { class: 'pion', 'data-pion-dessin': g }, dessinPion(g >> 2), bouclier());
+        const el = s('g', { class: 'pion', 'data-pion-dessin': g }, dessinPion(g >> 2));
         this.pions.push(el);
         this.couchePions.append(el);
       }
@@ -229,17 +212,14 @@ export class Plateau {
       }
       // Sortie : petit carré plein de sa couleur.
       g.append(rectTourne('zone-sortie', geo.caseCircuit(caseDepart(o), siegeVue), 9.8, 9.8, angle, { rx: 2, fill: couleurSiege(o) }));
-      // Flèche claire du sens de parcours, le long de son côté.
-      const fl = geo.flecheSens(cote);
-      g.append(s('path', { class: 'fleche-sens', d: 'M-2.25 0 H2.25 M0.75 -1.5 L2.25 0 L0.75 1.5', transform: `translate(${fl.x.toFixed(2)} ${fl.y.toFixed(2)}) rotate(${fl.angle.toFixed(1)})` }));
     }
     const departs = new Set(Array.from({ length: n }, (_, o) => caseDepart(o)));
     for (let i = 0; i < geo.nbCases; i++) {
       const p = geo.caseCircuit(i, siegeVue);
       const repere = i % 16 === 6 || i % 16 === 12;
       const depart = departs.has(i);
-      // Repère de comptage : une étoile peinte sombre sous le trou.
-      if (repere) g.append(s('path', { class: 'etoile-repere', d: cheminEtoile(p.x, p.y, 5.25) }));
+      // Repère de comptage : un anneau clair incrusté autour du trou.
+      if (repere) g.append(s('circle', { class: 'anneau-repere', cx: p.x, cy: p.y, r: 4.55 }));
       g.append(
         s('circle', {
           class: 'trou' + (repere ? ' repere' : '') + (depart ? ' trou-sortie' : ''),
@@ -275,7 +255,6 @@ export class Plateau {
     for (let g = 0; g < this.pions.length; g++) {
       const el = this.pions[g];
       el.style.transform = translate(this.geo.positionPion(g, positions[g], siegeVue));
-      el.classList.toggle('protege', estProtege({ pions: positions }, g));
       el.classList.toggle('en-base', positions[g] === BASE);
       el.classList.toggle('candidat', !!choix?.candidats?.has(g));
       el.classList.toggle('choisi', choix?.choisi === g);

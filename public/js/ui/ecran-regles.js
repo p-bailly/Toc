@@ -24,7 +24,7 @@ export function afficher(racine) {
           'Chaque joueur a une case de sortie au milieu de son côté (petit carré de sa couleur) et, juste derrière, sa base de 4 pions non sortis (grand carré de sa couleur).',
           'Son allée d’arrivée (rectangle de sa couleur, 4 cases) part vers le centre depuis une case d’entrée située 3 cases avant la sortie, à droite de celle-ci. Depuis sa case de sortie, un 4 recule le pion une case avant l’entrée ; un 5 l’amène ensuite au fond de l’allée.',
           'Les cases au bord foncé (6e et 12e après chaque sortie) aident à compter.',
-          'Un pion posé sur sa propre case de sortie est protégé (bouclier) : personne ne peut le dépasser (son propriétaire non plus), l’échanger ni le renvoyer à la base. Seule exception : son propriétaire qui sort un nouveau pion le renvoie à la base.',
+          'Un pion posé sur sa propre case de sortie est protégé : personne ne peut le dépasser (son propriétaire non plus), l’échanger ni le renvoyer à la base. Seule exception : son propriétaire qui sort un nouveau pion le renvoie à la base.',
         ),
       ),
       section(

@@ -37,6 +37,7 @@
   --trou: #5b3a1b;
   --trou-centre: #321f0f;
   --trou-bord: #3c240e;
+  --repere: #fbf1d8;
   --veinage-opacite: 1;
   /* Main (bac bleu) */
   --rack: #1b5ea6;
@@ -87,6 +88,7 @@
   --trou: #4a2f16;
   --trou-centre: #24160a;
   --trou-bord: #2a180a;
+  --repere: #ecdcb8;
   --veinage-opacite: 0.8;
   --rack: #0f4a85;
   --carte-fond: #f7f2e4;
@@ -1121,14 +1123,6 @@ details > .reglage:first-of-type {
   stroke: var(--contour);
   stroke-width: 0.65;
 }
-.plateau-toc .fleche-sens {
-  fill: none;
-  stroke: var(--trait);
-  stroke-width: 0.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.85;
-}
 .plateau-toc .dernier-depart {
   fill: none;
   stroke: var(--dernier);
@@ -1161,16 +1155,6 @@ details > .reglage:first-of-type {
   fill-opacity: 0.92;
   stroke: var(--contour);
   stroke-width: 0.2;
-}
-.plateau-toc .bouclier {
-  display: none;
-  fill: #fff;
-  stroke: var(--contour);
-  stroke-width: 0.35;
-  transform: translate(2.6px, -2.6px) scale(0.85);
-}
-.plateau-toc .pion.protege .bouclier {
-  display: block;
 }
 .plateau-toc .pion.candidat .corps-pion {
   stroke: #fff;
@@ -2091,8 +2075,10 @@ details > .reglage:first-of-type {
   stroke: var(--trou-bord);
   stroke-width: 0.38;
 }
-.plateau-toc .etoile-repere {
-  fill: var(--trou-bord);
+.plateau-toc .anneau-repere {
+  fill: var(--repere);
+  stroke: var(--trou-bord);
+  stroke-width: 0.45;
 }
 /* Blocs de couleur peints : base, case de sortie, allée */
 .plateau-toc .zone-base,
@@ -2100,12 +2086,6 @@ details > .reglage:first-of-type {
 .plateau-toc .zone-sortie {
   stroke: var(--trou-bord);
   stroke-width: 0.62;
-}
-.plateau-toc .fleche-sens {
-  stroke: var(--bois-texte);
-  stroke-opacity: 0.7;
-  stroke-width: 0.75;
-  opacity: 1;
 }
 .plateau-toc .texte-donne {
   fill: var(--bois-texte);
@@ -2131,10 +2111,6 @@ details > .reglage:first-of-type {
 .plateau-toc .reflet-pion {
   fill: #fff;
   opacity: 0.6;
-}
-.plateau-toc .bouclier {
-  stroke: #0f2238;
-  transform: translate(2.3px, -2.8px) scale(0.85);
 }
 /* Marques de la saisie et du dernier coup, bien visibles sur le bois */
 .plateau-toc .dernier-arrivee {

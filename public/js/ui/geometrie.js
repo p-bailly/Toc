@@ -142,11 +142,6 @@ export function chemin(pion, de, vers, sens = 'avant', nbJoueurs = 4) {
   return etapes;
 }
 
-/** Petite flèche du sens de parcours le long du côté du joueur du bas (entre son étiquette et sa base). */
-export function positionFlecheSens(cote) {
-  return tourner({ u: 5.75, v: 14.9 }, cote);
-}
-
 // ─── Plateau triangulaire (jeu à 3) ─────────────────────────────────────────
 
 /** Pas entre deux cases (unités SVG), comme une case du plateau carré. */
@@ -196,7 +191,7 @@ const T_BASE = [
 /**
  * Géométrie du plateau à `nbJoueurs` joueurs (4 : carré, 3 : triangle), en coordonnées SVG.
  * Méthodes : coteDe, caseCircuit, caseAllee, emplacementBase, centreBase, positionPion, angleCote,
- * flecheSens, boiteEtiquette, centre (défausse) ; champs : nbJoueurs, nbCases, cadre (viewBox),
+ * boiteEtiquette, centre (défausse) ; champs : nbJoueurs, nbCases, cadre (viewBox),
  * TAILLE_BASE (côté du carré de base).
  */
 export function geometrie(nbJoueurs = 4) {
@@ -231,7 +226,6 @@ const GEO_CARRE = {
   positionPion(pion, pos, vue) {
     return positionPionGeo(this, pion, pos, vue);
   },
-  flecheSens: (cote) => ({ ...versSvg(positionFlecheSens(cote)), angle: cote * 90 + 180 }),
   boiteEtiquette: (cote) => boiteEtiquette(cote),
   /**
    * Nom d'un joueur autour du plateau, centré sur son côté : toi en bas, ton partenaire en haut, les adversaires
@@ -267,14 +261,6 @@ const GEO_TRIANGLE = {
   },
   positionPion(pion, pos, vue) {
     return positionPionGeo(this, pion, pos, vue);
-  },
-  flecheSens(cote) {
-    // Une flèche par côté, à l'intérieur, entre la 5e et la 6e case après la sortie.
-    const a = caseTriangleRelative(5);
-    const b = caseTriangleRelative(6);
-    const { G } = TRIANGLE;
-    const p = tournerTriangle({ x: a.x + (G.x - a.x) * 0.2, y: a.y + (G.y - a.y) * 0.2 }, cote);
-    return { ...p, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + cote * 120 };
   },
   /** Étiquettes hors du triangle : la sienne en bas à gauche, les adversaires dans les coins du haut. */
   boiteEtiquette(cote) {
