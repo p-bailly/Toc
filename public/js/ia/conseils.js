@@ -76,7 +76,9 @@ export function raisonsDon(e, etat, siege) {
     r.push(`sur le plateau actuel, elle rapporterait ≈ ${Math.round(e.gPartBrut)} cases à ton partenaire, contre ${Math.round(Math.max(0, e.gMoiBrut))} à toi`);
   }
   if (e.pManque < 0.5 && e.gPartBrut > 0 && r.length < 3) r.push(`ton partenaire a de bonnes chances d'en avoir déjà ${e.sortie ? 'une carte pour sortir' : 'une'}`);
-  if (!r.length) r.push(`c'est la carte dont tu te passes le plus facilement`);
+  if (!r.length) {
+    r.push(`sur le plateau actuel, elle rapporterait ≈ ${Math.round(Math.max(0, e.gPartBrut))} cases à ton partenaire et ≈ ${Math.round(Math.max(0, e.gMoiBrut))} à toi`);
+  }
   return r.slice(0, 3);
 }
 

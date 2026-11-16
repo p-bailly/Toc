@@ -182,9 +182,10 @@ surOuvertureNotification((hash) => app.naviguer(hash));
 
 // Service worker : coquille de l'appli disponible hors ligne. Une nouvelle version prend la main au lancement suivant.
 if ('serviceWorker' in navigator && !parametres.has('sanssw')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  });
+  // (app.js attend la couche réseau : l'événement « load » peut être déjà passé.)
+  const enregistrer = () => navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if (document.readyState === 'complete') enregistrer();
+  else window.addEventListener('load', enregistrer);
 }
 
 // Installation sur Android / ordinateur : on garde l'invitation du navigateur pour un bouton « Installer ».
