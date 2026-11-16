@@ -67,7 +67,7 @@ export function afficher(racine, app, { reste }) {
       session.fermer();
       return;
     }
-    demonterJeu = monterJeu(racine, { session: avecIcones(session), retour: '#/parties', libelleRetour: 'Mes parties', analyse: '#/analyse/' + encodeURIComponent(id) });
+    demonterJeu = monterJeu(racine, { session: avecIcones(session), retour: '#/parties', libelleRetour: 'Mes parties', essais: !!app.rapide, analyse: '#/analyse/' + encodeURIComponent(id) });
   }
 
   /** Ajoute l'icône de chaque joueur (lue dans sa fiche) aux joueurs de la vue. */

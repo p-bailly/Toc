@@ -5,7 +5,7 @@
 // joueur dans le bac bleu, ligne de consigne, boutons, puis la barre de statut. Sur grand écran, le plateau
 // passe à gauche et le reste forme une colonne à droite.
 
-import { h, remplacer, messageErreur, pluriel, mouvementReduit } from './dom.js';
+import { h, remplacer, messageErreur, pluriel, mouvementReduit, lire, ecrire } from './dom.js';
 import {
   coupsLegaux,
   mainJouable,
@@ -23,6 +23,8 @@ import {
   siegesGagnants,
   estJoker,
   cartesDeLaDonne,
+  coupsLegauxMain,
+  rejouerPartie,
 } from '../moteur/index.js';
 import { Plateau, dessinPion } from './plateau.js';
 import { dessinCarte } from './carte.js';
@@ -31,7 +33,7 @@ import { piRetour, piHistorique, piOk, piAnnuler, piConseil } from './pictos.js'
 import * as IA from '../ia/ia.js';
 import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
 import { couleurSiege, nomCouleur, PIONS } from './couleurs.js';
-import { lireReglages } from './reglages.js';
+import { lireReglages, rythme, VITESSE_ESSAIS } from './reglages.js';
 import { nomNiveau } from './niveaux.js';
 import { majMonTour, notifier } from './notifications.js';
 import { s } from './dom.js';
@@ -46,7 +48,7 @@ const NOMS_FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆'
  * @param {Function} [o.rejouer]    partie d'entraînement : relancer une partie
  * @returns {Function} destruction
  */
-export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null }) {
+export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null, essais = false }) {
   const plateau = new Plateau({ surPion: (g) => toucherPion(g), surCible: (i) => toucherCible(i) });
 
   const titre = h('span', { class: 'texte' }, 'Toc');
@@ -73,7 +75,11 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const consigne = h('div', { class: 'apercu consigne', role: 'status', 'aria-live': 'polite' });
   const actions = h('div', { class: 'actions choix-coup' });
   const statut = h('div', { class: 'statut' });
-  const colonne = h('div', { class: 'colonne-jeu' }, main, consigne, h('div', { class: 'panneau-bas' }, actions, statut));
+  // Ordre des tours (qui joue maintenant, qui ensuite ; pendant l'échange : qui on attend, qui jouera le premier).
+  const ordre = h('div', { class: 'ordre-tours', 'aria-live': 'polite' });
+  // Journal visible en permanence sur grand écran (masqué sur téléphone : il reste dans sa feuille).
+  const journalPanneau = h('div', { class: 'journal-panneau' });
+  const colonne = h('div', { class: 'colonne-jeu' }, ordre, main, consigne, h('div', { class: 'panneau-bas' }, actions, statut), journalPanneau);
   const ecran = h('div', { class: 'ecran-jeu' }, barre, zonePlateau, colonne);
   remplacer(racine, ecran);
 
@@ -84,7 +90,6 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let coupPret = null; // coup en attente de confirmation
   let sept = null; // { etapes, pions, captures } pendant la saisie d'un 7
   let envoi = false;
-  let histoVu = -1;
   let recuSignale = null;
   let finMontree = false;
   let feuilleFin = null;
@@ -95,6 +100,18 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let comme = null; // joker (jeu à 3) : rang copié choisi
   let avis = null; // message bref affiché dans la consigne : { texte, erreur }
   let minuterieAvis = null;
+  // File de présentation : les coups arrivés sont montrés un par un, dans l'ordre, chacun animé avec un temps de
+  // lecture ; le joueur n'agit qu'une fois la file vidée (ou passée).
+  let vueReelle = null;
+  let nHisto = -1; // nombre de coups de l'historique déjà présentés
+  let enPresentation = false;
+  let restants = 0;
+  let passer = false;
+  let finAttente = null;
+  // Coup unique joué tout seul : un seul déclenchement par position.
+  const autoFaits = new Set();
+  let minuterieAuto = null;
+  let coupAuto = null;
 
   const reinitialiser = () => {
     carte = null;
@@ -121,7 +138,29 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (vue) rendre();
   }
 
+  /** Rythme courant (réglage « Vitesse du jeu », ou presque instantané pour les essais automatisés). */
+  const leRythme = () => (essais ? VITESSE_ESSAIS : rythme(lireReglages().vitesse));
+  const animationsActives = () => lireReglages().animations && !mouvementReduit();
+  const cleVu = () => (vueReelle?.enLigne ? `toc.vu.${vueReelle.id}` : null);
+
   const desabonner = session.abonner((v) => {
+    vueReelle = v;
+    if (nHisto < 0) {
+      // Ouverture : en ligne, on reprend là où le joueur s'était arrêté (coups joués en son absence) ;
+      // en entraînement, rien n'a bougé pendant son absence.
+      const vu = cleVu() ? lire(cleVu(), null) : null;
+      nHisto = typeof vu === 'number' && vu >= 0 && vu <= v.historique.length ? vu : v.historique.length;
+    }
+    if (enPresentation) return; // la file lira les nouveaux coups
+    if ((v.historique?.length || 0) > nHisto) {
+      presenter();
+      return;
+    }
+    appliquerVue(v);
+  });
+
+  /** Affiche une vue (réelle, ou intermédiaire pendant la présentation). */
+  function appliquerVue(v, { presentation = false } = {}) {
     const ancienne = vue;
     vue = v;
     // Nouvel état : la saisie en cours n'a plus de sens si la main ou le tour ont changé.
@@ -130,22 +169,121 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (!ancienne || autreCoup || ancienne.etat.phase !== v.etat.phase || ancienne.etat.donne !== v.etat.donne) reinitialiser();
     if (carte && !v.main.includes(carte)) reinitialiser();
     rendre();
-    animerSiBesoin(ancienne);
+    if (presentation) return;
     signalerRecu();
     signalerTour();
     if (v.etat.phase === 'fini' && !finMontree) {
       finMontree = true;
       setTimeout(montrerFin, ancienne ? 900 : 0);
     }
-  });
+    verifierCoupUnique();
+  }
 
-  function animerSiBesoin(ancienne) {
-    const n = vue.historique?.length ?? 0;
-    const precedent = histoVu;
-    histoVu = n;
-    if (!ancienne || precedent < 0 || n !== precedent + 1) return;
-    if (!lireReglages().animations || mouvementReduit()) return;
-    plateau.animer(vue.etat.dernierCoup, vue.siege);
+  function attendre(ms) {
+    return new Promise((resoudre) => {
+      const minuterie = setTimeout(() => {
+        finAttente = null;
+        resoudre();
+      }, ms);
+      finAttente = () => {
+        clearTimeout(minuterie);
+        finAttente = null;
+        resoudre();
+      };
+    });
+  }
+
+  /** Passe directement à la position actuelle (file longue, ou impatience). */
+  function passerPresentation() {
+    passer = true;
+    plateau.arreterAnimations();
+    finAttente?.();
+  }
+
+  /** Présente un par un les coups pas encore montrés, à partir de l'historique (rejoué par le moteur). */
+  async function presenter() {
+    enPresentation = true;
+    passer = false;
+    clearTimeout(minuterieAuto);
+    const enRetard = vueReelle.historique.length - nHisto;
+    let rejeu = null;
+    let longueur = -1;
+    while (!passer && nHisto < vueReelle.historique.length) {
+      const histo = vueReelle.historique;
+      if (longueur !== histo.length) {
+        try {
+          rejeu = rejouerPartie(vueReelle.etat.reglages, histo);
+          longueur = histo.length;
+        } catch {
+          break; // historique illisible : on montre directement la position actuelle
+        }
+      }
+      const i = nHisto;
+      const tour = rejeu.tours[i];
+      if (!tour) break;
+      nHisto = i + 1;
+      restants = histo.length - nHisto;
+      const intermediaire = { ...vueReelle, etat: tour.apres, historique: histo.slice(0, nHisto) };
+      appliquerVue(intermediaire, { presentation: true });
+      const r = leRythme();
+      const mien = histo[i].siege === vueReelle.siege;
+      const duree = animationsActives() ? plateau.animer(tour.apres.dernierCoup, vueReelle.siege, r) : 0;
+      // Le coup d'un autre joueur reste affiché le temps de le lire ; le sien, juste le temps de l'animation.
+      await attendre(duree + (mien ? Math.min(150, r.lecture) : r.lecture));
+    }
+    if (passer && enRetard > 1) annoncer(resumeRetard(nHisto, vueReelle.historique), { duree: 7000 });
+    nHisto = vueReelle.historique.length;
+    restants = 0;
+    enPresentation = false;
+    if (cleVu()) ecrire(cleVu(), nHisto);
+    appliquerVue(vueReelle);
+  }
+
+  /** Résumé des coups passés sans les voir : combien, et tes pions renvoyés à la base. */
+  function resumeRetard(depuis, histo) {
+    const passes = histo.slice(Math.max(0, depuis - 1));
+    const n = histo.length - Math.max(0, depuis - 1);
+    const mesPrises = passes.reduce((k, e) => k + (e.captures || []).filter((q) => q >> 2 === vueReelle.siege && e.siege !== vueReelle.siege).length, 0);
+    return `${pluriel(n, 'coup passé', 'coups passés')}${mesPrises ? ` · ${pluriel(mesPrises, 'de tes pions renvoyé', 'de tes pions renvoyés')} à la base` : ''} : le journal les détaille.`;
+  }
+
+  /**
+   * Seul coup possible : il est montré (carte et pion mis en évidence) puis joué tout seul, avec un message.
+   * Jamais pour la carte à donner, ni quand plusieurs cartes différentes peuvent être défaussées.
+   */
+  function verifierCoupUnique() {
+    if (enPresentation || !vue || envoi || carte || !lireReglages().coupUniqueAuto) return;
+    const { etat, siege } = vue;
+    if (etat.phase !== 'jeu' || etat.tour !== siege) return;
+    let coups;
+    try {
+      coups = coupsLegauxMain(etat, siege, vue.main);
+    } catch {
+      return;
+    }
+    if (coups.length !== 1) return;
+    const coup = coups[0];
+    const cleCoup = `${vue.id}|${etat.donne}|${etat.numCoup}`;
+    if (autoFaits.has(cleCoup)) return;
+    autoFaits.add(cleCoup);
+    carte = coup.carte;
+    comme = coup.comme || null;
+    if (coup.pion !== undefined) pion = coup.pion;
+    coupPret = coup;
+    coupAuto = coup;
+    annoncer(`Seul coup possible : ${resumeCoup(coup)}. Il va être joué pour toi…`, { duree: 4000 });
+    clearTimeout(minuterieAuto);
+    minuterieAuto = setTimeout(() => {
+      if (!vue || vue.etat.numCoup !== etat.numCoup || envoi || coupPret !== coup || enPresentation) return;
+      envoyer().then((ok) => ok && annoncer(`Seul coup possible : joué pour toi — ${resumeCoup(coup)}`, { duree: 6000 }));
+    }, leRythme().avantAuto);
+  }
+
+  /** « 10 ♠, avance de 10 » ; « défausse du 9 ♠ ». */
+  function resumeCoup(coup) {
+    if (coup.t === 'defausse') return estJoker(coup.carte) ? 'défausse du joker' : `défausse du ${carteCourte(coup.carte)}`;
+    const c = estJoker(coup.carte) ? `joker comme ${rangAvecArticle(coup.comme)}` : carteCourte(coup.carte);
+    return `${c}, ${decrireAction(coup, vue.siege, vue.joueurs)}`;
   }
 
   function signalerRecu() {
@@ -167,6 +305,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function aMoi() {
+    if (enPresentation) return false;
     return !!vue && ((vue.etat.phase === 'jeu' && vue.etat.tour === vue.siege) || (vue.etat.phase === 'echange' && !vue.don));
   }
 
@@ -223,6 +362,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   // ─── Touchers ─────────────────────────────────────────────────────────────
 
   function toucherCarte(c) {
+    if (enPresentation) return;
     if (envoi || !vue) return;
     const { etat } = vue;
     if (etat.phase === 'echange') {
@@ -301,6 +441,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function toucherPion(g) {
+    if (enPresentation) return;
     if (envoi || !carte) return;
     if (pion === g && !sept) {
       // Valet : toucher à nouveau son pion le désélectionne.
@@ -321,6 +462,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function toucherCible(i) {
+    if (enPresentation) return;
     const cible = ciblesCourantes[i];
     if (!cible || envoi) return;
     if (sept) {
@@ -386,21 +528,25 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   async function envoyer() {
-    if (!coupPret || envoi) return;
+    if (!coupPret || envoi || enPresentation) return false;
     const coup = coupPret;
     const avant = { etat: vue.etat, main: vue.main.slice(), don: vue.don, recu: vue.recu };
     envoi = true;
     rendre();
+    let reussi = false;
     try {
       await session.jouer(coup);
+      reussi = true;
       commenter(avant, coup);
     } catch (e) {
       annoncer(messageErreur(e), { erreur: true, duree: 6000 });
     } finally {
       envoi = false;
+      coupAuto = null;
       reinitialiser();
       if (vue) rendre();
     }
+    return reussi;
   }
 
   async function donner() {
@@ -425,7 +571,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (!vue) return;
     const { etat, siege, joueurs } = vue;
     const jeu = etat.phase === 'jeu';
-    const monTour = jeu && etat.tour === siege;
+    const monTour = jeu && etat.tour === siege && !enPresentation;
+    ecran.toggleAttribute('data-presentation', enPresentation);
     const coups = monTour ? coupsParCarte() : new Map();
     const jouable = monTour && mainJouable(etat, siege, vue.main);
     const actifCouleur = couleurActive(etat, siege);
@@ -436,7 +583,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     // Plateau : candidats, cibles, aperçu.
     const choix = calculerChoix(monTour);
     const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
-    plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
+    plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege, suivant: siegeSuivantAffiche() });
+    rendreOrdre();
+    rendreJournalPanneau();
     boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
     boutonConseil.hidden = !conseilsDispo || !lireReglages().conseilsIA;
     zonePlateau.classList.toggle('a-moi', aMoi());
@@ -446,7 +595,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const marqueRecue = nb() === 3 ? `reçue de ${(vue.joueurs[donneurDe()]?.pseudo || '').slice(0, 9)}` : 'reçue';
     const cartes = trierMain(vue.main).map((c) => {
       const injouable = monTour && jouable && !(coups.get(c) || []).length;
-      const inactive = (!monTour && !(etat.phase === 'echange' && !vue.don)) || envoi;
+      const inactive = (!monTour && !(etat.phase === 'echange' && !vue.don && !enPresentation)) || envoi;
       return dessinCarte(c, {
         bouton: true,
         choisie: carte === c,
@@ -462,6 +611,88 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
     rendreConsigne(monTour, jouable, actifCouleur);
     rendreStatut(actifCouleur);
+  }
+
+  /** Siège qui jouera ensuite (pendant l'échange : celui qui jouera le premier). */
+  function siegeSuivantAffiche() {
+    const { etat } = vue;
+    if (etat.phase === 'echange') return etat.tour;
+    if (etat.phase === 'jeu') return (etat.tour + 1) % nb();
+    return -1;
+  }
+
+  /** « toi » ou le prénom. */
+  function nomCourt(si) {
+    return si === vue.siege ? 'toi' : vue.joueurs[si]?.pseudo || `Joueur ${si + 1}`;
+  }
+
+  /**
+   * Bandeau de l'ordre des tours : « C'est à Léo — ensuite : Camille, Inès, toi » ; pendant l'échange,
+   * « Échange : on attend Léo et Inès » et « Premier à jouer : Camille, puis Inès, puis toi ».
+   */
+  function rendreOrdre() {
+    const { etat, siege } = vue;
+    if (etat.phase === 'fini') {
+      remplacer(ordre);
+      ordre.hidden = true;
+      return;
+    }
+    ordre.hidden = false;
+    const n = nb();
+    const suite = Array.from({ length: n }, (_, k) => (etat.tour + k) % n);
+    const puce = (si, i) =>
+      h(
+        'span',
+        { class: 'puce-ordre' + (i === 0 ? ' premier' : '') + (si === siege ? ' moi' : '') + (etat.phase === 'echange' && etat.echanges[si] ? ' a-donne' : ''), 'data-siege': si },
+        h('span', { class: 'point', style: { background: couleurSiege(si) } }),
+        nomCourt(si) === 'toi' ? 'toi' : nomCourt(si),
+        etat.phase === 'echange' && etat.echanges[si] ? ' ✓' : '',
+      );
+    const lignes = [];
+    if (etat.phase === 'echange') {
+      const attendus = suite.filter((si) => !etat.echanges[si]).map(nomCourt);
+      lignes.push(h('div', { class: 'ordre-ligne note-ordre' }, h('b', {}, 'Échange : '), attendus.length ? `on attend ${enumerer(attendus)}` : 'tout le monde a donné'));
+      lignes.push(h('div', { class: 'ordre-ligne' }, h('span', { class: 'titre-ordre' }, 'Premier à jouer :'), suite.map((si, i) => [i ? h('span', { class: 'sep' }, i === 1 ? ', puis' : ', puis') : null, puce(si, i)])));
+      ordre.setAttribute('aria-label', `Échange : ${attendus.length ? 'on attend ' + enumerer(attendus) : 'tout le monde a donné'}. Premier à jouer : ${suite.map(nomCourt).join(', puis ')}.`);
+    } else {
+      const [actuel, ...ensuite] = suite;
+      lignes.push(
+        h(
+          'div',
+          { class: 'ordre-ligne' },
+          h('span', { class: 'titre-ordre' }, actuel === siege ? 'C’est à' : 'C’est à'),
+          puce(actuel, 0),
+          h('span', { class: 'sep' }, '— ensuite :'),
+          ensuite.map((si, i) => [i ? h('span', { class: 'sep' }, ',') : null, puce(si, i + 1)]),
+        ),
+      );
+      ordre.setAttribute('aria-label', `C’est à ${nomCourt(actuel)}, ensuite : ${ensuite.map(nomCourt).join(', ')}.`);
+    }
+    remplacer(ordre, lignes);
+  }
+
+  /** Journal toujours visible sur grand écran (les 40 derniers coups). */
+  function rendreJournalPanneau() {
+    const histo = vue.historique || [];
+    const derniers = histo.slice(-40).reverse();
+    remplacer(
+      journalPanneau,
+      h('div', { class: 'titre-journal' }, 'Journal des coups'),
+      derniers.length
+        ? h(
+            'ol',
+            { class: 'journal compact' },
+            derniers.map((e) =>
+              h(
+                'li',
+                { class: 'ligne-journal' },
+                h('span', { class: 'puce-pion', style: { '--c': couleurSiege(e.siege) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[e.siege].forme]),
+                h('span', {}, ligneJournal(e, vue.joueurs, vue.siege)),
+              ),
+            ),
+          )
+        : h('p', { class: 'note' }, 'Aucun coup joué pour l’instant.'),
+    );
   }
 
   function sousTitres() {
@@ -538,7 +769,35 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const nomDest = joueurs[dest]?.pseudo || (a3 ? 'ton voisin' : 'ton partenaire');
     const lignes = [];
     const boutons = [];
+    // Dernière action, lisible jusqu'au coup suivant.
+    const derniere = (vue.historique || [])[vue.historique?.length - 1];
+    if (derniere && etat.phase !== 'fini') {
+      lignes.push(
+        h(
+          'div',
+          { class: 'derniere-action', 'data-n': vue.historique.length },
+          h('span', { class: 'puce-pion', style: { '--c': couleurSiege(derniere.siege) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[derniere.siege].forme]),
+          h('span', {}, ligneJournal(derniere, joueurs, siege)),
+        ),
+      );
+    }
     if (avis) lignes.push(h('span', { class: 'avis-jeu' + (avis.erreur ? ' erreur' : ''), role: avis.erreur ? 'alert' : null }, avis.texte));
+    if (enPresentation) {
+      if (restants > 0) {
+        boutons.push(
+          h(
+            'button',
+            { type: 'button', class: 'bouton' + (restants >= 6 ? ' principal large' : ''), 'data-action': 'passer', onclick: passerPresentation },
+            restants >= 6 ? `Passer à la position actuelle (${pluriel(restants, 'coup')})` : `Passer (${pluriel(restants, 'coup')})`,
+          ),
+        );
+        if (restants >= 6) lignes.push(h('span', { class: 'note' }, `${pluriel(restants, 'coup a été joué', 'coups ont été joués')} depuis ta dernière visite : ils te sont montrés un par un.`));
+      }
+      remplacer(consigne, h('div', { class: 'mots' }, lignes));
+      remplacer(actions, boutons);
+      actions.hidden = !boutons.length;
+      return;
+    }
 
     if (etat.phase === 'fini') {
       const gagnants = siegesGagnants(etat);
@@ -925,6 +1184,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     feuilleJournal?.fermer();
     feuilleConseil?.fermer();
     clearTimeout(minuterieAvis);
+    clearTimeout(minuterieAuto);
+    passer = true;
+    finAttente?.();
     majMonTour(false);
   };
 }
