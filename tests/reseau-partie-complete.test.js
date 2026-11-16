@@ -127,12 +127,15 @@ test('partie complète : 3 humains + 1 IA, remélanges, fin, statistiques', { ti
     assert.deepEqual(e.pions, p.etat.pions);
     assert.equal(e.gagnant, p.etat.gagnant);
   }
-  // Hors connexion, avec des mains pas encore en cache : message clair.
-  const revue = await b.client.ouvrirSession(id);
+  // Réouverture sur un autre appareil ; hors connexion, avec des mains pas encore en cache : message clair.
+  const b2 = nouveauClient(serveur, { graine: 77 });
+  await b2.client.connecter('Bruno');
+  const revue = await b2.client.ouvrirSession(id);
   assert.equal(revue.vue().etat.phase, 'fini');
-  b.magasin.horsLigne = true;
+  b2.magasin.horsLigne = true;
   await assert.rejects(revue.donneesAnalyse(), /Pas de connexion/);
-  b.magasin.horsLigne = false;
+  b2.magasin.horsLigne = false;
+  assert.equal((await revue.donneesAnalyse()).donnes.length, p.etat.donne + 1);
   revue.fermer();
   sessions.forEach((s) => s.fermer());
   arrets.forEach((f) => f());
