@@ -176,7 +176,7 @@ export async function connecter(pseudo) {
   await attendre();
   const nom = String(pseudo || '').trim().slice(0, 20);
   const id = identifiant(nom);
-  if (!id) throw new Error('Choisis un nom avec au moins une lettre ou un chiffre.');
+  if (!id) throw new Error('Ton prénom doit compter au moins une lettre ou un chiffre.');
   const faux = FAUX.find((f) => identifiant(f.pseudo) === id);
   const uid = faux ? faux.uid : 'u-' + id;
   if (!db.comptes[uid]) db.comptes[uid] = { uid, pseudo: nom, icone: null, visible: true, verrouille: false, stats: { jouees: 0, gagnees: 0 } };
@@ -198,9 +198,9 @@ export async function modifierProfil({ pseudo, icone, visible } = {}) {
   await attendre();
   const c = exigerConnexion();
   if (pseudo !== undefined) {
-    if (c.verrouille) throw new Error('Ton pseudo a été choisi par l’administrateur : il ne peut pas être changé.');
+    if (c.verrouille) throw new Error('Ton prénom a été fixé par l’administrateur : il ne peut pas être changé.');
     const p = String(pseudo).trim().slice(0, 20);
-    if (!p) throw new Error('Le pseudo ne peut pas être vide.');
+    if (!p) throw new Error('Le prénom ne peut pas être vide.');
     c.pseudo = p;
     for (const partie of Object.values(db.parties)) {
       if (partie.statut !== 'attente') continue;

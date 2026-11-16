@@ -18,7 +18,7 @@ export const TAILLES = [
 
 const CLE = 'toc.reglages';
 const DEFAUT = {
-  theme: 'auto',
+  theme: 'clair', // clair par défaut ; « Auto » (suivre le téléphone) et « Sombre » se choisissent dans les Réglages
   texte: 'normal',
   /** Interrupteur général des notifications ; les trois suivants choisissent lesquelles. */
   notifications: true,

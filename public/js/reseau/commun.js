@@ -25,14 +25,14 @@ export const ICONE_MAX = 12;
 /** Au moins deux caractères : Firebase exige un mot de passe de 6 caractères (« toc-xx »). */
 export const IDENTIFIANT_MIN = 2;
 
-export const PSEUDO_VERROUILLE = "Ce pseudo a été choisi par l'administrateur de l'appli : tu ne peux plus le changer.";
+export const PSEUDO_VERROUILLE = "Ce prénom a été fixé par l'administrateur de l'appli : tu ne peux plus le changer.";
 
 /** Vérifie un pseudo saisi ; renvoie le pseudo nettoyé ou lève une Error en français. */
 export function verifierPseudo(pseudo) {
   const p = String(pseudo ?? '').trim().replace(/\s+/g, ' ');
-  if (!p) throw new Error('Choisis un nom.');
-  if (p.length > PSEUDO_MAX) throw new Error(`Ton nom ne doit pas dépasser ${PSEUDO_MAX} caractères.`);
-  if (identifiant(p).length < IDENTIFIANT_MIN) throw new Error('Utilise au moins deux lettres ou chiffres dans ton nom.');
+  if (!p) throw new Error('Indique ton prénom.');
+  if (p.length > PSEUDO_MAX) throw new Error(`Ton prénom ne doit pas dépasser ${PSEUDO_MAX} caractères.`);
+  if (identifiant(p).length < IDENTIFIANT_MIN) throw new Error('Ton prénom doit compter au moins deux lettres ou chiffres.');
   return p;
 }
 

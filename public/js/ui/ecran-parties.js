@@ -50,7 +50,7 @@ export function afficher(racine, app, { page, reste }) {
 
 function afficherConnexion(racine, app) {
   const code = lire(CLE_CODE, null);
-  const champ = h('input', { name: 'pseudo', maxlength: 20, autocomplete: 'username', autocapitalize: 'none', autofocus: true, required: true });
+  const champ = h('input', { name: 'pseudo', maxlength: 20, autocomplete: 'given-name', autocapitalize: 'words', autofocus: true, required: true });
   const erreur = h('div', { class: 'apercu erreur', hidden: true });
   const bouton = h('button', { type: 'submit', class: 'bouton principal' }, 'Continuer');
   const formulaire = h(
@@ -76,13 +76,13 @@ function afficherConnexion(racine, app) {
         }
       },
     },
-    h('b', {}, code ? `Pour rejoindre la partie ${code}, choisis ton nom d’utilisateur` : 'Choisis ton nom d’utilisateur'),
+    h('b', {}, code ? `Pour rejoindre la partie ${code}, indique ton prénom` : 'Quel est ton prénom ?'),
     h(
       'span',
       { class: 'note' },
-      'Pas de mot de passe : saisis le même nom sur tous tes appareils pour retrouver tes parties. Attention, toute personne qui connaît ce nom peut s’y connecter.',
+      'Pas de mot de passe : saisis le même prénom sur tous tes appareils pour retrouver tes parties. Si quelqu’un porte déjà ce prénom, ajoute une initiale (« Marie D ») : deux personnes qui saisissent le même prénom arrivent sur le même compte.',
     ),
-    h('label', { class: 'champ' }, 'Nom d’utilisateur', champ),
+    h('label', { class: 'champ' }, 'Prénom', champ),
     bouton,
     erreur,
   );

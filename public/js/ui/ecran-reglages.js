@@ -212,7 +212,7 @@ export function afficher(racine, app) {
       return [
         rangee({
           titre: 'Compte',
-          texte: 'Choisis un nom d’utilisateur pour jouer en ligne et inviter tes proches.',
+          texte: 'Indique ton prénom pour jouer en ligne et inviter tes proches.',
           droite: h('a', { class: 'bouton', href: '#/parties' }, 'Se connecter'),
         }),
       ];
@@ -232,15 +232,15 @@ export function afficher(racine, app) {
     };
     const lignes = [];
     if (j.verrouille) {
-      lignes.push(rangee({ titre: 'Pseudo', texte: 'Ce pseudo a été choisi par l’administrateur : il ne peut pas être changé.', enfants: h('b', {}, j.pseudo) }));
+      lignes.push(rangee({ titre: 'Prénom', texte: 'Ce prénom a été fixé par l’administrateur : il ne peut pas être changé.', enfants: h('b', {}, j.pseudo) }));
     } else {
-      const champ = h('input', { class: 'champ-code libre', value: j.pseudo, maxlength: 20, 'aria-label': 'Pseudo', autocapitalize: 'words' });
+      const champ = h('input', { class: 'champ-code libre', value: j.pseudo, maxlength: 20, 'aria-label': 'Prénom', autocapitalize: 'words' });
       const bouton = h('button', { type: 'submit', class: 'bouton', disabled: true }, 'Enregistrer');
       champ.addEventListener('input', () => (bouton.disabled = !champ.value.trim() || champ.value.trim() === j.pseudo));
       lignes.push(
         rangee({
-          titre: 'Pseudo',
-          texte: 'Le nom que voient les autres joueurs.',
+          titre: 'Prénom',
+          texte: 'Le nom que voient les autres joueurs. Le prénom saisi à la connexion, lui, ne change pas.',
           enfants: h(
             'form',
             {
@@ -265,7 +265,7 @@ export function afficher(racine, app) {
           type: 'button',
           role: 'radio',
           'aria-checked': String(!j.icone),
-          'aria-label': 'Aucune : l’initiale de ton pseudo',
+          'aria-label': 'Aucune : l’initiale de ton prénom',
           class: 'choix-icone initiale' + (!j.icone ? ' choisie' : ''),
           onclick: () => j.icone && enregistrer({ icone: null }),
         },
@@ -288,11 +288,11 @@ export function afficher(racine, app) {
         ),
       );
     }
-    lignes.push(rangee({ titre: 'Icône', texte: 'Elle remplace l’initiale de ton pseudo, chez tous les joueurs.', enfants: grille }));
+    lignes.push(rangee({ titre: 'Icône', texte: 'Elle remplace l’initiale de ton prénom, chez tous les joueurs.', enfants: grille }));
     lignes.push(
       interrupteur({
         titre: 'Être trouvé par les autres joueurs',
-        texte: 'Ton pseudo apparaît dans la liste des joueurs qu’on peut inviter. Désactivé, seul le lien ou le code d’une partie permet de te faire jouer.',
+        texte: 'Ton prénom apparaît dans la liste des joueurs qu’on peut inviter. Désactivé, seul le lien ou le code d’une partie permet de te faire jouer.',
         actif: j.visible !== false,
         surChange: (visible) => enregistrer({ visible }),
       }),
