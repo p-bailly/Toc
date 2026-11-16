@@ -1,8 +1,17 @@
-// Dessin d'une carte à jouer (HTML) : rang et symbole en coin, grand symbole au centre, rouge ou noir.
+// Dessin d'une carte à jouer (HTML) : rang et symbole en coin, rouge ou noir ; au centre, le grand
+// symbole, ou le personnage pour les habillés (valet, dame, roi).
 
 import { h } from './dom.js';
 import { rangAffiche, symbole, estRouge, nomCarte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
+import { estHabille, svgFigure } from './figures.js';
+
+/** Élément DOM du personnage d'un habillé. */
+function figure(rang) {
+  const gabarit = document.createElement('template');
+  gabarit.innerHTML = svgFigure(rang);
+  return gabarit.content.firstChild;
+}
 
 /**
  * @param {string} carte   ex. « 7C »
@@ -16,11 +25,12 @@ export function dessinCarte(carte, o = {}) {
     ? [h('span', { class: 'titre-joker' }, 'JOKER'), h('span', { class: 'symbole-central' }, '★'), o.marque ? h('span', { class: 'marque-carte' }, o.marque) : null]
     : [
     h('span', { class: 'coin haut' }, h('b', {}, r), h('span', {}, sy)),
-    h('span', { class: 'symbole-central' + (['V', 'D', 'R'].includes(r) ? ' figure' : '') }, ['V', 'D', 'R'].includes(r) ? r : sy),
+    h('span', { class: 'symbole-central' + (estHabille(r) ? ' figure' : '') }, estHabille(r) ? figure(r) : sy),
     h('span', { class: 'coin bas' }, h('b', {}, r), h('span', {}, sy)),
     o.marque ? h('span', { class: 'marque-carte' }, o.marque) : null,
   ];
   const classes = ['carte-jeu', joker ? 'joker' : estRouge(carte) ? 'rouge' : 'noire'];
+  if (!joker && estHabille(r)) classes.push('habille');
   if (o.choisie) classes.push('choisie');
   if (o.injouable) classes.push('injouable');
   if (o.petite) classes.push('petite');
