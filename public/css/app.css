@@ -1952,3 +1952,24 @@ details > .reglage:first-of-type {
   background: #fff;
   opacity: 0.8;
 }
+.sous-reglage {
+  margin-left: 14px;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+}
+.sous-reglage > .reglage {
+  border-top: 0;
+}
+.ligne-conseils {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--rayon);
+  border: 1px dashed var(--line);
+  font-size: calc(13px * var(--texte));
+  color: var(--muted);
+}
+.ligne-conseils > span {
+  flex: 1;
+}

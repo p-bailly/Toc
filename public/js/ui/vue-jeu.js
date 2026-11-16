@@ -437,7 +437,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
     plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
     boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
-    boutonConseil.hidden = !conseilsDispo;
+    boutonConseil.hidden = !conseilsDispo || !lireReglages().conseilsIA;
     zonePlateau.classList.toggle('a-moi', aMoi());
 
     // Main.
@@ -727,7 +727,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   /** Après un coup du joueur : l'IA aurait-elle joué pareil ? (réglage « Commenter mes coups »). */
   function commenter(avant, coup) {
-    if (!conseilsDispo || vue?.enLigne || !lireReglages().commenterCoups || avant.etat.phase !== 'jeu') return;
+    const r = lireReglages();
+    if (!conseilsDispo || vue?.enLigne || !r.conseilsIA || !r.commenterCoups || avant.etat.phase !== 'jeu') return;
     setTimeout(() => {
       try {
         const avis = IA.conseillerCoup(avant.etat, vue.siege, avant.main, {
@@ -754,7 +755,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function ouvrirConseil() {
-    if (!conseilsDispo || !vue || !aMoi() || vue.enLigne) return;
+    if (!conseilsDispo || !vue || !aMoi() || vue.enLigne || !lireReglages().conseilsIA) return;
     const echange = vue.etat.phase === 'echange';
     const liste = h('div', { class: 'liste' }, h('div', { class: 'vide-etat' }, 'Réflexion…'));
     feuilleConseil = ouvrirFeuille(

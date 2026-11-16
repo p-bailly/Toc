@@ -29,7 +29,9 @@ const DEFAUT = {
   confirmerCoup: false,
   /** Animer les déplacements des pions. */
   animations: true,
-  /** Entraînement : après chaque coup, dire si l'IA aurait joué pareil. */
+  /** Conseils de l'IA (entraînement et analyse de fin de partie) : désactivés par défaut. */
+  conseilsIA: false,
+  /** Entraînement : après chaque coup, dire si l'IA aurait joué pareil (seulement avec conseilsIA). */
   commenterCoups: false,
 };
 
@@ -48,6 +50,7 @@ export function lireReglages() {
     notifFin: booleen('notifFin'),
     confirmerCoup: booleen('confirmerCoup'),
     animations: booleen('animations'),
+    conseilsIA: booleen('conseilsIA'),
     commenterCoups: booleen('commenterCoups'),
   };
 }
