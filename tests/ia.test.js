@@ -367,3 +367,27 @@ test('analyse du don : candidats, carte jouée, convergence', () => {
   assert.ok(r.candidats.some((c) => c.joue && c.carte === derniere));
   for (const c of r.candidats) assert.ok(main.includes(c.carte) && c.raisons.length >= 1);
 });
+
+test('analyse : evaluation, note, écart et marge en cases (ordres de grandeur bornés)', () => {
+  // Pion seul sur le circuit, aucun adversaire à portée : avancer de 8, 9 ou 10 ne diffère que
+  // de quelques cases.
+  const e = etat({ 0: 20, 8: 40 }, { restes: [3, 3, 3, 3] });
+  for (const budget of [0, 200]) {
+    const r = creerAnalyse(e, 0, ['8P', '9C', '10T'], { rng: generateurAleatoire(1), iterations: 60 }).avancer(budget);
+    assert.equal(r.candidats.length, 3);
+    for (const c of r.candidats) assert.ok(c.ecart <= 15, `écart ${c.ecart} (budget ${budget})`);
+    assert.ok(Math.abs(r.evaluation) < 300);
+  }
+  // Sur une partie, avec une victoire possible ou non : valeurs lisibles.
+  const p = positionDePartie(34, 120);
+  const s = p.etat.tour;
+  const r = creerAnalyse(p.etat, s, p.mains[s], { rng: generateurAleatoire(1), max: 30, iterations: 20 }).avancer(10000);
+  assert.ok(Math.abs(r.evaluation) < 1200);
+  for (const c of r.candidats) assert.ok(c.ecart >= 0 && c.ecart < 600 && c.marge < 200);
+  // Victoire immédiate : note bornée (plateau final + bonus), pas ±100000.
+  const v = etat({ 0: a(0), 1: a(1), 2: a(2), 3: 58, 8: a(0), 9: a(1), 10: a(2), 11: a(3), 4: 40 }, { restes: [3, 3, 3, 3] });
+  const rv = creerAnalyse(v, 0, ['9C', '7P', '2T'], { rng: generateurAleatoire(1), iterations: 10 }).avancer(10000);
+  assert.equal(rv.probaVictoire, 1);
+  assert.ok(rv.evaluation > 0 && rv.evaluation < 1200);
+  for (const c of rv.candidats) assert.ok(c.ecart < 600);
+});

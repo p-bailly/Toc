@@ -25,7 +25,7 @@ export const POIDS_DEFAUT = {
   risque: 1, // multiplicateur global du risque
   bloque: 2.5,
   menaceValet: 0.5, // part de la menace du valet prise en compte // pénalité maximale d'un pion bloqué par un pion protégé juste devant
-  victoire: 2000, // partie gagnée (borne finie : les moyennes de simulation restent lisibles)
+  victoire: 100, // bonus d'une partie gagnée, ajouté à l'évaluation (en cases) du plateau final
   // Valeur des cartes gardées en main
   sortieUtile: 11, // as ou roi quand un pion attend en base (première carte de sortie)
   sortieSup: 5, // cartes de sortie supplémentaires utiles
@@ -138,7 +138,8 @@ export function evaluerPlateau(pions, equipePersp, prochain, info, ctx, detail =
   const P = ctx.poids;
   const fin0 = finiPions(pions, 0) && finiPions(pions, 2);
   const fin1 = finiPions(pions, 1) && finiPions(pions, 3);
-  if (fin0 || fin1) return (fin0 ? 0 : 1) === equipePersp ? P.victoire : -P.victoire;
+  // Partie gagnée : le plateau est évalué normalement (l'échelle reste en cases), plus un bonus.
+  const bonusVictoire = fin0 || fin1 ? ((fin0 ? 0 : 1) === equipePersp ? P.victoire : -P.victoire) : 0;
 
   valeursPions(pions, P);
   occupation(pions, occ);
@@ -257,7 +258,7 @@ export function evaluerPlateau(pions, equipePersp, prochain, info, ctx, detail =
       }
     }
   }
-  return score;
+  return score + bonusVictoire;
 }
 
 /**

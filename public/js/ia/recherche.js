@@ -170,10 +170,10 @@ export function travailRestant(pions) {
 export function jouerDonne(prep, pions, mains, restes, joueur, donne, persp, profondeurMax = Infinity) {
   const equipe = persp & 1;
   let plis = 0;
-  const V = prep.poids.victoire;
+  const fin = (g) => ({ v: evaluerPlateau(pions, equipe, joueur, infoMains([0, 0, 0, 0], -1, null, null), prep.ctx), pions, gagnant: g });
   while (plis < profondeurMax) {
     const g = equipeGagnantePions(pions);
-    if (g >= 0) return { v: g === equipe ? V : -V, pions, gagnant: g };
+    if (g >= 0) return fin(g);
     if (restes[0] + restes[1] + restes[2] + restes[3] === 0) break;
     if (restes[joueur] > 0) {
       const c = coupGlouton(prep, pions, joueur, mains[joueur], restes, donne);
@@ -185,7 +185,7 @@ export function jouerDonne(prep, pions, mains, restes, joueur, donne, persp, pro
     joueur = (joueur + 1) & 3;
   }
   const g = equipeGagnantePions(pions);
-  if (g >= 0) return { v: g === equipe ? V : -V, pions, gagnant: g };
+  if (g >= 0) return fin(g);
   if (restes[0] + restes[1] + restes[2] + restes[3] === 0) {
     const t = tailleDonne(donne + 1);
     return { v: evaluerPlateau(pions, equipe, (donne + 1) & 3, infoMains([t, t, t, t], -1, null, null), prep.ctx), pions, gagnant: -1 };

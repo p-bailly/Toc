@@ -11,6 +11,16 @@
 //     temps en petites tranches donne exactement le même résultat qu'une grande tranche
 //     (à nombre d'itérations égal), et le résultat est reproductible avec options.rng.
 //
+// Unité : toutes les valeurs numériques (evaluation, note, ecart, marge) sont en « cases »,
+// l'unité de l'évaluation (evaluation.js) : un pion qui avance d'une case vaut 1, un pion sorti
+// ≈ 16 + sa progression, un pion rentré ≈ 98 ; la valeur est celle de l'équipe du joueur moins
+// celle de l'équipe adverse, risques de capture déduits. Une partie gagnée (ou perdue) n'est
+// pas une valeur infinie : c'est l'évaluation du plateau final ± 100 cases de bonus.
+// `evaluation` et les `note` des candidats simulés sont des moyennes sur des positions de fin
+// de donne ; avant toute simulation, ce sont des évaluations statiques juste après le coup.
+// `marge` est l'erreur type de la moyenne (décroît comme 1/√itérations) ; `ecart` est la
+// différence de note avec le meilleur candidat, mesurée sur les mêmes tirages (appariée).
+//
 // Probabilité de victoire : chaque simulation se termine sur une position de fin de donne
 // (ou sur une victoire). Sa valeur est convertie en probabilité par une courbe logistique
 // calibrée sur des parties de l'IA contre elle-même (voir probaDepuisEvaluation), puis
@@ -18,7 +28,7 @@
 
 import { apercuCoup } from '../moteur/index.js';
 import { evaluerPlateau } from './evaluation.js';
-import { coupsMain, indexRang, clePions } from './simulation.js';
+import { coupsMain, indexRang, clePions, equipeGagnantePions } from './simulation.js';
 import {
   preparer, evaluerCandidat, tirerMains, simuler, jouerDonne, retirerRang, maintenant, travailRestant, melangerAvec,
 } from './recherche.js';
@@ -37,9 +47,9 @@ const ECART_STATIQUE_MAX = 40;
  */
 export const CALIBRAGE = { k: 0.127 };
 
-export function probaDepuisEvaluation(v, pions, victoire) {
-  if (v >= victoire) return 1;
-  if (v <= -victoire) return 0;
+export function probaDepuisEvaluation(v, pions, equipe) {
+  const g = equipeGagnantePions(pions);
+  if (g >= 0) return g === equipe ? 1 : 0;
   const z = (CALIBRAGE.k * v) / Math.sqrt(Math.max(40, travailRestant(pions)));
   return 1 / (1 + Math.exp(-z));
 }
@@ -298,11 +308,11 @@ export class AnalyseCoup extends AnalyseBase {
 
   simulerCandidat(c, mains) {
     const r = simuler(this.prep, c.res, c.mainApres, mains, this.profondeur);
-    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.prep.poids.victoire) };
+    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.siege & 1) };
   }
 
   probaStatique(c) {
-    return probaDepuisEvaluation(c.statique, c.res.pions, this.prep.poids.victoire);
+    return probaDepuisEvaluation(c.statique, c.res.pions, this.siege & 1);
   }
 
   /** Coup que l'IA jouerait en l'état de l'analyse. */
@@ -376,13 +386,13 @@ export class AnalyseDon extends AnalyseBase {
     for (let j = 0; j < 4; j++) if (dons[j]) mains[(j + 2) & 3].push(dons[j]);
     const restes = mains.map((m) => m.length);
     const r = jouerDonne(this.prep, etat.pions, mains, restes, etat.tour, etat.donne, siege);
-    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.prep.poids.victoire) };
+    return { v: r.v, p: probaDepuisEvaluation(r.v, r.pions, this.siege & 1) };
   }
 
   probaStatique() {
     const info = { n: this.etat.cartesRestantes, connu: [0, 0, 0, 0], nConnu: [0, 0, 0, 0] };
     // position actuelle, sans avantage de main
-    return probaDepuisEvaluation(this.evaluationPosition(info), this.etat.pions, this.prep.poids.victoire);
+    return probaDepuisEvaluation(this.evaluationPosition(info), this.etat.pions, this.siege & 1);
   }
 
   evaluationPosition(info) {
