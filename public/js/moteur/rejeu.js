@@ -6,7 +6,8 @@ import { mainEffective } from './cartes.js';
 import { etatInitial, appliquerCoup, marquerEchange } from './regles.js';
 
 /**
- * @param {Object} reglages    réglages de la partie ({ cinqAdverse })
+ * @param {Object} reglages    réglages de la partie ({ cinqAdverse, nbJoueurs } ; nbJoueurs absent = 4,
+ *                             c'est-à-dire etat.reglages de la partie jouée)
  * @param {Object[]} historique [{ n, siege, coup, captures }] du plus ancien au plus récent
  * @returns {{tours: {n:number, siege:number, coup:Object, avant:Object, apres:Object}[],
  *            echanges: {donne:number, etat:Object}[], etat:Object}}
@@ -21,7 +22,7 @@ export function rejouerPartie(reglages, historique) {
   const echanges = [{ donne: 0, etat }];
   for (const entree of historique) {
     if (etat.phase === 'echange') {
-      for (let s = 0; s < 4; s++) if (!etat.echanges[s]) etat = marquerEchange(etat, s);
+      for (let s = 0; s < etat.echanges.length; s++) if (!etat.echanges[s]) etat = marquerEchange(etat, s);
     }
     const avant = etat;
     etat = appliquerCoup(avant, entree.siege, entree.coup);
