@@ -110,6 +110,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let finAttente = null;
   // Coup unique joué tout seul : un seul déclenchement par position.
   const autoFaits = new Set();
+  let resume = null; // résumé des coups passés sans les voir
   let minuterieAuto = null;
   let coupAuto = null;
 
@@ -201,7 +202,6 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   /** Présente un par un les coups pas encore montrés, à partir de l'historique (rejoué par le moteur). */
-  let resume = null; // résumé des coups passés sans les voir
   async function presenter() {
     enPresentation = true;
     passer = false;
@@ -246,7 +246,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       await attendre(duree + (mien ? Math.min(150, r.lecture) : r.lecture));
     }
     // Résumé des coups passés : il reste affiché jusqu'au coup suivant (le message du coup unique ne l'efface pas).
-    resume = passer && enRetard > 1 ? { texte: resumeRetard(nHisto, vueReelle.historique), n: vueReelle.historique.length } : null;
+    resume = passer && enRetard > 1 && nHisto < vueReelle.historique.length ? { texte: resumeRetard(nHisto, vueReelle.historique), n: vueReelle.historique.length } : null;
     nHisto = vueReelle.historique.length;
     restants = 0;
     enPresentation = false;
@@ -256,8 +256,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   /** Résumé des coups passés sans les voir : combien, et tes pions renvoyés à la base. */
   function resumeRetard(depuis, histo) {
-    const passes = histo.slice(Math.max(0, depuis - 1));
-    const n = histo.length - Math.max(0, depuis - 1);
+    const passes = histo.slice(depuis);
+    const n = passes.length;
     const mesPrises = passes.reduce((k, e) => k + (e.captures || []).filter((q) => q >> 2 === vueReelle.siege && e.siege !== vueReelle.siege).length, 0);
     return `${pluriel(n, 'coup passé', 'coups passés')}${mesPrises ? ` · ${pluriel(mesPrises, 'de tes pions renvoyé', 'de tes pions renvoyés')} à la base` : ''} : le journal les détaille.`;
   }
@@ -667,7 +667,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (etat.phase === 'echange') {
       const attendus = suite.filter((si) => !etat.echanges[si]).map(nomCourt);
       lignes.push(h('div', { class: 'ordre-ligne note-ordre' }, h('b', {}, 'Échange : '), attendus.length ? `on attend ${enumerer(attendus)}` : 'tout le monde a donné'));
-      lignes.push(h('div', { class: 'ordre-ligne' }, h('span', { class: 'titre-ordre' }, 'Premier à jouer :'), suite.map((si, i) => [i ? h('span', { class: 'sep' }, i === 1 ? ', puis' : ', puis') : null, puce(si, i)])));
+      lignes.push(h('div', { class: 'ordre-ligne' }, h('span', { class: 'titre-ordre' }, 'Premier à jouer :'), suite.map((si, i) => [i ? h('span', { class: 'sep' }, 'puis') : null, puce(si, i)])));
       ordre.setAttribute('aria-label', `Échange : ${attendus.length ? 'on attend ' + enumerer(attendus) : 'tout le monde a donné'}. Premier à jouer : ${suite.map(nomCourt).join(', puis ')}.`);
     } else {
       const [actuel, ...ensuite] = suite;
@@ -675,10 +675,10 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         h(
           'div',
           { class: 'ordre-ligne' },
-          h('span', { class: 'titre-ordre' }, actuel === siege ? 'C’est à' : 'C’est à'),
+          h('span', { class: 'titre-ordre' }, 'C’est à'),
           puce(actuel, 0),
           h('span', { class: 'sep' }, '— ensuite :'),
-          ensuite.map((si, i) => [i ? h('span', { class: 'sep' }, ',') : null, puce(si, i + 1)]),
+          ensuite.map((si, i) => puce(si, i + 1)),
         ),
       );
       ordre.setAttribute('aria-label', `C’est à ${nomCourt(actuel)}, ensuite : ${ensuite.map(nomCourt).join(', ')}.`);

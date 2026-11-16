@@ -2325,6 +2325,12 @@ details > .reglage:first-of-type {
     padding: 3px 10px;
     font-size: 12px;
   }
+  .ordre-ligne {
+    gap: 2px 4px;
+  }
+  .puce-ordre {
+    padding: 0 6px 0 3px;
+  }
   .derniere-action {
     font-size: 12px;
   }
