@@ -1,0 +1,113 @@
+# Mettre le Toc en ligne avec Firebase
+
+Sans configuration Firebase, l'application marche hors ligne (entraînement contre l'IA) et ne fait
+aucun appel réseau. Pour jouer à plusieurs, il faut un projet Firebase (offre gratuite **Spark**,
+sans carte bancaire : pas de Cloud Functions).
+
+## 1. Créer le projet
+
+1. <https://console.firebase.google.com> → **Ajouter un projet** (Google Analytics inutile).
+2. **Authentication** → Commencer → onglet *Sign-in method* → activer **Adresse e-mail/Mot de passe**
+   (laisser « Lien par e-mail » désactivé).
+3. **Firestore Database** → Créer une base de données → mode **production**, emplacement `eur3`
+   (Europe).
+4. **Paramètres du projet** (roue dentée) → *Vos applications* → icône Web `</>` → nom « Toc » →
+   copier l'objet `firebaseConfig` affiché.
+
+## 2. Configurer l'application
+
+Coller les valeurs dans `public/js/firebase-config.js` (`apiKey`, `authDomain`, `projectId`,
+`storageBucket`, `messagingSenderId`, `appId`). Ces valeurs ne sont **pas secrètes** : la sécurité
+repose sur les règles Firestore. Dès que `apiKey` est rempli, l'appli propose le jeu en ligne ; le
+SDK Firebase (version épinglée dans `public/js/reseau/firebase.js`, `VERSION_SDK`) est alors chargé
+depuis `https://www.gstatic.com/firebasejs/…`.
+
+## 3. Publier les règles et le site
+
+Depuis la racine du dépôt (Node.js installé) :
+
+```sh
+cp .firebaserc.exemple .firebaserc        # puis y mettre l'identifiant du projet
+npx firebase-tools login
+npx firebase-tools deploy --only firestore:rules,hosting
+```
+
+Le site est servi à `https://<projet>.web.app` (dossier `public/`, sans étape de build ;
+`index.html`, `sw.js` et les modules sont servis avec `Cache-Control: no-cache`, donc revalidés à
+chaque chargement). Ce domaine est autorisé d'office pour la connexion ; si le site est hébergé
+ailleurs, l'ajouter dans Authentication → Paramètres → **Domaines autorisés**.
+
+**Republier les règles à chaque modification de `firestore.rules`**
+(`npx firebase-tools deploy --only firestore:rules`), sinon les actions sont refusées
+(« Refusé par le serveur… »). Aucun index composite n'est nécessaire (pas de `firestore.indexes.json`).
+
+## Comptes : un nom, sans mot de passe
+
+Comme dans l'appli Scrabble : le joueur tape seulement son nom. L'appli en dérive une adresse
+fictive `<nom simplifié>@joueurs.toc.pbailly.fr` et le mot de passe `toc-<nom simplifié>` (aucun
+e-mail n'est envoyé). Le nom ignore accents, casse et ponctuation (« Jean Luc » = « jean-luc ») ;
+le même nom sur un autre appareil ouvre le même compte.
+
+**Le nom n'est pas secret** : qui le connaît ouvre le compte (ses parties, ses cartes). C'est un
+compromis assumé entre proches. C'est aussi pourquoi seuls les joueurs « visibles » se listent, par
+pages de 10.
+
+**Renommer un joueur** (pseudo inapproprié) : console → Firestore → collection `joueurs` → sa fiche :
+changer `pseudo` (≤ 20 caractères) et ajouter `verrouille` (booléen) à `true` : il ne pourra plus en
+changer (supprimer le champ lève le verrou). L'appli recalcule elle-même la clé `recherche`. Les
+pseudos recopiés dans ses parties (`joueurs[i].pseudo`) ne changent pas. Le nom de connexion non plus.
+
+## Données
+
+- `joueurs/{uid}` : `pseudo`, `visible`, `recherche` (pseudo simplifié, présent seulement si
+  visible), `icone`, `verrouille`, `stats { jouees, gagnees }`, `comptees` (parties déjà comptées),
+  `creeLe`.
+- `parties/{code}` : le code d'invitation (6 caractères sans 0/O/1/I/L) est l'identifiant. Nom,
+  hôte, statut, réglages, 4 places, `uids`, invitations, état public du moteur, historique des coups,
+  `enAttente` (qui doit jouer).
+- `parties/{code}/donnes/{donne}_{siège}` et `…/dons/{donne}_{siège}` : cartes distribuées et carte
+  donnée au partenaire, **jamais modifiées** une fois écrites.
+
+## Ce que garantissent les règles (et ce qu'elles ne garantissent pas)
+
+Sans serveur de jeu, chaque coup est validé par le moteur **dans le client** qui l'écrit (transaction
+Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le moteur :
+
+- tout accès exige d'être connecté ; une fiche n'est modifiable que par son titulaire, qui ne peut ni
+  poser ni lever le verrou de pseudo ; les statistiques ne bougent que d'une partie terminée à la fois,
+  avec le bon résultat, une seule fois ;
+- une partie en cours n'est lisible que par ses membres (et ses invités) ; seules ses parties et ses
+  invitations se listent ;
+- en salle d'attente, chacun ne déplace que sa propre place ; seul l'hôte place des IA, invite, lance
+  ou supprime ; joueurs, hôte, code et réglages sont figés après le lancement ;
+- un coup n'est écrit que par le joueur dont c'est le tour (ou par un membre pour une IA), avec un
+  numéro de coup qui augmente exactement de 1, un historique qui ne fait que s'allonger, et une
+  structure d'état cohérente (tour suivant, donne, pile, échange…) ;
+- **la main d'un autre humain n'est jamais lisible**, ni une donne future ; la carte reçue du
+  partenaire ne l'est qu'une fois l'échange terminé ; une carte donnée doit être dans la main
+  distribuée ; mains et dons ne sont jamais modifiés ni supprimés.
+
+Limites connues (modèle de confiance « entre amis ») :
+
+- la **légalité d'un coup** (déplacement des pions, carte réellement en main) n'est pas vérifiée par
+  le serveur : un client modifié pourrait écrire un coup illégal ;
+- le client qui lance la partie ou déclenche un remélange **tire les 52 cartes du cycle** : un client
+  modifié pourrait les connaître ou les choisir ;
+- les mains des **IA** sont lisibles par tous les membres (ce sont les clients qui font jouer l'IA),
+  donc le partenaire humain d'une IA peut voir le jeu de celle-ci ;
+- quiconque connaît un nom peut ouvrir ce compte (voir plus haut).
+
+## Tester avec les émulateurs (développeurs)
+
+Les tests `tests/reseau-*.test.js` tournent avec `npm test` sur un faux Firestore en mémoire.
+`tests/reseau-emulateur.test.js` rejoue en plus une partie complète avec le vrai SDK et les vraies
+règles, et des tentatives de triche ; il est ignoré sans émulateur. Paquets à installer **hors du
+dépôt** (Java requis) :
+
+```sh
+mkdir -p ~/toc-outils && cd ~/toc-outils && npm init -y
+npm install firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools
+cd /chemin/vers/Toc
+TOC_MODULES=~/toc-outils/node_modules ~/toc-outils/node_modules/.bin/firebase \
+  emulators:exec --only auth,firestore --project demo-toc "node --test tests/reseau-emulateur.test.js"
+```
