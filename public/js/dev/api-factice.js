@@ -9,7 +9,7 @@
 import { nouvellePartie, donnerCarte, jouerCoup, partenaire, coupsLegauxMain } from '../moteur/index.js';
 import { choisirCoup, choisirDon } from '../ia/ia.js';
 
-const CLE = 'toc.demo';
+const CLE = 'toc.demo2';
 let vitesse = 1;
 
 /** Multiplie tous les délais des faux joueurs (0.1 : dix fois plus vite). */
@@ -264,11 +264,13 @@ function placeDe(uid) {
 }
 
 function creer({ nom, cinqAdverse, hote, code }) {
-  const id = 'p' + db.seq++;
+  // Comme dans la vraie couche réseau, l'identifiant d'une partie est son code d'invitation.
+  const id = code || nouveauCode();
+  db.seq++;
   const p = {
     id,
     nom: nom || `Partie de ${db.comptes[hote].pseudo}`,
-    code: code || nouveauCode(),
+    code: id,
     statut: 'attente',
     hote,
     reglages: { cinqAdverse: !!cinqAdverse },
@@ -609,6 +611,7 @@ export async function ouvrirSession(id) {
     return {
       id,
       enLigne: true,
+      statut: q.statut,
       nom: q.nom,
       siege,
       joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid })),
