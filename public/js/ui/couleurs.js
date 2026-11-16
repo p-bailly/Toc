@@ -3,8 +3,8 @@
 // Les partenaires (0-2 et 1-3) ont des formes « sœurs » : rond / triangle, carré / losange.
 
 export const PIONS = [
-  { nom: 'rouge', variable: '--pion-0', forme: 'rond' },
-  { nom: 'bleu', variable: '--pion-1', forme: 'carre' },
+  { nom: 'bleu', variable: '--pion-0', forme: 'rond' },
+  { nom: 'rouge', variable: '--pion-1', forme: 'carre' },
   { nom: 'jaune', variable: '--pion-2', forme: 'triangle' },
   { nom: 'violet', variable: '--pion-3', forme: 'losange' },
 ];

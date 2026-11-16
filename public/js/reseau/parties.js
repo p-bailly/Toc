@@ -116,6 +116,17 @@ export async function creerPartie(ctx, { nom, cinqAdverse } = {}) {
 
 /** Entre dans une partie en attente (premier siège libre). Déjà membre : rien à faire. */
 async function entrer(ctx, id) {
+  try {
+    await entrerTransaction(ctx, id);
+  } catch (e) {
+    // Partie en cours dont on n'est pas membre : les règles en refusent la lecture.
+    if (e.cause?.code === 'permission-denied') throw new ErreurToc('La partie a déjà commencé.');
+    throw e;
+  }
+  return { id };
+}
+
+async function entrerTransaction(ctx, id) {
   await transaction(ctx, async (tx) => {
     const p = await lirePartie(tx, id);
     if (siegeDe(p, ctx.uid) >= 0) return;
@@ -129,7 +140,6 @@ async function entrer(ctx, id) {
     if ((p.invites || []).includes(ctx.uid)) champs.invites = p.invites.filter((u) => u !== ctx.uid);
     tx.maj(chemins.partie(id), champs);
   });
-  return { id };
 }
 
 /** Rejoint une partie en attente avec son code d'invitation. → { id } */
@@ -140,8 +150,6 @@ export async function rejoindrePartie(ctx, code) {
     return await entrer(ctx, id);
   } catch (e) {
     if (e.code === 'not-found') throw new ErreurToc('Aucune partie avec ce code.', 'not-found');
-    // Partie en cours dont on n'est pas membre : les règles en refusent la lecture.
-    if (e.cause?.code === 'permission-denied') throw new ErreurToc('Cette partie a déjà commencé.');
     throw e;
   }
 }

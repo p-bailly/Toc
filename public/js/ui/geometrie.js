@@ -9,7 +9,7 @@
 // (bas → gauche → haut → droite). Son partenaire est en haut, l'adversaire suivant (siège + 1) à gauche,
 // le précédent à droite. La case d'entrée de l'allée est 3 cases avant la case de départ, donc à sa droite
 // (11, 16) ; l'allée monte de là vers le centre : (11, 15), (11, 14), (11, 13), (11, 12).
-// La base (4 emplacements) est de l'autre côté de la case de départ, à sa gauche.
+// La base (4 emplacements en carré 2 × 2) est juste derrière la case de départ, vers l'intérieur, centrée sur elle.
 // Les autres côtés s'obtiennent par rotation d'un quart de tour (sens horaire à l'écran) autour du centre.
 
 import { BASE, ALLEE, NB_CASES, caseDepart, caseEntree } from '../moteur/plateau.js';
@@ -43,12 +43,12 @@ export const NOMS_COTES = ['bas', 'gauche', 'haut', 'droite'];
 
 /** Allée du joueur du bas : k-ième case. */
 const alleeBas = (k) => ({ u: 11, v: 15 - k });
-/** Emplacements de base du joueur du bas (2 × 2, à gauche de la case de départ). */
+/** Emplacements de base du joueur du bas (2 × 2, derrière la case de départ, sans toucher circuit ni allée). */
 const BASE_BAS = [
-  { u: 5.5, v: 13.5 },
-  { u: 6.5, v: 13.5 },
-  { u: 5.5, v: 14.5 },
-  { u: 6.5, v: 14.5 },
+  { u: 7.4, v: 13.3 },
+  { u: 8.6, v: 13.3 },
+  { u: 7.4, v: 14.5 },
+  { u: 8.6, v: 14.5 },
 ];
 
 /** Case du circuit `i` (0..63) vue par `siegeVue`. */
@@ -68,7 +68,7 @@ export function emplacementBase(siege, n, siegeVue) {
 
 /** Centre de la zone de base d'un siège (pour son fond). */
 export function centreBase(siege, siegeVue) {
-  return tourner({ u: 6, v: 14 }, coteDe(siege, siegeVue));
+  return tourner({ u: 8, v: 13.9 }, coteDe(siege, siegeVue));
 }
 
 /**
@@ -87,7 +87,7 @@ export const versSvg = (p) => ({ x: (p.u + 0.5) * CELLULE, y: (p.v + 0.5) * CELL
 
 /**
  * Boîte de l'étiquette d'un joueur (pseudo, icône, cartes), en unités SVG, upright quel que soit le côté :
- * dans le coin intérieur à gauche de sa base, vu de lui (même place pour les quatre, par rotation).
+ * dans le coin intérieur à sa gauche, le long de son côté (même place pour les quatre, par rotation).
  */
 export function boiteEtiquette(cote) {
   const L = 38;
@@ -132,4 +132,9 @@ export function chemin(pion, de, vers, sens = 'avant') {
   }
   if (vers >= ALLEE) for (let k = 0; k <= vers - ALLEE; k++) etapes.push(ALLEE + k);
   return etapes;
+}
+
+/** Petite flèche du sens de parcours le long du côté du joueur du bas (entre son étiquette et sa base). */
+export function positionFlecheSens(cote) {
+  return tourner({ u: 5.75, v: 14.9 }, cote);
 }
