@@ -1973,3 +1973,11 @@ details > .reglage:first-of-type {
 .ligne-conseils > span {
   flex: 1;
 }
+.ligne-conseils .reglage {
+  flex: 1;
+  border-top: 0;
+  padding: 0;
+}
+.ligne-conseils .reglage .titre {
+  font-size: calc(14px * var(--texte));
+}
