@@ -249,6 +249,7 @@ test('conseils : raisons justes sur des positions évidentes', () => {
 
   const recul = conseillerCoup(etat({ 0: 0, 5: 40 }, { restes: [3, 3, 3, 3] }), 0, ['4P', '9C', '10T'], {
     ...optsFixes(),
+    iterations: 300, // l'écart avec le 10 est faible depuis que le valet peut échanger un pion sur sa case de départ
     coupJoue: { t: 'avance', carte: '10T', pion: 0, pas: 10, allee: false },
   });
   assert.equal(recul[0].coup.t, 'recul');

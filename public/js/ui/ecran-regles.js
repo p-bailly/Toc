@@ -24,7 +24,7 @@ export function afficher(racine) {
           'Chaque joueur a une case de sortie au milieu de son côté (petit carré de sa couleur) et, juste derrière, sa base de 4 pions non sortis (grand carré de sa couleur).',
           'Son allée d’arrivée (rectangle de sa couleur, 4 cases) part vers le centre depuis une case d’entrée située 3 cases avant la sortie, à droite de celle-ci. Depuis sa case de sortie, un 4 recule le pion une case avant l’entrée ; un 5 l’amène ensuite au fond de l’allée.',
           'Les cases au bord foncé (6e et 12e après chaque sortie) aident à compter.',
-          'Un pion posé sur sa propre case de sortie est protégé : personne ne peut le dépasser (son propriétaire non plus), l’échanger ni le renvoyer à la base. Seule exception : son propriétaire qui sort un nouveau pion le renvoie à la base.',
+          'Un pion posé sur sa propre case de sortie est protégé : personne ne peut le dépasser (son propriétaire non plus) ni le renvoyer à la base, et aucun autre joueur ne peut l’échanger. Deux exceptions, réservées à son propriétaire : il peut l’échanger avec son valet, et s’il sort un nouveau pion, celui-ci le renvoie à la base.',
         ),
       ),
       section(
@@ -40,7 +40,7 @@ export function afficher(racine) {
           valeur('AP', 'As : avance de 1 ou de 11, ou sort un pion.'),
           valeur('RC', 'Roi : avance de 13, ou sort un pion.'),
           valeur('DK', 'Dame : avance de 12.'),
-          valeur('VT', 'Valet : échange un de ses pions avec un autre pion (pas deux des siens ; ni pion en base, en allée ou protégé).'),
+          valeur('VT', 'Valet : échange un de ses pions avec un autre pion (pas deux des siens ; ni pion en base ou en allée ; jamais le pion protégé d’un autre joueur, mais son propre pion peut partir de sa case de sortie).'),
           valeur('7C', '7 : se partage entre plusieurs pions (3 + 4…) et doit être utilisé en entier. Tous les pions dépassés retournent à la base, même alliés et les siens. Le reste peut servir aux pions du partenaire seulement si l’on a rentré son 4e pion pendant ce 7 (ou déjà fini). Les 7 points se dépensent toujours en entier, même pour gagner.'),
           valeur('4P', '4 : recule de 4 en sautant les pions et renvoie à la base celui de la case d’arrivée. Jamais dans sa base ni son allée.'),
           valeur('5K', '5 : avance de 5. Option « 5 adverse » : peut aussi faire avancer un pion adverse de 5 (jamais un pion protégé sur sa case de sortie).'),

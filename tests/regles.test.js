@@ -207,7 +207,7 @@ test("allée : on ne dépasse pas, on ne bouscule pas ses pions, compte exact à
   assert.equal(coupsLegaux(etat({ 0: a(3) }), 0, '2C').length, 0);
 });
 
-test('valet : un des siens contre un autre, jamais base, allée ni pion protégé', () => {
+test('valet : un des siens contre un autre, jamais base ni allée, jamais le pion protégé d’un autre', () => {
   const e = etat({ 0: 5, 1: 30, 2: a(0), 4: 20, 5: 16, 8: 40, 9: a(1) });
   assert.deepEqual(cles(coupsLegaux(e, 0, 'VC')), ['echange:0::4', 'echange:0::8', 'echange:1::4', 'echange:1::8']);
   const n = appliquerCoup(e, 0, { t: 'echange', carte: 'VC', pion: 0, cible: 4 });
@@ -219,8 +219,13 @@ test('valet : un des siens contre un autre, jamais base, allée ni pion protég�
   assert.equal(legal(e, 0, { t: 'echange', carte: 'VC', pion: 2, cible: 4 }), false); // allée
   assert.equal(legal(e, 0, { t: 'echange', carte: 'VC', pion: 0, cible: 9 }), false);
   assert.equal(legal(e, 0, { t: 'echange', carte: 'VC', pion: 3, cible: 4 }), false); // base
-  // son propre pion protégé ne peut pas être échangé
-  assert.equal(coupsLegaux(etat({ 0: 0, 4: 20 }), 0, 'VC').length, 0);
+  // son propre pion protégé peut être échangé par son propriétaire, pas par un autre joueur
+  assert.deepEqual(cles(coupsLegaux(etat({ 0: 0, 4: 20 }), 0, 'VC')), ['echange:0::4']);
+  const q = appliquerCoup(etat({ 0: 0, 4: 20 }), 0, { t: 'echange', carte: 'VC', pion: 0, cible: 4 });
+  assert.equal(q.pions[0], 20);
+  assert.equal(q.pions[4], 0);
+  assert.equal(estProtege(q, 4), false); // sur la case de départ d'un autre : pas protégé
+  assert.equal(coupsLegaux({ ...etat({ 0: 0, 4: 20 }), tour: 1 }, 1, 'VC').length, 0);
   // un pion amené par échange sur sa case de départ devient protégé
   const p = appliquerCoup(etat({ 0: 16, 4: 30 }), 0, { t: 'echange', carte: 'VC', pion: 0, cible: 4 });
   assert.equal(estProtege(p, 4), true);

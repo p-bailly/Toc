@@ -181,7 +181,8 @@ const O = {
       case 'echange': {
         const { pion: x, cible: y } = coup;
         if (r !== 'V' || !estPion(x) || !estPion(y) || x >> 2 !== c || y >> 2 === c) return null;
-        if (!circuitLibre(x) || !circuitLibre(y)) return null;
+        // Le sien peut partir de sa case de départ (protégé) ; la cible ne doit pas être protégée.
+        if (!(pions[x] >= 0 && pions[x] < 64) || !circuitLibre(y)) return null;
         const np = pions.slice();
         [np[x], np[y]] = [pions[y], pions[x]];
         return np;
@@ -431,13 +432,19 @@ test('protection : dépassement, arrivée, recul de 4, valet, 7, 5 adverse (chaq
   }
 });
 
-test('protection : le propriétaire ne dépasse pas son pion ; valet sur son pion protégé interdit', () => {
+test('protection : le propriétaire ne dépasse pas son pion ; il peut l’échanger au valet, les autres non', () => {
   for (const s of SIEGES) {
     const e = etatTourne(s, { 0: 0, 1: 60 });
     assert.equal(legalT(s, e, 0, { t: 'avance', carte: '6C', pion: 1, pas: 6 }), false);
     assert.equal(legalT(s, e, 0, { t: 'avance', carte: '4C', pion: 1, pas: 4 }), false);
     assert.equal(legalT(s, etatTourne(s, { 0: 0, 1: 4 }), 0, { t: 'recul', carte: '4C', pion: 1 }), false);
-    assert.equal(coupsLegaux(etatTourne(s, { 0: 0, 4: 30 }), S(s, 0), 'VC').length, 0);
+    // Le propriétaire échange son pion protégé ; un autre joueur ne peut pas le prendre pour cible.
+    const v = etatTourne(s, { 0: 0, 4: 30 });
+    assert.equal(coupsLegaux(v, S(s, 0), 'VC').length, 1);
+    const apres = jouerT(s, v, 0, { t: 'echange', carte: 'VC', pion: 0, cible: 4 });
+    assert.equal(posT(s, apres, 0), C(s, 30));
+    assert.equal(posT(s, apres, 4), C(s, 0));
+    assert.equal(legalT(s, { ...v, tour: S(s, 1) }, 1, { t: 'echange', carte: 'VC', pion: 4, cible: 0 }), false);
   }
 });
 
