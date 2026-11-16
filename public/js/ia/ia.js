@@ -12,7 +12,7 @@
 //   evaluation.js  évaluation d'une position (progression, allée, risques, blocages, main)
 //   recherche.js   évaluation statique de chaque coup puis simulations déterminisées
 //                  de la fin de la donne, dans la limite du budget de temps
-//   analyse.js     analyse incrémentale (« anytime ») : candidats, évaluation, probabilité
+//   etude.js     analyse incrémentale (« anytime ») : candidats, évaluation, probabilité
 //                  de victoire ; utilisée par choisirCoup et par les conseils
 //   conseils.js    notes du don et raisons (phrases) expliquant chaque choix
 //   ia.js          contrat public : choisirDon, choisirCoup, conseillerDon, conseillerCoup,
@@ -21,7 +21,7 @@
 import { coupsLegauxMain, validerCoup } from '../moteur/index.js';
 import { maintenant } from './recherche.js';
 import { noterDons } from './conseils.js';
-import { AnalyseCoup, AnalyseDon } from './analyse.js';
+import { AnalyseCoup, AnalyseDon } from './etude.js';
 import { NIVEAUX, NIVEAU_DEFAUT, profilNiveau, gaussien, donSimple } from './niveaux.js';
 
 // Niveaux de force (voir niveaux.js) : options.niveau = 'debutant' | 'amateur' | 'confirme' |
@@ -150,7 +150,7 @@ export function conseillerDon(etat, siege, main, options = {}) {
 
 /**
  * Analyse incrémentale d'un coup (phase 'jeu') : objet avec avancer(budgetMs) et resultat()
- * → { iterations, evaluation, probaVictoire, marge, candidats, stable }. Voir analyse.js.
+ * → { iterations, evaluation, probaVictoire, marge, candidats, stable }. Voir etude.js.
  * options : { rng, carteDonnee, carteRecue, coupJoue, max = 5 }
  */
 export function creerAnalyse(etat, siege, main, options = {}) {

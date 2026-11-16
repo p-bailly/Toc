@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { qualifier, toursDuJoueur, bilan, formatCases, SEUILS } from '../public/js/ui/analyse-calcul.js';
+import { qualifier, toursDuJoueur, bilan, formatCases, SEUILS } from '../public/js/ui/etude-calcul.js';
 
 test('analyse : qualificatif selon l’écart (marge déduite)', () => {
   const meilleur = { ecart: 0 };

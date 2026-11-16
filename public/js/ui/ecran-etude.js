@@ -2,7 +2,7 @@
 // Scrabble : un plateau que l'on fait défiler tour par tour (les coups et les cartes données du joueur), le coup
 // joué et le coup préféré de l'IA, leurs raisons, un qualificatif, et une barre d'évaluation « comme aux échecs »
 // qui s'affine tant que le tour reste affiché. Une vue d'ensemble (courbe et bilan) se remplit en arrière-plan.
-// Les calculs tournent dans un Web Worker (voir analyseur.js).
+// Les calculs tournent dans un Web Worker (voir etude-pilote.js).
 
 import { h, s, remplacer, messageErreur, pluriel } from './dom.js';
 import { enteteRetour } from './composants.js';
@@ -13,10 +13,10 @@ import { carteCourte, decrireAction, trierMain, rangAvecArticle, leCarte } from 
 import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
 import { apercuCoup } from '../moteur/regles.js';
-import { lancerAnalyse } from './analyseur.js';
+import { lancerAnalyse } from './etude-pilote.js';
 import { lireReglages, modifierReglages } from './reglages.js';
 import { interrupteur } from './composants.js';
-import { toursDuJoueur, qualifier, candidatJoue, bilan, formatCases, QUALIFICATIFS, SEUILS } from './analyse-calcul.js';
+import { toursDuJoueur, qualifier, candidatJoue, bilan, formatCases, QUALIFICATIFS, SEUILS } from './etude-calcul.js';
 
 /** Résultats gardés en mémoire (par partie) pour ne pas recalculer en revenant sur l'écran. */
 const memoire = new Map();

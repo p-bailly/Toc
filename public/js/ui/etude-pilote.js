@@ -1,10 +1,10 @@
 // Lance l'analyse de fin de partie dans un Web Worker module, avec repli sur le fil principal (tranches courtes,
 // espacées) si le navigateur ne sait pas créer de Worker module.
 
-import { creerBoucle } from './analyse-boucle.js';
+import { creerBoucle } from './etude-boucle.js';
 
 /**
- * @param {Object[]} taches   voir analyse-boucle.js
+ * @param {Object[]} taches   voir etude-boucle.js
  * @param {(msg:Object)=>void} surMessage
  * @returns {{ cibler(id), arreter(), mode: () => 'worker'|'principal'|'' }}
  */
@@ -27,7 +27,7 @@ export function lancerAnalyse(taches, surMessage) {
 
   let worker = null;
   try {
-    worker = new Worker(new URL('./analyse-worker.js', import.meta.url), { type: 'module' });
+    worker = new Worker(new URL('./etude-worker.js', import.meta.url), { type: 'module' });
   } catch {
     worker = null;
   }

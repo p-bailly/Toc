@@ -1,3 +1,5 @@
+// (Fichier nommé « etude » et non « analyse » : les bloqueurs de publicité refusent de charger un
+// script appelé analyse.js, qu'ils prennent pour de la mesure d'audience. Voir tests/noms-fichiers.test.js.)
 // Analyse incrémentale (« anytime ») d'une position : quel coup jouer, ou quelle carte donner.
 //
 // Une analyse commence par l'évaluation statique de tous les candidats (résultat utilisable

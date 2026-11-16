@@ -1,4 +1,4 @@
-// Boucle d'analyse de fin de partie, commune au Web Worker (analyse-worker.js) et au repli sur le fil principal.
+// Boucle d'analyse de fin de partie, commune au Web Worker (etude-worker.js) et au repli sur le fil principal.
 // Elle reçoit la liste des tours à analyser et fait avancer, par petites tranches, les analyses de l'IA
 // (creerAnalyse / creerAnalyseDon) : d'abord le tour affiché (cible), puis une première passe rapide sur tous les
 // tours, puis elle affine ceux qui ne sont pas encore stables, à tour de rôle. Chaque tranche publie le résultat.
