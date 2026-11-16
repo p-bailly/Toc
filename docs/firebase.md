@@ -130,7 +130,7 @@ dépôt** (Java requis) :
 
 ```sh
 mkdir -p ~/toc-outils && cd ~/toc-outils && npm init -y
-npm install firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools
+npm install firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools@15.36.0
 cd /chemin/vers/Toc
 TOC_MODULES=~/toc-outils/node_modules ~/toc-outils/node_modules/.bin/firebase \
   emulators:exec --only auth,firestore --project demo-toc "node --test tests/reseau-emulateur.test.js"

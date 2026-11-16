@@ -2,7 +2,7 @@
 // (firestore.rules) et le vrai SDK (paquet npm `firebase`, hors du dépôt).
 //
 // Ignoré sans émulateur. Pour le lancer (paquets installés hors du projet, dans un dossier OUTILS) :
-//   cd OUTILS && npm install firebase@13.1.0 @firebase/rules-unit-testing firebase-tools
+//   cd OUTILS && npm install firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools@15.36.0
 //   cd /chemin/du/Toc && TOC_MODULES=OUTILS/node_modules OUTILS/node_modules/.bin/firebase \
 //     emulators:exec --only auth,firestore --project demo-toc "node --test tests/reseau-emulateur.test.js"
 //

@@ -42,12 +42,13 @@ jobs:
         with:
           path: ~/.cache/firebase/emulators
           key: emulateurs-firebase-${{ runner.os }}
-      # Paquets installés hors du dépôt (voir l'en-tête de tests/reseau-emulateur.test.js).
+      # Paquets installés hors du dépôt (voir l'en-tête de tests/reseau-emulateur.test.js). Versions épinglées :
+      # sans version, npm prend une version de rules-unit-testing incompatible avec firebase 13.
       - name: Outils Firebase
         run: |
           mkdir -p "$RUNNER_TEMP/outils" && cd "$RUNNER_TEMP/outils"
           npm init -y >/dev/null
-          npm install --no-audit --no-fund firebase@13.1.0 @firebase/rules-unit-testing firebase-tools
+          npm install --no-audit --no-fund firebase@13.1.0 @firebase/rules-unit-testing@6.0.0 firebase-tools@15.36.0
       - name: Tests contre l'émulateur
         env:
           TOC_MODULES: ${{ runner.temp }}/outils/node_modules
