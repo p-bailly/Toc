@@ -1,0 +1,11 @@
+{
+  "name": "toc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jeu de Toc en ligne (PWA, Firebase)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "serve": "npx --yes serve public -l 5173"
+  }
+}
