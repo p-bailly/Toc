@@ -4,7 +4,7 @@ import {
   BASE, ALLEE, etatInitial, appliquerCoup, coupsLegaux, apercuCoup, validerCoup, nouvellePartie, donnerCarte, jouerCoup,
   generateurAleatoire, partenaire, coupsLegauxMain,
 } from '../public/js/moteur/index.js';
-import { choisirCoup, choisirDon } from '../public/js/ia/ia.js';
+import { choisirCoup, choisirDon, conseillerCoup, conseillerDon } from '../public/js/ia/ia.js';
 import { coupsCarte } from '../public/js/ia/simulation.js';
 import { aleatoire } from '../outils/joueurs.js';
 import { jouerPartie } from '../outils/tournoi.js';
@@ -190,4 +190,87 @@ test('petite série contre l’aléatoire : l’IA gagne largement', () => {
     if (r.gagnant === (iaPair ? 0 : 1)) victoires++;
   }
   assert.ok(victoires >= n - 1, `${victoires}/${n} victoires`);
+});
+
+// ---------------------------------------------------------------------------
+// Conseils
+// ---------------------------------------------------------------------------
+
+const optsFixes = () => ({ rng: generateurAleatoire(4), budgetMs: 5000, iterations: 25 });
+
+test('conseils : le premier conseil est le coup de choisirCoup, tous les coups conseillés sont légaux', () => {
+  const rng = generateurAleatoire(21);
+  let p = nouvellePartie({ cinqAdverse: true }, rng);
+  let verifies = 0;
+  while (p.etat.phase !== 'fini' && verifies < 25) {
+    if (p.etat.phase === 'echange') {
+      for (let s = 0; s < 4; s++) p = donnerCarte(p, s, choisirDon(p.etat, s, p.mains[s]));
+      continue;
+    }
+    const s = p.etat.tour;
+    const main = p.mains[s];
+    if (p.etat.numCoup % 5 === 0) {
+      const o = { carteDonnee: p.dons[s], carteRecue: p.dons[partenaire(s)] };
+      const conseils = conseillerCoup(p.etat, s, main, { ...optsFixes(), ...o, max: 4 });
+      const coup = choisirCoup(p.etat, s, main, { ...optsFixes(), ...o });
+      assert.deepEqual(conseils[0].coup, coup);
+      assert.equal(conseils[0].ecart, 0);
+      const plateaux = new Set();
+      for (const c of conseils) {
+        assert.equal(validerCoup(p.etat, s, c.coup, main), null);
+        assert.ok(c.raisons.length >= 1 && c.raisons.length <= 3);
+        assert.ok(c.ecart >= 0);
+        if (c.coup.t !== 'defausse') plateaux.add(apercuCoup(p.etat, s, c.coup).pions.join(','));
+      }
+      assert.equal(plateaux.size, conseils.filter((c) => c.coup.t !== 'defausse').length);
+      verifies++;
+    }
+    p = jouerCoup(p, s, choisirCoup(p.etat, s, main, { rng, budgetMs: 1 }), rng);
+  }
+});
+
+test('conseils : raisons justes sur des positions évidentes', () => {
+  const capture = conseillerCoup(etat({ 0: 20, 4: 25 }, { restes: [3, 3, 3, 3] }), 0, ['5P', '8C', '9T'], optsFixes());
+  assert.equal(capture[0].coup.carte, '5P');
+  assert.ok(capture[0].raisons.some((r) => r.includes('capture un pion adverse')));
+  assert.ok(capture.slice(1).every((c) => !c.raisons.some((r) => r.includes('capture'))));
+
+  const entree = conseillerCoup(etat({ 0: 58, 1: 30, 5: 50 }, { restes: [3, 3, 3, 3] }), 0, ['6P', '8C', '9T'], optsFixes());
+  assert.ok(entree[0].raisons.some((r) => r.startsWith("rentre ton pion dans l'allée")));
+
+  const sortie = conseillerCoup(etat({}, { restes: [3, 3, 3, 3] }), 0, ['AP', '8C', '9T'], optsFixes());
+  assert.ok(sortie[0].raisons.includes('sort un pion'));
+
+  const recul = conseillerCoup(etat({ 0: 0, 5: 40 }, { restes: [3, 3, 3, 3] }), 0, ['4P', '9C', '10T'], {
+    ...optsFixes(),
+    coupJoue: { t: 'avance', carte: '10T', pion: 0, pas: 10, allee: false },
+  });
+  assert.equal(recul[0].coup.t, 'recul');
+  assert.ok(recul[0].raisons.some((r) => r.includes("juste avant l'entrée de l'allée")));
+  const joue = recul.filter((c) => c.joue);
+  assert.equal(joue.length, 1);
+  assert.equal(joue[0].coup.carte, '10T');
+  assert.ok(joue[0].ecart > 0);
+
+  // coup joué hors des meilleurs : entrée ajoutée en plus
+  const e = etat({ 0: 20, 1: 30, 2: 40, 4: 25 }, { restes: [3, 3, 3, 3] });
+  const main = ['5P', '8C', '9T'];
+  const tous = conseillerCoup(e, 0, main, { ...optsFixes(), max: 20 });
+  const pire = tous[tous.length - 1];
+  const res = conseillerCoup(e, 0, main, { ...optsFixes(), max: 1, coupJoue: pire.coup });
+  assert.equal(res.length, 2);
+  assert.equal(res[1].joue, true);
+  assert.deepEqual(res[1].coup, pire.coup);
+});
+
+test('conseils de don : un rang par entrée, cohérent avec choisirDon', () => {
+  const e = etatInitial();
+  const main = ['AP', 'AC', '5T', '8K', '9P'];
+  const conseils = conseillerDon(e, 0, main);
+  assert.equal(conseils.length, 4);
+  assert.equal(conseils[0].carte, choisirDon(e, 0, main));
+  assert.equal(conseils[0].ecart, 0);
+  for (let i = 1; i < conseils.length; i++) assert.ok(conseils[i].ecart >= conseils[i - 1].ecart);
+  assert.ok(conseils[0].raisons.some((r) => r.includes("ton partenaire n'a aucun pion sorti")));
+  for (const c of conseils) assert.ok(c.raisons.length >= 1 && c.raisons.length <= 3);
 });

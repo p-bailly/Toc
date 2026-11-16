@@ -9,12 +9,12 @@
 //   evaluation.js  évaluation d'une position (progression, allée, risques, blocages, main)
 //   recherche.js   évaluation statique de chaque coup puis simulations déterminisées
 //                  de la fin de la donne, dans la limite du budget de temps
-//   ia.js          contrat public : choisirDon, choisirCoup (+ garde-fous de légalité)
+//   conseils.js    notes et raisons pour conseiller le joueur (don et coup)
+//   ia.js          contrat public : choisirDon, choisirCoup, conseillerDon, conseillerCoup
 
 import { coupsLegauxMain, validerCoup } from '../moteur/index.js';
-import { analyser, preparer, evaluerCandidat } from './recherche.js';
-import { coupsMain, indexRang, R_A, R_R } from './simulation.js';
-import { evaluerPlateau } from './evaluation.js';
+import { analyser } from './recherche.js';
+import { noterDons, conseillerDon, conseillerCoup } from './conseils.js';
 
 /**
  * Choisit la carte à donner au partenaire en début de donne.
@@ -30,45 +30,7 @@ import { evaluerPlateau } from './evaluation.js';
 export function choisirDon(etat, siege, main, options = {}) {
   if (main.length <= 1) return main[0];
   try {
-    const prep = preparer(etat, siege, main, options);
-    const p = (siege + 2) & 3;
-    const n = etat.cartesRestantes.slice();
-    const info = { n, connu: [0, 0, 0, 0], nConnu: [0, 0, 0, 0] };
-    const base = (s) => evaluerPlateau(etat.pions, s & 1, (s + 1) & 3, info, prep.ctx);
-    const gain = (s, carte) => {
-      const coups = coupsMain(etat.pions, s, [carte], prep.cinq, 60);
-      if (coups[0].coup.t === 'defausse') return -3; // carte morte pour l'instant
-      const v0 = base(s);
-      let best = -Infinity;
-      for (const c of coups) best = Math.max(best, evaluerPlateau(c.pions, s & 1, (s + 1) & 3, info, prep.ctx) - v0);
-      return best;
-    };
-    const comptes = new Array(13).fill(0);
-    for (const c of main) comptes[indexRang(c)]++;
-    let meilleure = main[0];
-    let best = -Infinity;
-    const vus = new Set();
-    for (const carte of main) {
-      const ir = indexRang(carte);
-      if (vus.has(ir)) continue;
-      vus.add(ir);
-      // Le partenaire n'en profite vraiment que s'il n'a pas déjà une carte équivalente.
-      const masque = ir === R_A || ir === R_R ? (1 << R_A) | (1 << R_R) : 1 << ir;
-      const nPart = Math.min(6, Math.max(0, etat.cartesRestantes[p] - 1));
-      const pManque = prep.ctx.pAucune[nPart][prep.ctx.sommeMasque[masque]];
-      let gPart = gain(p, carte);
-      if (gPart > 0) gPart *= 0.35 + 0.65 * pManque;
-      let gMoi = gain(siege, carte);
-      // On perd peu à donner une carte dont on garde un double (ou une autre carte de sortie).
-      const doubles = ir === R_A || ir === R_R ? comptes[R_A] + comptes[R_R] : comptes[ir];
-      if (doubles > 1 && gMoi > 0) gMoi *= 0.3;
-      const v = gPart - gMoi;
-      if (v > best) {
-        best = v;
-        meilleure = carte;
-      }
-    }
-    return meilleure;
+    return noterDons(etat, siege, main, options)[0].carte;
   } catch (e) {
     return main[0];
   }
@@ -96,4 +58,7 @@ export function choisirCoup(etat, siege, main, options = {}) {
   return coups[0];
 }
 
-export { evaluerCandidat };
+// Conseils au joueur humain (voir conseils.js) :
+//   conseillerDon(etat, siege, main, options)  → [{ carte, note, ecart, raisons }]
+//   conseillerCoup(etat, siege, main, options) → [{ coup, note, ecart, raisons, joue? }]
+export { conseillerDon, conseillerCoup };

@@ -9,6 +9,10 @@
 //   session.donner(carte) → Promise    donner une carte au partenaire (phase 'echange')
 //   session.jouer(coup)   → Promise    jouer un coup (phase 'jeu', à son tour) ; rejette si illégal
 //   session.fermer()                   arrêter les écoutes et les minuteries
+//   session.donneesAnalyse() → Promise<{ reglages, joueurs, siege, historique, donnes }>
+//       pour l'analyse de fin de partie : donnes[d] = { distribuees, donnee, recue } = les cartes
+//       du joueur local à la donne d (distribuées, donnée au partenaire, reçue de lui).
+//       La partie se rejoue avec rejouerPartie(reglages, historique) (moteur/rejeu.js).
 //
 //   vue = {
 //     id,            identifiant de la partie ('locale' hors ligne)
@@ -176,6 +180,21 @@ export class SessionLocale {
       return;
     }
     this.notifier();
+  }
+
+  async donneesAnalyse() {
+    const { etat, historique, archives } = this.partie;
+    const s = this.siege;
+    const donnes = (archives || []).map((a) =>
+      a
+        ? {
+            distribuees: a.mains[s].slice(),
+            donnee: a.dons[s],
+            recue: a.dons.every(Boolean) ? a.dons[partenaire(s)] : null,
+          }
+        : null,
+    );
+    return { reglages: etat.reglages, joueurs: this.joueurs, siege: s, historique, donnes };
   }
 
   fermer() {

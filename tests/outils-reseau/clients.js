@@ -1,7 +1,7 @@
 // Fabrique des clients réseau branchés sur le faux serveur.
 
 import { creerClient } from '../../public/js/reseau/client.js';
-import { choisirCoup, choisirDon } from '../../public/js/ia/ia.js';
+import { choisirCoup, choisirDon } from './ia-simple.js';
 import { generateurAleatoire } from '../../public/js/moteur/index.js';
 
 export function nouveauClient(serveur, { graine = 1, session = {}, ...autres } = {}) {

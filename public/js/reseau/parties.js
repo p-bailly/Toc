@@ -379,7 +379,8 @@ export async function jouerCoup(ctx, id, siege, coup, { lire, numCoupAttendu } =
     const c = copie(typeof coup === 'function' ? coup(prive.main, etat, prive) : coup);
     const nouvel = appliquerCoup(etat, siege, c, prive.main); // lève une Error en français si illégal
     const historique = (p.historique || []).concat([
-      { n: nouvel.numCoup, siege, coup: c, captures: nouvel.dernierCoup.captures },
+      // Coup normalisé par le moteur : l'historique permet de rejouer la partie à l'identique.
+      { n: nouvel.numCoup, siege, coup: nouvel.dernierCoup.coup, captures: nouvel.dernierCoup.captures },
     ]);
     if (nouvel.phase !== 'fini' && nouvel.donne !== etat.donne && nouvel.donne % 3 === 0) {
       ecrireCycle(ctx, tx, id, nouvel.donne); // paquet épuisé : on remélange

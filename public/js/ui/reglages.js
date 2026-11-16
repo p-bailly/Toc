@@ -29,6 +29,8 @@ const DEFAUT = {
   confirmerCoup: true,
   /** Animer les déplacements des pions. */
   animations: true,
+  /** Entraînement : après chaque coup, dire si l'IA aurait joué pareil. */
+  commenterCoups: false,
 };
 
 const CLE_GENRE = { tour: 'notifTour', invitation: 'notifInvitations', fin: 'notifFin' };
@@ -46,6 +48,7 @@ export function lireReglages() {
     notifFin: booleen('notifFin'),
     confirmerCoup: booleen('confirmerCoup'),
     animations: booleen('animations'),
+    commenterCoups: booleen('commenterCoups'),
   };
 }
 

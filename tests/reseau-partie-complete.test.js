@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FauxServeur, attendre } from './outils-reseau/faux-magasin.js';
 import { nouveauClient } from './outils-reseau/clients.js';
-import { coupsLegauxMain, equipe } from '../public/js/moteur/index.js';
+import { appliquerCoup, coupsLegauxMain, equipe, etatInitial, marquerEchange } from '../public/js/moteur/index.js';
 
 test('partie complète : 3 humains + 1 IA, remélanges, fin, statistiques', { timeout: 300000 }, async () => {
   const serveur = new FauxServeur();
@@ -105,9 +105,34 @@ test('partie complète : 3 humains + 1 IA, remélanges, fin, statistiques', { ti
   assert.equal(listes[0][0].gagnant, p.etat.gagnant);
   assert.equal(listes[0][0].aMoiDeJouer, false);
 
-  // Réouverture d'une partie terminée.
+  // Analyse de fin de partie : l'historique rejoue la partie à l'identique depuis etatInitial.
+  for (const [i, s] of sessions.entries()) {
+    const an = await s.donneesAnalyse();
+    assert.equal(an.siege, [0, 1, 3][i]);
+    assert.deepEqual(an.reglages, { cinqAdverse: true });
+    assert.equal(an.joueurs[2].ia, true);
+    assert.equal(an.donnes.length, p.etat.donne + 1);
+    for (const [d, x] of an.donnes.entries()) {
+      assert.deepEqual(x.distribuees, serveur.get(`parties/${id}/donnes/${d}_${an.siege}`).cartes);
+      assert.equal(x.donnee, serveur.get(`parties/${id}/dons/${d}_${an.siege}`)?.carte ?? null);
+      assert.equal(x.recue, serveur.get(`parties/${id}/dons/${d}_${(an.siege + 2) % 4}`)?.carte ?? null);
+    }
+    let e = etatInitial(an.reglages);
+    for (const h of an.historique) {
+      while (e.phase === 'echange') e = marquerEchange(e, e.echanges.indexOf(false));
+      e = appliquerCoup(e, h.siege, h.coup);
+      assert.equal(e.numCoup, h.n);
+      assert.deepEqual(e.dernierCoup.captures, h.captures);
+    }
+    assert.deepEqual(e.pions, p.etat.pions);
+    assert.equal(e.gagnant, p.etat.gagnant);
+  }
+  // Hors connexion, avec des mains pas encore en cache : message clair.
   const revue = await b.client.ouvrirSession(id);
   assert.equal(revue.vue().etat.phase, 'fini');
+  b.magasin.horsLigne = true;
+  await assert.rejects(revue.donneesAnalyse(), /Pas de connexion/);
+  b.magasin.horsLigne = false;
   revue.fermer();
   sessions.forEach((s) => s.fermer());
   arrets.forEach((f) => f());

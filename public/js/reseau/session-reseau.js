@@ -8,6 +8,7 @@
 //   passe en premier, les autres attendent un délai aléatoire, ce qui limite les courses.
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
 
+import { partenaire } from '../moteur/index.js';
 import { ConflitIA, ErreurToc, chemins, enErreurToc, siegeDe } from './commun.js';
 import { comptabiliserPartie } from './comptes.js';
 import { chargerMain, creerLecteurMains, donnerCarte, jouerCoup } from './parties.js';
@@ -207,6 +208,46 @@ export class SessionReseau {
       this.iaEnCours = false;
     }
     this.planifierIA();
+  }
+
+  /**
+   * Données de l'analyse de fin de partie (lectures simples, en parallèle, sans écoute) :
+   * { reglages, joueurs, siege, historique, donnes } ; donnes[d] = { distribuees, donnee, recue }
+   * pour le siège local, de la donne 0 à la dernière commencée (null si pas encore disponible).
+   */
+  async donneesAnalyse() {
+    try {
+      const p = await this.ctx.magasin.lire(chemins.partie(this.id));
+      if (!p || !p.etat) throw new ErreurToc("Cette partie n'existe plus.", 'not-found');
+      const siege = siegeDe(p, this.ctx.uid);
+      const { etat } = p;
+      const lectures = [];
+      for (let d = 0; d <= etat.donne; d++) {
+        const courante = d === etat.donne;
+        const aDonne = !courante || etat.echanges[siege];
+        const echangeFini = !courante || etat.phase !== 'echange';
+        lectures.push(
+          Promise.all([
+            this.lire(chemins.donne(this.id, d, siege)),
+            aDonne ? this.lire(chemins.don(this.id, d, siege)) : null,
+            echangeFini ? this.lire(chemins.don(this.id, d, partenaire(siege))) : null,
+          ]).then(([dist, don, recu]) => ({
+            distribuees: dist ? dist.cartes.slice() : [],
+            donnee: don?.carte ?? null,
+            recue: recu?.carte ?? null,
+          })),
+        );
+      }
+      return {
+        reglages: { cinqAdverse: !!p.reglages?.cinqAdverse },
+        joueurs: p.joueurs.map((j) => ({ pseudo: j?.pseudo ?? '?', ia: !!j?.ia })),
+        siege,
+        historique: p.historique || [],
+        donnes: await Promise.all(lectures),
+      };
+    } catch (e) {
+      throw enErreurToc(e);
+    }
   }
 
   fermer() {

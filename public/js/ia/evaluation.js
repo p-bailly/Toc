@@ -131,8 +131,10 @@ function valeursPions(pions, P) {
  * @param prochain    siège qui joue le prochain coup
  * @param info        { n, connu, nConnu } (voir proba)
  * @param ctx         contexte (creerContexte)
+ * @param detail      (facultatif) objet rempli avec risque[g] (probabilité pondérée de capture)
+ *                    et valeur[g] (valeur intrinsèque de chaque pion), pour les explications
  */
-export function evaluerPlateau(pions, equipePersp, prochain, info, ctx) {
+export function evaluerPlateau(pions, equipePersp, prochain, info, ctx, detail = null) {
   const P = ctx.poids;
   const fin0 = finiPions(pions, 0) && finiPions(pions, 2);
   const fin1 = finiPions(pions, 1) && finiPions(pions, 3);
@@ -140,6 +142,10 @@ export function evaluerPlateau(pions, equipePersp, prochain, info, ctx) {
 
   valeursPions(pions, P);
   occupation(pions, occ);
+  if (detail) {
+    detail.risque = new Float64Array(16);
+    detail.valeur = Float64Array.from(valeurs);
+  }
   const fini = [finiPions(pions, 0), finiPions(pions, 1), finiPions(pions, 2), finiPions(pions, 3)];
   // Couleur jouée par chaque joueur, et décalage de son tour par rapport au prochain joueur.
   const couleurDe = [0, 1, 2, 3].map((j) => (fini[j] ? (j + 2) & 3 : j));
@@ -205,6 +211,7 @@ export function evaluerPlateau(pions, equipePersp, prochain, info, ctx) {
       survie *= 1 - w * proba(ctx, info, j, masquesAtt[j]);
     }
     if (survie < 1) score -= signe * (1 - survie) * valeurs[g] * P.risque;
+    if (detail) detail.risque[g] = 1 - survie;
   }
 
   // Menace du valet : chaque joueur qui possède un valet peut échanger un de ses pions avec

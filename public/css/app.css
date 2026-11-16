@@ -952,8 +952,8 @@ details > .reglage:first-of-type {
 .carte-jeu .symbole-central.figure {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-weight: 800;
-  font-size: max(18px, 40cqw);
-  margin: 26% 22%;
+  font-size: max(16px, 36cqw);
+  margin: 25% 29%;
   border: 1.5px solid currentColor;
   border-radius: 4px;
   padding: 0;
@@ -1549,4 +1549,24 @@ details > .reglage:first-of-type {
     border-radius: 14px;
     padding-bottom: 18px;
   }
+}
+
+/* Conseils de l'IA */
+.ligne.conseil {
+  cursor: default;
+  align-items: flex-start;
+}
+.bouton-conseil {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.raisons {
+  margin: 4px 0 0;
+  padding-left: 1.1em;
+  font-size: calc(13px * var(--texte));
+  line-height: 1.4;
 }

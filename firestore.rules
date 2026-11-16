@@ -52,8 +52,8 @@ service cloud.firestore {
         let p = get(/databases/$(base)/documents/parties/$(id)).data;
         let s = siegeDans(p.joueurs, uid);
         return n == av.comptees.size() + 1 && n <= 5000
-          && ap.comptees[0:n - 1] == av.comptees
           && id is string && !(id in av.comptees)
+          && av.comptees.concat([id]) == ap.comptees
           && p.statut == 'finie' && s >= 0
           && ap.stats.jouees == av.stats.jouees + 1
           && ap.stats.gagnees == av.stats.gagnees + un(s % 2 == p.etat.gagnant);
@@ -237,7 +237,7 @@ service cloud.firestore {
         let n = h.size();
         let nouvelleDonne = en.donne != ea.donne;
         return ea.phase == 'jeu' && peutAgir(av, s)
-          && n == av.historique.size() + 1 && h[0:n - 1] == av.historique
+          && n == av.historique.size() + 1 && av.historique.concat([h[n - 1]]) == h
           && h[n - 1].siege == s && h[n - 1].n == en.numCoup
           && en.dernierCoup.siege == s
           && (en.phase == 'fini'

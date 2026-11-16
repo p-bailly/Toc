@@ -21,8 +21,9 @@ import {
 import { Plateau, dessinPion } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { ouvrirFeuille, toast } from './composants.js';
-import { piRetour, piHistorique, piOk, piAnnuler } from './pictos.js';
-import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte } from './libelles.js';
+import { piRetour, piHistorique, piOk, piAnnuler, piConseil } from './pictos.js';
+import * as IA from '../ia/ia.js';
+import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction } from './libelles.js';
 import { couleurSiege, nomCouleur, PIONS } from './couleurs.js';
 import { lireReglages } from './reglages.js';
 import { majMonTour, notifier } from './notifications.js';
@@ -38,17 +39,26 @@ const NOMS_FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆'
  * @param {Function} [o.rejouer]    partie d'entraînement : relancer une partie
  * @returns {Function} destruction
  */
-export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null }) {
+export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false }) {
   const plateau = new Plateau({ surPion: (g) => toucherPion(g), surCible: (i) => toucherCible(i) });
 
   const titre = h('span', { class: 'texte' }, 'Toc');
   const sousTitre = h('span', { class: 'sous' });
+  // Conseils de l'IA : parties d'entraînement seulement, et si l'IA les propose.
+  const conseilsDispo = conseils && typeof IA.conseillerCoup === 'function' && typeof IA.conseillerDon === 'function';
+  const boutonConseil = h(
+    'button',
+    { type: 'button', class: 'bouton-icone', 'aria-label': 'Conseil de l’IA', title: 'Conseil', hidden: !conseilsDispo, 'data-action': 'conseil', onclick: () => ouvrirConseil() },
+    piConseil(),
+  );
+  const boutonConseilPlace = () => boutonConseil;
   const boutonJournal = h('button', { type: 'button', class: 'bouton-icone', 'aria-label': 'Journal des coups', onclick: () => ouvrirJournal() }, piHistorique());
   const barre = h(
     'header',
     { class: 'barre-jeu' },
     h('a', { class: 'bouton-icone', href: retour, 'aria-label': libelleRetour }, piRetour()),
     h('div', { class: 'titre' }, titre, sousTitre),
+    boutonConseilPlace(),
     boutonJournal,
   );
   const zonePlateau = h('div', { class: 'zone-plateau pleine' }, plateau.el);
@@ -73,6 +83,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let feuilleFin = null;
   let feuilleJournal = null;
   let monTourAvant = false;
+  let ciblesCourantes = [];
+  let feuilleConseil = null;
 
   const reinitialiser = () => {
     carte = null;
@@ -124,10 +136,13 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     monTourAvant = a;
   }
 
-  const aMoi = () =>
-    !!vue && ((vue.etat.phase === 'jeu' && vue.etat.tour === vue.siege) || (vue.etat.phase === 'echange' && !vue.don));
+  function aMoi() {
+    return !!vue && ((vue.etat.phase === 'jeu' && vue.etat.tour === vue.siege) || (vue.etat.phase === 'echange' && !vue.don));
+  }
 
-  const nomSiege = (si) => (si === vue.siege ? 'Vous' : vue.joueurs[si]?.pseudo || `Joueur ${si + 1}`);
+  function nomSiege(si) {
+    return si === vue.siege ? 'Vous' : vue.joueurs[si]?.pseudo || `Joueur ${si + 1}`;
+  }
 
   // ─── Calculs (moteur) ─────────────────────────────────────────────────────
 
@@ -140,6 +155,11 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   /** Destination (position moteur) du pion déplacé par un coup, et pions capturés. */
   function destination(coup) {
+    if (coup.t === 'sept' || coup.t === 'defausse') {
+      const a = apercuCoup(vue.etat, vue.siege, coup);
+      const dep = a?.deplacements.filter((d) => !d.capture).pop();
+      return { pion: dep ? dep.pion : undefined, pos: dep ? dep.vers : undefined, captures: a?.captures || [], pions: a?.pions };
+    }
     if (coup.t === 'echange') return { pion: coup.pion, pos: vue.etat.pions[coup.cible], captures: [], cible: coup.cible };
     const a = apercuCoup(vue.etat, vue.siege, coup);
     const dep = a?.deplacements.filter((d) => d.pion === coup.pion && !d.capture).pop();
@@ -226,8 +246,6 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     rendre();
   }
 
-  let ciblesCourantes = [];
-
   function toucherCible(i) {
     const cible = ciblesCourantes[i];
     if (!cible || envoi) return;
@@ -242,7 +260,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     preparer(cible.coup);
   }
 
-  const cle = (coup) => JSON.stringify(coup);
+  function cle(coup) {
+    return JSON.stringify(coup);
+  }
 
   function ajouterEtape(option) {
     const { pion: g, pas, allee, vers, captures } = option;
@@ -294,10 +314,12 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   async function envoyer() {
     if (!coupPret || envoi) return;
     const coup = coupPret;
+    const avant = { etat: vue.etat, main: vue.main.slice(), don: vue.don, recu: vue.recu };
     envoi = true;
     rendre();
     try {
       await session.jouer(coup);
+      commenter(avant, coup);
     } catch (e) {
       toast(messageErreur(e), { erreur: true });
     } finally {
@@ -339,7 +361,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
     // Plateau : candidats, cibles, aperçu.
     const choix = calculerChoix(monTour);
-    plateau.maj({ siegeVue: siege, etat, joueurs, pions: sept ? sept.pions : null, choix, sousTitres: sousTitres(), siegeLocal: siege });
+    const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
+    plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
+    boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
     zonePlateau.classList.toggle('a-moi', aMoi());
 
     // Main.
@@ -405,7 +429,10 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       }
       choix.cibles = ciblesCourantes.map((c) => ({ pion: c.pion, pos: c.pos, libelle: c.libelle }));
     }
-    if (coupPret) {
+    if (coupPret && coupPret.t === 'sept') {
+      choix.candidats = new Set();
+      choix.choisi = null;
+    } else if (coupPret) {
       const d = destination(coupPret);
       choix.fantome = { pion: coupPret.pion, pos: d.pos };
       choix.captures = d.captures;
@@ -488,7 +515,14 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     } else if (!carte) {
       lignes.push(h('b', {}, 'À vous de jouer : '), h('span', {}, 'touchez une carte.'));
     } else if (coupPret) {
-      lignes.push(h('span', {}, h('b', {}, `${carteCourte(carte)} : `), libelleChoix(coupPret, siege, joueurs, { depuisAllee: vue.etat.pions[coupPret.pion] >= ALLEE })));
+      lignes.push(
+        h(
+          'span',
+          {},
+          h('b', {}, `${carteCourte(carte)} : `),
+          coupPret.t === 'sept' ? decrireAction(coupPret, siege, joueurs) : libelleChoix(coupPret, siege, joueurs, { depuisAllee: vue.etat.pions[coupPret.pion] >= ALLEE }),
+        ),
+      );
       const d = destination(coupPret);
       if (d.captures.length) lignes.push(h('span', { class: 'note ecart-neg' }, `Renvoie à la base : ${decrireCaptures(d.captures)}`));
       boutons.push(h('button', { type: 'button', class: 'bouton', onclick: () => ((coupPret = null), rendre()), 'data-action': 'annuler' }, 'Annuler'));
@@ -555,6 +589,124 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   function dessinPionMini(si) {
     return dessinPion(si);
+  }
+
+  // ─── Conseils de l'IA (entraînement) ──────────────────────────────────────
+
+  /** Phrase décrivant un coup : « Roi ♠ : sort un pion ». */
+  function descriptionCoup(coup) {
+    if (coup.t === 'defausse') return `Défausser le ${carteCourte(coup.carte)}`;
+    const texte = decrireAction(coup, vue.siege, vue.joueurs);
+    return `${carteCourte(coup.carte)} : ${texte}`;
+  }
+
+  const formatEcart = (x) => (typeof x === 'number' ? x.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : '');
+
+  /** Après un coup du joueur : l'IA aurait-elle joué pareil ? (réglage « Commenter mes coups »). */
+  function commenter(avant, coup) {
+    if (!conseilsDispo || vue?.enLigne || !lireReglages().commenterCoups || avant.etat.phase !== 'jeu') return;
+    setTimeout(() => {
+      try {
+        const avis = IA.conseillerCoup(avant.etat, vue.siege, avant.main, {
+          max: 3,
+          budgetMs: 500,
+          coupJoue: coup,
+          carteDonnee: avant.don,
+          carteRecue: avant.recu,
+        });
+        if (!avis?.length) return;
+        const meilleur = avis[0];
+        const joue = avis.find((a) => a.joue);
+        if (meilleur.joue || cle(meilleur.coup) === cle(coup) || (joue && !joue.ecart)) {
+          toast('Bien joué : c’est aussi le choix de l’IA.', { duree: 3500 });
+        } else {
+          const raison = meilleur.raisons?.[0] ? ` — ${meilleur.raisons[0]}` : '';
+          const ecart = joue && typeof joue.ecart === 'number' ? ` (écart ${formatEcart(joue.ecart)})` : '';
+          toast(`L’IA aurait préféré ${descriptionCoup(meilleur.coup)}${raison}${ecart}.`, { duree: 7000 });
+        }
+      } catch (e) {
+        console.warn('Commentaire du coup impossible', e);
+      }
+    }, 60);
+  }
+
+  function ouvrirConseil() {
+    if (!conseilsDispo || !vue || !aMoi() || vue.enLigne) return;
+    const echange = vue.etat.phase === 'echange';
+    const liste = h('div', { class: 'liste' }, h('div', { class: 'vide-etat' }, 'Réflexion…'));
+    feuilleConseil = ouvrirFeuille(
+      [
+        h('h3', {}, echange ? 'Quelle carte donner ?' : 'Quel coup jouer ?'),
+        h('p', { class: 'note' }, 'Les meilleures options selon l’IA, avec ses raisons.'),
+        liste,
+        h('button', { type: 'button', class: 'bouton large', onclick: () => feuilleConseil?.fermer() }, 'Fermer'),
+      ],
+      { surFermer: () => (feuilleConseil = null) },
+    );
+    const vueFigee = vue;
+    // Laisse le navigateur afficher « Réflexion… » avant le calcul (≈ 0,5 s).
+    setTimeout(() => {
+      if (!feuilleConseil || vue !== vueFigee) return;
+      let avis;
+      try {
+        const options = { max: 3, budgetMs: 600, carteDonnee: vue.don, carteRecue: vue.recu };
+        avis = echange ? IA.conseillerDon(vue.etat, vue.siege, vue.main, options) : IA.conseillerCoup(vue.etat, vue.siege, vue.main, options);
+      } catch (e) {
+        remplacer(liste, h('div', { class: 'apercu erreur' }, messageErreur(e)));
+        return;
+      }
+      if (!avis?.length) {
+        remplacer(liste, h('div', { class: 'vide-etat' }, 'Pas de conseil pour cette position.'));
+        return;
+      }
+      remplacer(
+        liste,
+        avis.slice(0, 3).map((a, i) => {
+          const titre = echange ? `Donner le ${carteCourte(a.carte)}` : descriptionCoup(a.coup);
+          const jouer = () => {
+            feuilleConseil?.fermer();
+            if (echange) {
+              carte = a.carte;
+              donner();
+            } else {
+              montrerConseil(a.coup);
+              envoyer();
+            }
+          };
+          return h(
+            'div',
+            { class: 'ligne conseil' + (i === 0 ? ' choisie' : ''), 'data-conseil': i },
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'principal bouton-conseil',
+                onclick: () => {
+                  feuilleConseil?.fermer();
+                  if (echange) {
+                    carte = a.carte;
+                    rendre();
+                  } else montrerConseil(a.coup);
+                },
+              },
+              h('div', { class: 'mot' }, `${i + 1}. ${titre}`),
+              h('div', { class: 'note' }, i === 0 ? 'Le choix de l’IA' : `Écart avec le meilleur : ${formatEcart(a.ecart)}`),
+              a.raisons?.length ? h('ul', { class: 'raisons' }, a.raisons.map((r) => h('li', {}, r))) : null,
+            ),
+            h('button', { type: 'button', class: 'bouton', onclick: jouer, 'data-action': 'jouer-conseil' }, echange ? 'Donner' : 'Jouer'),
+          );
+        }),
+      );
+    }, 30);
+  }
+
+  /** Met un coup conseillé en surbrillance : carte choisie, pion, destination et captures sur le plateau. */
+  function montrerConseil(coup) {
+    reinitialiser();
+    carte = coup.carte;
+    if (coup.pion !== undefined) pion = coup.pion;
+    coupPret = coup;
+    rendre();
   }
 
   // ─── Feuilles : journal, fin de partie ────────────────────────────────────
@@ -627,6 +779,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     plateau.arreterAnimations();
     feuilleFin?.fermer();
     feuilleJournal?.fermer();
+    feuilleConseil?.fermer();
     majMonTour(false);
   };
 }

@@ -38,6 +38,7 @@ export function afficher(racine, app) {
     demonter = monterJeu(racine, {
       session: enveloppe,
       retour: '#/ia',
+      conseils: true,
       libelleRetour: 'Retour au menu Contre l’IA',
       rejouer: () => {
         const reglages = vraie.partie?.etat?.reglages || {};

@@ -67,7 +67,7 @@ export function preparer(etat, siege, main, options = {}) {
  * @param mainJ     sa main
  * @param donnee    carte connue dans la main du partenaire de `joueur` (ou null)
  */
-function infoMains(n, joueur, mainJ, donnee) {
+export function infoMains(n, joueur, mainJ, donnee) {
   const connu = [0, 0, 0, 0];
   const nConnu = [0, 0, 0, 0];
   if (joueur >= 0) {

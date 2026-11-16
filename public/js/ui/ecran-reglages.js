@@ -72,6 +72,12 @@ export function afficher(racine, app) {
           actif: r.animations,
           surChange: (animations) => maj({ animations }),
         }),
+        interrupteur({
+          titre: 'Commenter mes coups',
+          texte: 'Contre l’IA seulement : après chaque coup, un court message dit si l’IA aurait joué pareil, et sinon pourquoi.',
+          actif: r.commenterCoups,
+          surChange: (commenterCoups) => maj({ commenterCoups }),
+        }),
       ),
     );
 

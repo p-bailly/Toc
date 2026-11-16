@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { creerClient } from '../public/js/reseau/client.js';
 import { initialiser } from '../public/js/reseau/firebase.js';
-import { choisirCoup, choisirDon } from '../public/js/ia/ia.js';
+import { choisirCoup, choisirDon } from './outils-reseau/ia-simple.js';
 import { coupsLegauxMain, generateurAleatoire, appliquerCoup, marquerEchange } from '../public/js/moteur/index.js';
 import { attendre } from './outils-reseau/faux-magasin.js';
 

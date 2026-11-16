@@ -13,6 +13,8 @@ import { etatInitial, appliquerCoup, marquerEchange } from './regles.js';
  * @property {string[][][]} cycle    mains prédistribuées pour les 3 donnes du cycle courant
  * @property {(string|null)[]} dons  dons[siege] = carte donnée au partenaire pour la donne courante
  * @property {Object[]} historique   [{ n, siege, coup, captures }]
+ * @property {Object[]} archives     archives[donne] = { mains, dons } : mains distribuées et cartes
+ *                                   données à chaque donne (pour l'analyse de fin de partie)
  */
 
 export function nouvellePartie(reglages = {}, rng = Math.random) {
@@ -23,7 +25,15 @@ export function nouvellePartie(reglages = {}, rng = Math.random) {
     cycle,
     dons: [null, null, null, null],
     historique: [],
+    archives: [{ mains: cycle[0].map((m) => m.slice()), dons: [null, null, null, null] }],
   };
+}
+
+function archiverDons(partie, etat, dons) {
+  if (!Array.isArray(partie.archives)) return undefined; // partie sauvegardée avant les archives
+  const archives = partie.archives.slice();
+  if (archives[etat.donne]) archives[etat.donne] = { ...archives[etat.donne], dons: dons.slice() };
+  return archives;
 }
 
 /** Le joueur donne une carte à son partenaire. L'échange est effectif quand les quatre ont donné. */
@@ -39,7 +49,7 @@ export function donnerCarte(partie, siege, carte) {
   if (etat.phase === 'jeu') {
     for (let s = 0; s < 4; s++) mains[partenaire(s)].push(dons[s]);
   }
-  return { ...partie, etat, mains, dons };
+  return { ...partie, etat, mains, dons, archives: archiverDons(partie, partie.etat, dons) };
 }
 
 /** Joue un coup (validé contre la main du joueur). */
@@ -56,5 +66,10 @@ export function jouerCoup(partie, siege, coup, rng = Math.random) {
     mains = cycle[etat.donne % 3].map((m) => m.slice());
     dons = [null, null, null, null];
   }
-  return { ...partie, etat, mains, cycle, dons, historique };
+  let { archives } = partie;
+  if (Array.isArray(archives) && etat.donne !== partie.etat.donne && etat.phase !== 'fini') {
+    archives = archives.slice();
+    archives[etat.donne] = { mains: mains.map((m) => m.slice()), dons: [null, null, null, null] };
+  }
+  return { ...partie, etat, mains, cycle, dons, historique, archives };
 }
