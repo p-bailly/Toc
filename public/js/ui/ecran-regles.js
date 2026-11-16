@@ -40,7 +40,7 @@ export function afficher(racine) {
           valeur('RC', 'Roi : avance de 13, ou sort un pion.'),
           valeur('DK', 'Dame : avance de 12.'),
           valeur('VT', 'Valet : échange un de ses pions avec un autre pion (pas deux des siens ; ni pion en base, en allée ou protégé).'),
-          valeur('7C', '7 : se partage entre plusieurs pions (3 + 4…) et doit être utilisé en entier. Tous les pions dépassés retournent à la base, même alliés et les siens. Le reste peut servir aux pions du partenaire seulement si l’on a rentré son 4e pion pendant ce 7 (ou déjà fini). Un 7 qui fait gagner la partie est valable même s’il reste des points.'),
+          valeur('7C', '7 : se partage entre plusieurs pions (3 + 4…) et doit être utilisé en entier. Tous les pions dépassés retournent à la base, même alliés et les siens. Le reste peut servir aux pions du partenaire seulement si l’on a rentré son 4e pion pendant ce 7 (ou déjà fini). Les 7 points se dépensent toujours en entier, même pour gagner.'),
           valeur('4P', '4 : recule de 4 en sautant les pions et renvoie à la base celui de la case d’arrivée. Jamais dans sa base ni son allée.'),
           valeur('5K', '5 : avance de 5. Option « 5 adverse » : peut aussi faire avancer un pion adverse de 5 (jamais un pion protégé sur sa case de sortie).'),
           valeur('9T', '2, 3, 6, 8, 9, 10 : avancent de leur valeur.'),

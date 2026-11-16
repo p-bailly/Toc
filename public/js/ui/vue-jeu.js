@@ -494,11 +494,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       const r = etatSept();
       const reste = r ? r.reste : 0;
       const actif = sept.etapes.length ? `${sept.etapes.map((e) => e.pas).join(' + ')} · ` : '';
-      const victoire = r && r.complet && reste > 0;
-      lignes.push(
-        h('span', {}, h('b', {}, victoire ? '7 : la partie est gagnée !' : `7 : reste ${pluriel(reste, 'point')}`), ` ${actif ? '(' + actif.slice(0, -3) + ')' : ''}`),
-      );
-      if (victoire) lignes.push(h('span', { class: 'note' }, `Les ${pluriel(reste, 'point')} restants ne servent plus : validez le 7.`));
+      lignes.push(h('span', {}, h('b', {}, `7 : reste ${pluriel(reste, 'point')}`), ` ${actif ? '(' + actif.slice(0, -3) + ')' : ''}`));
       if (sept.captures.length) lignes.push(h('span', { class: 'note ecart-neg' }, `Renvoyés à la base : ${decrireCaptures(sept.captures)}`));
       const options = r ? r.options : [];
       if (options.some((o) => o.pion >> 2 !== siege)) lignes.push(h('span', { class: 'note' }, `Le reste va aux pions de ${nomP}.`));

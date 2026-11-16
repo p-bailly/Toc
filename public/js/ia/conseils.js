@@ -4,8 +4,7 @@
 // evaluation.js) ; les raisons sont tirées de faits vérifiés sur la position : captures
 // effectives, entrées dans l'allée, variation mesurée du risque de capture, cartes gardées…
 
-import { apercuCoup } from '../moteur/index.js';
-import { analyser, preparer, infoMains, comptesRangs } from './recherche.js';
+import { preparer, infoMains, comptesRangs } from './recherche.js';
 import { evaluerPlateau } from './evaluation.js';
 import { coupsMain, indexRang, finiPions, entree, BASE, ALLEE, R_A, R_4, R_7, R_R } from './simulation.js';
 
@@ -13,7 +12,6 @@ const NOMS_RANG = ['as', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'valet', 
 const ton = (ir) => (ir === 11 ? 'ta dame' : 'ton ' + NOMS_RANG[ir]);
 const un = (ir) => (ir === 11 ? 'une dame' : 'un ' + NOMS_RANG[ir]);
 const pct = (p) => `${Math.round(p * 100)} %`;
-const arrondi = (x) => Math.round(x * 10) / 10;
 const distance = (g, p) => (entree(g >> 2) - p + 64) & 63;
 
 // ---------------------------------------------------------------------------
@@ -61,7 +59,7 @@ export function noterDons(etat, siege, main, options = {}) {
   return entrees;
 }
 
-function raisonsDon(e, etat, siege) {
+export function raisonsDon(e, etat, siege) {
   const p = (siege + 2) & 3;
   const enBase = (s) => [0, 1, 2, 3].filter((k) => etat.pions[s * 4 + k] === BASE).length;
   const r = [];
@@ -82,26 +80,11 @@ function raisonsDon(e, etat, siege) {
   return r.slice(0, 3);
 }
 
-/**
- * Conseil de don : une entrée par rang distinct de la main, de la meilleure à la moins bonne.
- * @returns {{carte:string, note:number, ecart:number, raisons:string[]}[]}
- */
-export function conseillerDon(etat, siege, main, options = {}) {
-  const entrees = noterDons(etat, siege, main, options);
-  const meilleure = entrees[0].note;
-  return entrees.map((e) => ({
-    carte: e.carte,
-    note: arrondi(e.note),
-    ecart: arrondi(meilleure - e.note),
-    raisons: raisonsDon(e, etat, siege),
-  }));
-}
-
 // ---------------------------------------------------------------------------
 // Coup à jouer
 // ---------------------------------------------------------------------------
 
-function raisonsCoup(prep, etat, siege, main, cand) {
+export function raisonsCoup(prep, etat, siege, main, cand) {
   const coup = cand.res.coup;
   const avant = etat.pions;
   const apres = cand.res.pions;
@@ -239,67 +222,4 @@ function raisonsCoup(prep, etat, siege, main, cand) {
   R.sort((a, b) => b.poids - a.poids);
   const vus = new Set();
   return R.filter((x) => !vus.has(x.texte) && vus.add(x.texte)).slice(0, 3).map((x) => x.texte);
-}
-
-/**
- * Conseil de coup : au plus options.max entrées (3 par défaut), plateaux finaux distincts,
- * de la meilleure à la moins bonne. La première est le coup que choisirCoup jouerait avec le
- * même budget et le même rng. Avec options.coupJoue, l'entrée de ce coup est ajoutée
- * (joue: true) si elle n'y est pas déjà.
- * @returns {{coup:Object, note:number, ecart:number, raisons:string[], joue?:boolean}[]}
- */
-export function conseillerCoup(etat, siege, main, options = {}) {
-  const max = options.max ?? 3;
-  const r = analyser(etat, siege, main, options);
-  const prep = preparer(etat, siege, main, options);
-  // Classement : candidats simulés (dans l'ordre de la recherche), puis les autres (statique).
-  let ordre;
-  if (r.retenus && r.iterations > 0) {
-    const dans = new Set(r.retenus);
-    const tete = r.retenus[0];
-    const decal = tete.score - tete.statique;
-    let plancher = Math.min(...r.retenus.map((c) => c.score));
-    for (const c of r.retenus) c.note = c.score;
-    const reste = r.candidats.filter((c) => !dans.has(c));
-    for (const c of reste) c.note = Math.min(c.statique + decal, plancher);
-    ordre = r.retenus.concat(reste);
-  } else {
-    for (const c of r.candidats) c.note = c.statique;
-    ordre = r.candidats.slice();
-  }
-  // le coup de choisirCoup en tête (même objet coup)
-  const iTete = ordre.findIndex((c) => c.res.coup === r.coup);
-  if (iTete > 0) ordre.unshift(ordre.splice(iTete, 1)[0]);
-  const noteTete = ordre[0].note;
-  const cle = (pions, coup) => (coup.t === 'defausse' ? 'd' + indexRang(coup.carte) : pions.join(','));
-  const vus = new Set();
-  const distincts = [];
-  for (const c of ordre) {
-    const k = cle(c.res.pions, c.res.coup);
-    if (vus.has(k)) continue;
-    vus.add(k);
-    distincts.push(c);
-  }
-  const entree = (c) => ({
-    coup: c.res.coup,
-    note: arrondi(c.note),
-    ecart: arrondi(Math.max(0, noteTete - c.note)),
-    raisons: raisonsCoup(prep, etat, siege, main, c),
-  });
-  const sortie = distincts.slice(0, max).map(entree);
-  if (options.coupJoue) {
-    const cj = options.coupJoue;
-    let k;
-    if (cj.t === 'defausse') k = 'd' + indexRang(cj.carte);
-    else {
-      const ap = apercuCoup(etat, siege, cj);
-      k = ap ? ap.pions.join(',') : null;
-    }
-    const kr = indexRang(cj.carte) + '|' + k;
-    const cand = ordre.find((c) => c.res.ir + '|' + cle(c.res.pions, c.res.coup) === kr);
-    const iAffiche = cand ? distincts.slice(0, max).indexOf(cand) : -1;
-    if (iAffiche >= 0) sortie[iAffiche].joue = true;
-    else if (cand) sortie.push({ ...entree(cand), coup: cj, joue: true });
-  }
-  return sortie;
 }

@@ -175,12 +175,7 @@ function fusionnerEtapes(etapes) {
   return fusion;
 }
 
-const gagnePions = (pions, s) => finiPions(pions, s) && finiPions(pions, (s + 2) & 3);
-
-/**
- * Énumère toutes les façons distinctes (par plateau final) de jouer un 7 : en entier, ou
- * jusqu'à la victoire de l'équipe (les points restants sont alors perdus).
- */
+/** Énumère toutes les façons distinctes (par plateau final) de jouer un 7 en entier. */
 /** Clé compacte d'un plateau (16 caractères). */
 export function clePions(p) {
   return String.fromCharCode(
@@ -199,7 +194,7 @@ function genererSept(pions, s, carte, sortie, limite) {
   const explorer = (pi, reste) => {
     if (sortie.length >= limite) return;
     const cle = clePions(pi);
-    if (reste === 0 || (reste < 7 && gagnePions(pi, s))) {
+    if (reste === 0) {
       if (!finals.has(cle)) {
         finals.add(cle);
         sortie.push({ coup: { t: 'sept', carte, etapes: fusionnerEtapes(etapes) }, pions: pi, captures: captTot.slice() });
