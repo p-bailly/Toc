@@ -112,7 +112,6 @@ export function afficher(racine, app) {
     if (parties.length > visibles.length) {
       blocs.push(h('button', { type: 'button', class: 'bouton discret', 'data-action': 'tout-voir', onclick: () => ((toutVoir = true), dessiner()) }, `Voir les ${parties.length} parties`));
     }
-    if (parties.some((p) => p.sauvegarde)) blocs.push(h('p', { class: 'note' }, 'Touche une partie pour revoir tes coups avec l’IA. Les plus anciennes ne gardent que leur résultat.'));
     return blocs;
   };
 

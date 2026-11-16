@@ -68,7 +68,7 @@ export function afficher(racine, app) {
               'a',
               { class: 'ligne', href: MODES_LOCAUX[n].analyse, 'data-action': n === 3 ? 'analyser-3' : 'analyser' },
               h('div', { class: 'avatar', style: { background: gagne ? 'var(--ok)' : 'var(--muted)' } }, gagne ? '🏆' : '🎲'),
-              h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, `${e.donne + 1} donnes · revois tes coups avec l’IA`)),
+              h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, `${e.donne + 1} donnes`)),
               h('span', { class: 'bouton' }, 'Analyser'),
             );
           }),
@@ -103,10 +103,6 @@ export function afficher(racine, app) {
         ),
         rangee({
           titre: nbJoueurs === 3 ? 'Toi contre deux IA, chacun pour soi' : 'Toi et une IA contre deux IA',
-          texte:
-            nbJoueurs === 3
-              ? 'Plateau en triangle, 54 cartes dont 2 jokers. Le premier qui rentre ses 4 pions gagne.'
-              : 'Ton partenaire est en face. La partie est gardée sur cet appareil : tu peux la reprendre plus tard.',
         }),
         interrupteur({
           titre: 'Option « 5 adverse »',

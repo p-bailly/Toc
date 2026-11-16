@@ -193,23 +193,10 @@ a {
   white-space: nowrap;
 }
 .logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: var(--tapis);
-  border: 2px solid var(--cadre);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 34px;
+  height: 34px;
+  display: block;
   flex: none;
-}
-.logo span {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #1f62c0;
-  border: 2px solid #0f2238;
-  box-shadow: 0 0 0 2px #f1e6bf;
 }
 .puce {
   padding: 6px 12px;
@@ -2130,15 +2117,6 @@ details > .reglage:first-of-type {
   fill: var(--text);
 }
 /* Petit plateau du logo et des tapis de la salle d'attente : en bois aussi */
-.logo {
-  background: radial-gradient(circle at 50% 42%, #dcb57f, #cfa368);
-  border-color: #7a4c22;
-}
-.logo span {
-  background: radial-gradient(circle at 35% 30%, #8fb4e0 0 18%, #2f6fb5 22%);
-  border: 2px solid #153251;
-  box-shadow: none;
-}
 .tapis-table {
   background: radial-gradient(circle at 50% 42%, var(--bois), var(--bois-2));
   border-color: var(--bois-cadre);

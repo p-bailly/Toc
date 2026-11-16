@@ -49,7 +49,7 @@ export const ecrireNiveauEnLigne = (id) => ecrire(CLE_EN_LIGNE, niveauValide(id)
 
 // ─── Composants ─────────────────────────────────────────────────────────────
 
-/** Liste des cinq niveaux (nom et description) ; toucher un niveau appelle surChoix(id). */
+/** Liste des cinq niveaux, en étoiles ; toucher un niveau appelle surChoix(id). */
 export function listeNiveaux(actuel, surChoix) {
   return h(
     'div',
@@ -65,7 +65,7 @@ export function listeNiveaux(actuel, surChoix) {
           'data-niveau': n.id,
           onclick: () => surChoix(n.id),
         },
-        h('div', { class: 'principal' }, h('div', { class: 'mot etoiles', 'aria-label': niveauEnLettres(n.id) }, nomNiveau(n.id)), n.description ? h('div', { class: 'note' }, n.description) : null),
+        h('div', { class: 'principal' }, h('div', { class: 'mot etoiles', 'aria-label': niveauEnLettres(n.id) }, nomNiveau(n.id))),
       ),
     ),
   );
