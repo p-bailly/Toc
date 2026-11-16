@@ -29,7 +29,7 @@ import { dessinCarte } from './carte.js';
 import { ouvrirFeuille } from './composants.js';
 import { piRetour, piHistorique, piOk, piAnnuler, piConseil } from './pictos.js';
 import * as IA from '../ia/ia.js';
-import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle } from './libelles.js';
+import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
 import { couleurSiege, nomCouleur, PIONS } from './couleurs.js';
 import { lireReglages } from './reglages.js';
 import { majMonTour, notifier } from './notifications.js';
@@ -245,7 +245,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const coups = coupsLegaux(etat, vue.siege, c);
     if (!coups.length) {
       carte = null;
-      annoncer(estJoker(c) ? 'Le joker n’est pas jouable maintenant : rien d’utile à copier.' : `Le ${carteCourte(c)} n’est pas jouable maintenant.`);
+      annoncer(estJoker(c) ? 'Le joker n’est pas jouable maintenant : rien d’utile à copier.' : `${leCarte(c, true)} n’est pas jouable maintenant.`);
       return;
     }
     if (estJoker(c)) {
@@ -552,12 +552,12 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
           h(
             'button',
             { type: 'button', class: 'bouton principal large', disabled: !carte || envoi, onclick: donner, 'data-action': 'donner' },
-            carte ? `Donner ${estJoker(carte) ? 'le joker' : 'le ' + carteCourte(carte)} à ${nomDest}` : 'Choisis une carte',
+            carte ? `Donner ${leCarte(carte)} à ${nomDest}` : 'Choisis une carte',
           ),
         );
       } else {
         const attendus = Array.from({ length: nb() }, (_, si) => si).filter((si) => !etat.echanges[si]).map(nomSiege);
-        lignes.push(h('span', {}, `Tu as donné ${estJoker(vue.don) ? 'le joker' : 'le ' + carteCourte(vue.don)} à ${nomDest}. `, attendus.length ? `En attente de ${enumerer(attendus)}.` : ''));
+        lignes.push(h('span', {}, `Tu as donné ${leCarte(vue.don)} à ${nomDest}. `, attendus.length ? `En attente de ${enumerer(attendus)}.` : ''));
       }
     } else if (!monTour) {
       lignes.push(h('span', {}, 'En attente de ', h('b', {}, nomSiege(etat.tour)), '…'));
@@ -567,7 +567,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         h(
           'button',
           { type: 'button', class: 'bouton principal large', disabled: !coupPret || envoi, onclick: envoyer, 'data-action': 'jouer' },
-          coupPret ? (estJoker(coupPret.carte) ? 'Défausser le joker' : `Défausser le ${carteCourte(coupPret.carte)}`) : 'Touche la carte à défausser',
+          coupPret ? `Défausser ${leCarte(coupPret.carte)}` : 'Touche la carte à défausser',
         ),
       );
     } else if (sept) {
@@ -718,7 +718,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   /** Phrase décrivant un coup : « Roi ♠ : sort un pion ». */
   function descriptionCoup(coup) {
-    if (coup.t === 'defausse') return estJoker(coup.carte) ? 'Défausser le joker' : `Défausser le ${carteCourte(coup.carte)}`;
+    if (coup.t === 'defausse') return `Défausser ${leCarte(coup.carte)}`;
     const texte = decrireAction(coup, vue.siege, vue.joueurs);
     return `${estJoker(coup.carte) ? 'Joker comme ' + rangAvecArticle(coup.comme) : carteCourte(coup.carte)} : ${texte}`;
   }
@@ -786,7 +786,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       remplacer(
         liste,
         avis.slice(0, 3).map((a, i) => {
-          const titre = echange ? `Donner ${estJoker(a.carte) ? 'le joker' : 'le ' + carteCourte(a.carte)}` : descriptionCoup(a.coup);
+          const titre = echange ? `Donner ${leCarte(a.carte)}` : descriptionCoup(a.coup);
           const jouer = () => {
             feuilleConseil?.fermer();
             if (echange) {

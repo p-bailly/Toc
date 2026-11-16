@@ -152,13 +152,33 @@ async function router() {
   detruireEcran = module.afficher(principal, app, { page, reste }) || null;
 }
 
+/**
+ * Écran impossible à charger : le plus souvent, une nouvelle version de l'appli a été publiée pendant
+ * qu'elle était ouverte (modules déjà chargés et nouveaux modules ne vont plus ensemble), ou le réseau
+ * manque. On le dit, avec un bouton pour recharger, plutôt que de laisser un écran vide.
+ */
+function ecranIndisponible(e) {
+  console.error(e);
+  onglets.hidden = false;
+  racine.classList.remove('en-jeu');
+  principal.replaceChildren(
+    h(
+      'div',
+      { class: 'contenu' },
+      h('div', { class: 'apercu erreur' }, 'Cet écran n’a pas pu s’ouvrir : l’appli vient peut-être d’être mise à jour, ou la connexion manque.'),
+      h('button', { type: 'button', class: 'bouton principal large', onclick: () => location.reload() }, 'Recharger l’appli'),
+    ),
+  );
+}
+
 /** Force le réaffichage de l'écran courant (après connexion, déconnexion…). */
 app.rafraichir = () => {
   routeActuelle = null;
-  router();
+  routerSur();
 };
 
-window.addEventListener('hashchange', router);
+const routerSur = () => router().catch(ecranIndisponible);
+window.addEventListener('hashchange', routerSur);
 
 // Connexion : on attend le premier avis avant d'afficher quoi que ce soit.
 let premierAvis = true;
@@ -170,7 +190,7 @@ api.surAuth((joueur) => {
   if (!joueur && avant) arreterVeille();
   if (premierAvis) {
     premierAvis = false;
-    router();
+    routerSur();
   } else if (!!avant !== !!joueur || (avant && joueur && avant.uid !== joueur.uid)) {
     app.rafraichir();
   } else {

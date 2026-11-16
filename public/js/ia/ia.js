@@ -22,6 +22,11 @@ import { coupsLegauxMain, validerCoup } from '../moteur/index.js';
 import { maintenant } from './recherche.js';
 import { noterDons } from './conseils.js';
 import { AnalyseCoup, AnalyseDon } from './analyse.js';
+import { NIVEAUX, NIVEAU_DEFAUT, profilNiveau, gaussien, donSimple } from './niveaux.js';
+
+// Niveaux de force (voir niveaux.js) : options.niveau = 'debutant' | 'amateur' | 'confirme' |
+// 'expert' | 'champion' ; absent ou inconnu = 'champion' (comportement complet).
+export { NIVEAUX, NIVEAU_DEFAUT };
 
 /**
  * Choisit la carte à donner en début de donne (voir conseils.js, noterDons).
@@ -37,6 +42,8 @@ import { AnalyseCoup, AnalyseDon } from './analyse.js';
  */
 export function choisirDon(etat, siege, main, options = {}) {
   if (main.length <= 1) return main[0];
+  const profil = profilNiveau(options.niveau);
+  if (profil && profil.don === 'simple') return donSimple(main);
   try {
     return noterDons(etat, siege, main, options)[0].carte;
   } catch (e) {
@@ -54,6 +61,8 @@ export function choisirDon(etat, siege, main, options = {}) {
  * @returns {Object} coup légal (voir regles.js)
  */
 export function choisirCoup(etat, siege, main, options = {}) {
+  const profil = profilNiveau(options.niveau);
+  if (profil) return choisirCoupNiveau(etat, siege, main, options, profil);
   const debut = maintenant();
   const budget = options.budgetMs ?? 600;
   let coup = null;
@@ -69,6 +78,42 @@ export function choisirCoup(etat, siege, main, options = {}) {
   }
   if (coup && validerCoup(etat, siege, coup, main) === null) return coup;
   // Repli (ne devrait jamais servir) : premier coup légal du vrai moteur.
+  return coupsLegauxMain(etat, siege, main)[0];
+}
+
+/** Coup d'un niveau inférieur au champion (voir niveaux.js). */
+function choisirCoupNiveau(etat, siege, main, options, profil) {
+  const debut = maintenant();
+  const rng = options.rng || Math.random;
+  let coup = null;
+  try {
+    const r = profil.recherche;
+    const analyse = new AnalyseCoup(etat, siege, main, {
+      ...options,
+      poids: profil.poids,
+      ...(r ? { iterations: Math.min(options.iterations ?? Infinity, r.iterations), candidatsMax: r.candidatsMax, ecartStatique: r.ecartStatique } : {}),
+    });
+    if (r) {
+      if (analyse.candidats.length > 1 && analyse.actifs.length > 1) {
+        const budget = Math.min(options.budgetMs ?? 600, r.budgetMax);
+        analyse.progresser(debut + budget * 0.92 - 1 - maintenant(), true);
+      }
+      coup = analyse.meilleurCoup();
+    } else {
+      // Choix statique bruité : note de chaque coup + erreur d'appréciation (en cases).
+      let best = -Infinity;
+      for (const c of analyse.candidats) {
+        const v = c.statique + (profil.bruit ? profil.bruit * gaussien(rng) : 0);
+        if (v > best) {
+          best = v;
+          coup = c.res.coup;
+        }
+      }
+    }
+  } catch (e) {
+    coup = null;
+  }
+  if (coup && validerCoup(etat, siege, coup, main) === null) return coup;
   return coupsLegauxMain(etat, siege, main)[0];
 }
 

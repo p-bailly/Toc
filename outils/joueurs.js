@@ -8,7 +8,8 @@
 //   ia3-provisoire l'IA provisoire à un coup du jeu à 3 (copie figée de l'ancien ia3.js)
 //   ia-avant       l'IA du jeu à 4 telle qu'avant la généralisation au jeu à 3 (non-régression)
 //
-// Un nom peut être suivi d'options JSON : ia:{"candidatsMax":4,"profondeur":6}
+// Un nom peut être suivi d'options JSON : ia:{"candidatsMax":4,"profondeur":6}, ou d'un niveau :
+// ia:debutant, ia:amateur, ia:confirme, ia:expert, ia:champion
 
 import { coupsLegauxMain, apercuCoup, BASE, ALLEE, caseEntree } from '../public/js/moteur/index.js';
 import { choisirCoup, choisirDon } from '../public/js/ia/ia.js';
@@ -68,7 +69,9 @@ export const glouton = {
 export function fabriquerJoueur(spec) {
   const i = spec.indexOf(':');
   const nom = i < 0 ? spec : spec.slice(0, i);
-  const extra = i < 0 ? {} : JSON.parse(spec.slice(i + 1));
+  // ia:expert = ia:{"niveau":"expert"}
+  const suite = i < 0 ? '' : spec.slice(i + 1);
+  const extra = !suite ? {} : suite.startsWith('{') ? JSON.parse(suite) : { niveau: suite };
   if (extra.poids) extra.poids = { ...POIDS_DEFAUT, ...extra.poids };
   if (nom === 'aleatoire') return aleatoire;
   if (nom === 'glouton') return glouton;

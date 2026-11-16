@@ -39,6 +39,7 @@ export class SessionReseau {
     this.iaEnCours = false;
     this.comptee = false;
     this.ferme = false;
+    this.attentes = []; // { n, fin } : actions en attente de la vue correspondante
     this.desabonner = null;
   }
 
@@ -99,6 +100,7 @@ export class SessionReseau {
       statut: p.statut,
     };
     for (const cb of this.abonnes) cb(this.vueCourante);
+    this.libererAttentes();
     if (p.statut === 'finie') this.compter();
     this.planifierIA();
   }
@@ -113,14 +115,41 @@ export class SessionReseau {
     return () => this.abonnes.delete(cb);
   }
 
+  // donner() et jouer() ne se résolvent qu'une fois la vue mise à jour (l'instantané de la partie arrive
+  // un peu après la fin de la transaction) : sinon l'écran proposerait encore, un instant, de donner ou
+  // de jouer, et un second toucher serait refusé.
   async donner(carte) {
     const n = await donnerCarte(this.ctx, this.id, this.vueCourante.siege, carte, { lire: this.lire });
     this.apresAction(n);
+    await this.attendreVue(n);
   }
 
   async jouer(coup) {
     const n = await jouerCoup(this.ctx, this.id, this.vueCourante.siege, coup, { lire: this.lire });
     this.apresAction(n);
+    await this.attendreVue(n);
+  }
+
+  /** Résout quand la vue publiée en est au coup n (10 s au plus). */
+  attendreVue(n, delai = 10000) {
+    if (this.ferme || (this.partie && this.partie.etat.numCoup >= n)) return Promise.resolve();
+    return new Promise((fin) => {
+      const a = { n, fin };
+      a.minuterie = setTimeout(() => {
+        this.attentes = this.attentes.filter((x) => x !== a);
+        fin();
+      }, delai);
+      this.attentes.push(a);
+    });
+  }
+
+  libererAttentes() {
+    const numCoup = this.partie?.etat.numCoup ?? -1;
+    for (const a of this.attentes.filter((x) => this.ferme || x.n <= numCoup)) {
+      clearTimeout(a.minuterie);
+      a.fin();
+    }
+    this.attentes = this.attentes.filter((x) => !this.ferme && x.n > numCoup);
   }
 
   /** Ce client vient d'agir : c'est à lui d'enchaîner les IA, sans attendre. */
@@ -256,6 +285,7 @@ export class SessionReseau {
 
   fermer() {
     this.ferme = true;
+    this.libererAttentes();
     if (this.minuterie) clearTimeout(this.minuterie);
     this.minuterie = null;
     if (this.desabonner) this.desabonner();
