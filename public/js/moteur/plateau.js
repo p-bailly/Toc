@@ -3,8 +3,11 @@
 // Circuit principal : 64 cases numérotées de 0 à 63, parcourues dans l'ordre croissant.
 // Quatre sièges (0 à 3) ; les partenaires sont face à face : 0 et 2 contre 1 et 3.
 // La case de départ du siège s est la case 16 × s (au milieu d'un côté du plateau carré).
-// L'allée d'arrivée d'un joueur s'ouvre sur sa case de départ : depuis celle-ci,
-// la k-ième case de l'allée (k = 0 à 3) est à k + 1 pas.
+// L'allée d'arrivée d'un joueur s'ouvre 3 cases AVANT sa case de départ (à droite de celle-ci
+// vu du joueur, puisque les pions tournent dans le sens horaire) : c'est la « case d'entrée ».
+// Depuis la case d'entrée, la k-ième case de l'allée (k = 0 à 3) est à k + 1 pas.
+// Ainsi un pion sur sa case de départ qui recule de 4 se trouve une case avant l'entrée,
+// et un 5 l'amène au fond de l'allée.
 //
 // Position d'un pion :
 //   BASE (-1)        : pion non sorti
@@ -21,7 +24,10 @@ export const BASE = -1;
 export const ALLEE = 100;
 export const LONGUEUR_ALLEE = 4;
 
+export const DISTANCE_ENTREE = 3; // l'entrée de l'allée est 3 cases avant la case de départ
+
 export const caseDepart = (siege) => siege * 16;
+export const caseEntree = (siege) => (siege * 16 - DISTANCE_ENTREE + NB_CASES) % NB_CASES;
 export const proprietaire = (pion) => pion >> 2;
 export const partenaire = (siege) => (siege + 2) % 4;
 export const equipe = (siege) => siege % 2;

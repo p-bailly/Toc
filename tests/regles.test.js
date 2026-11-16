@@ -4,7 +4,7 @@ import {
   BASE, ALLEE, etatInitial, coupsLegaux, coupsLegauxMain, appliquerCoup, validerCoup, mainJouable,
   etapesSeptPossibles, estProtege, couleurActive, aFini, marquerEchange, apercuCoup,
   nouvellePartie, donnerCarte, jouerCoup, distribuerCycle, generateurAleatoire, tailleDonne,
-  mainEffective, paquetNeuf, partenaire,
+  mainEffective, paquetNeuf, partenaire, caseDepart, caseEntree,
 } from '../public/js/moteur/index.js';
 
 /** État en phase de jeu avec des pions placés : { numéroDePion: position }. */
@@ -13,7 +13,6 @@ function etat(positions = {}, extra = {}) {
   e.phase = 'jeu';
   e.echanges = [true, true, true, true];
   for (const [g, pos] of Object.entries(positions)) e.pions[g] = pos;
-  if (extra.frais) for (const g of extra.frais) e.frais[g] = true;
   if (extra.tour !== undefined) e.tour = extra.tour;
   return e;
 }
@@ -37,7 +36,6 @@ test('sortie : as et roi seulement, pion posé sur la case de départ', () => {
   assert.equal(coupsLegaux(e, 0, '7P').length, 0);
   const n = appliquerCoup(e, 0, { t: 'sortie', carte: 'AP', pion: 2 }, ['AP']);
   assert.equal(n.pions[2], 0);
-  assert.equal(n.frais[2], true);
   assert.equal(n.tour, 1);
   assert.deepEqual(n.pile, ['AP']);
   assert.equal(estProtege(n, 2), true);
@@ -114,9 +112,11 @@ test('pion protégé sur sa case de départ : ni dépassé, ni capturé, ni éch
 });
 
 test('le propriétaire ne dépasse pas non plus son pion protégé ; la protection tombe quand il quitte la case', () => {
-  const e = etat({ 0: 0, 1: 60 }, { frais: [0] });
+  const e = etat({ 0: 0, 1: 60 });
   assert.equal(legal(e, 0, { t: 'avance', carte: '6C', pion: 1, pas: 6 }), false);
   assert.equal(legal(e, 0, { t: 'avance', carte: '6C', pion: 1, pas: 6, allee: true }), false);
+  // l'entrée de l'allée est avant la case de départ : le pion protégé ne gêne pas la rentrée
+  assert.equal(legal(e, 0, { t: 'avance', carte: '3C', pion: 1, pas: 3, allee: true }), true);
   // un pion étranger sur une case de départ qui n'est pas la sienne n'est pas protégé
   const f = etat({ 0: 16, 4: 12 }, { tour: 1 });
   assert.equal(estProtege(f, 0), false);
@@ -142,40 +142,57 @@ test("4 : recule de 4, capture à l'arrivée, interdit dans la base ou l'allée"
   assert.equal(m.pions[0], 6);
 });
 
-test('le pion sorti puis reculé de 4 peut rentrer directement', () => {
-  let e = etat({ 0: 0 }, { frais: [0] });
-  // frais : pas d'entrée directe dans l'allée
-  assert.deepEqual(cles(coupsLegaux(e, 0, '2C')), ['avance:0:2:']);
-  e = appliquerCoup(e, 0, { t: 'recul', carte: '4C', pion: 0 });
-  assert.equal(e.pions[0], 60);
-  assert.equal(e.frais[0], false);
-  e.tour = 0;
-  assert.deepEqual(cles(coupsLegaux(e, 0, '8C')), ['avance:0:8:', 'avance:0:8:A']);
-  const n = appliquerCoup(e, 0, { t: 'avance', carte: '8C', pion: 0, pas: 8, allee: true });
-  assert.equal(n.pions[0], a(3));
+test("l'entrée de l'allée est 3 cases avant la case de départ : sortie, 4 en arrière, puis 5 = fond de l'allée", () => {
+  for (let s = 0; s < 4; s++) {
+    assert.equal(caseEntree(s), (caseDepart(s) + 61) % 64);
+    const g = s * 4;
+    let e = etat({ [g]: caseDepart(s) }, { tour: s });
+    // depuis la case de départ, on ne rentre pas directement : l'entrée est derrière
+    assert.deepEqual(cles(coupsLegaux(e, s, '2C')), [`avance:${g}:2:`]);
+    e = appliquerCoup(e, s, { t: 'recul', carte: '4C', pion: g });
+    assert.equal(e.pions[g], (caseEntree(s) + 63) % 64); // une case avant l'entrée
+    e.tour = s;
+    assert.deepEqual(cles(coupsLegaux(e, s, '5C')), [`avance:${g}:5:`, `avance:${g}:5:A`]);
+    assert.deepEqual(cles(coupsLegaux(e, s, '2C')), [`avance:${g}:2:`, `avance:${g}:2:A`]);
+    assert.deepEqual(cles(coupsLegaux(e, s, '6C')), [`avance:${g}:6:`]); // trop grand : continue le tour
+    assert.equal(appliquerCoup(e, s, { t: 'avance', carte: '2C', pion: g, pas: 2, allee: true }).pions[g], a(0));
+    const n = appliquerCoup(e, s, { t: 'avance', carte: '5C', pion: g, pas: 5, allee: true });
+    assert.equal(n.pions[g], a(3));
+    // sans entrer : le 5 l'amène une case après sa case de départ
+    assert.equal(appliquerCoup(e, s, { t: 'avance', carte: '5C', pion: g, pas: 5 }).pions[g], (caseDepart(s) + 1) % 64);
+  }
 });
 
 test("allée : entrée facultative, compte exact, carte trop grande = on continue le tour", () => {
-  const e = etat({ 0: 62 });
+  // siège 0 : case d'entrée 61. Pion en 59 (2 cases avant l'entrée).
+  const e = etat({ 0: 59 });
   assert.deepEqual(cles(coupsLegaux(e, 0, '3C')), ['avance:0:3:', 'avance:0:3:A']);
   assert.equal(appliquerCoup(e, 0, { t: 'avance', carte: '3C', pion: 0, pas: 3, allee: true }).pions[0], a(0));
-  assert.equal(appliquerCoup(e, 0, { t: 'avance', carte: '3C', pion: 0, pas: 3 }).pions[0], 1);
+  assert.equal(appliquerCoup(e, 0, { t: 'avance', carte: '3C', pion: 0, pas: 3 }).pions[0], 62);
   assert.equal(appliquerCoup(e, 0, { t: 'avance', carte: '6C', pion: 0, pas: 6, allee: true }).pions[0], a(3));
-  // 2 : arrive pile sur la case de départ (pas d'allée) ; 8 : trop grand, continue sur le circuit
+  // 2 : arrive pile sur la case d'entrée (pas dans l'allée) ; 8 : trop grand, continue sur le circuit
   assert.deepEqual(cles(coupsLegaux(e, 0, '2C')), ['avance:0:2:']);
   assert.deepEqual(cles(coupsLegaux(e, 0, '8C')), ['avance:0:8:']);
-  assert.equal(appliquerCoup(e, 0, { t: 'avance', carte: '8C', pion: 0, pas: 8 }).pions[0], 6);
-  // un pion revenu sur sa case de départ est protégé et peut ensuite entrer
+  assert.equal(appliquerCoup(e, 0, { t: 'avance', carte: '8C', pion: 0, pas: 8 }).pions[0], 3);
+  // un pion posé sur sa case d'entrée peut ensuite entrer (1 à 4) ou continuer
   const r = appliquerCoup(e, 0, { t: 'avance', carte: '2C', pion: 0, pas: 2 });
-  assert.equal(estProtege(r, 0), true);
+  assert.equal(r.pions[0], 61);
   r.tour = 0;
   assert.deepEqual(cles(coupsLegaux(r, 0, '3C')), ['avance:0:3:', 'avance:0:3:A']);
-  // l'allée d'un autre joueur ne le concerne pas
-  assert.deepEqual(cles(coupsLegaux(etat({ 0: 14 }), 0, '3C')), ['avance:0:3:']);
+  assert.equal(appliquerCoup(r, 0, { t: 'avance', carte: '3C', pion: 0, pas: 3, allee: true }).pions[0], a(2));
+  assert.deepEqual(cles(coupsLegaux(r, 0, '5C')), ['avance:0:5:']);
+  // un pion qui a dépassé l'entrée (62, 63) doit refaire un tour
+  assert.deepEqual(cles(coupsLegaux(etat({ 0: 62 }), 0, '3C')), ['avance:0:3:']);
+  assert.deepEqual(cles(coupsLegaux(etat({ 0: 63 }), 0, 'AC')), ['avance:0:11:', 'avance:0:1:', 'sortie:1::']);
+  // le 4 repasse par-dessus l'entrée sans entrer dans l'allée
+  assert.equal(appliquerCoup(etat({ 0: 63 }), 0, { t: 'recul', carte: '4C', pion: 0 }).pions[0], 59);
+  // l'allée d'un autre joueur ne le concerne pas (entrée du siège 1 : case 13)
+  assert.deepEqual(cles(coupsLegaux(etat({ 0: 12 }), 0, '3C')), ['avance:0:3:']);
+  assert.deepEqual(cles(coupsLegaux(etat({ 4: 12 }, { tour: 1 }), 1, '3C')), ['avance:4:3:', 'avance:4:3:A']);
 });
 
 test("allée : on ne dépasse pas, on ne bouscule pas ses pions, compte exact à l'intérieur", () => {
-  const e = etat({ 0: a(1), 1: 63, 2: a(3) });
+  const e = etat({ 0: a(1), 1: 60, 2: a(3) });
   // pion 1 : entrer en a(0) possible (2 pas), a(1) occupée, au-delà bloqué
   assert.deepEqual(cles(coupsLegaux(e, 0, '2C')), ['avance:1:2:', 'avance:1:2:A']);
   assert.deepEqual(cles(coupsLegaux(e, 0, '3C')), ['avance:1:3:']);
@@ -235,8 +252,8 @@ test('7 : entrée dans l’allée, blocage dans l’allée, 7 injouable si les 7
   // pion 0 en a(0) (3 pas max) + pion 1 sur le circuit : 3 + 4, 2 + 5, 1 + 6, 0 + 7
   const e = etat({ 0: a(0), 1: 30 });
   assert.equal(coupsLegaux(e, 0, '7C').length, 4);
-  // entrée dans l'allée par un 7 : 62 → a(3) = 6 pas, puis 1 pas avec un autre pion
-  const f = etat({ 0: 62, 1: 30 });
+  // entrée dans l'allée par un 7 : 59 → a(3) = 6 pas, puis 1 pas avec un autre pion
+  const f = etat({ 0: 59, 1: 30 });
   assert.equal(legal(f, 0, { t: 'sept', carte: '7C', etapes: [{ pion: 0, pas: 6, allee: true }, { pion: 1, pas: 1 }] }), true);
   assert.equal(legal(f, 0, { t: 'sept', carte: '7C', etapes: [{ pion: 0, pas: 7, allee: true }] }), false);
   // aucun pion sur le circuit : 7 injouable
@@ -244,7 +261,7 @@ test('7 : entrée dans l’allée, blocage dans l’allée, 7 injouable si les 7
 });
 
 test('7 : le reste profite au partenaire une fois ses propres pions rentrés', () => {
-  const e = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 62, 8: 40 });
+  const e = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: 40 });
   // le pion 3 rentre en a(0) avec 3 pas, les 4 points restants vont au partenaire (pion 8)
   const coup = { t: 'sept', carte: '7C', etapes: [{ pion: 3, pas: 3, allee: true }, { pion: 8, pas: 4 }] };
   assert.equal(legal(e, 0, coup), true);
@@ -287,9 +304,10 @@ test('5 adverse : option de réglage', () => {
   assert.equal(legal(avec, 0, { t: 'avance', carte: '5C', pion: 8, pas: 5 }), false);
   assert.equal(legal(avec, 0, { t: 'avance', carte: '6C', pion: 4, pas: 6 }), false);
   // un pion adverse poussé ne rentre jamais dans son allée
-  const pres = etat({ 4: 14 }, { reglages: { cinqAdverse: true } });
+  const pres = etat({ 4: 11 }, { reglages: { cinqAdverse: true } });
   assert.deepEqual(cles(coupsLegaux(pres, 0, '5C')), ['avance:4:5:']);
-  assert.equal(appliquerCoup(pres, 0, { t: 'avance', carte: '5C', pion: 4, pas: 5 }).pions[4], 19);
+  assert.equal(appliquerCoup(pres, 0, { t: 'avance', carte: '5C', pion: 4, pas: 5 }).pions[4], 16);
+  assert.equal(legal(pres, 0, { t: 'avance', carte: '5C', pion: 4, pas: 5, allee: true }), false);
 });
 
 test('obligation de jouer et défausse', () => {
@@ -321,7 +339,7 @@ test('un joueur qui a fini joue pour son partenaire (sortie, valet, déplacement
 });
 
 test('fin de partie : les deux joueurs d’une équipe ont rentré leurs 4 pions', () => {
-  const e = etat({ 0: a(0), 1: a(1), 2: a(2), 3: a(3), 8: a(3), 9: a(2), 10: a(1), 11: 31 }, { tour: 2 });
+  const e = etat({ 0: a(0), 1: a(1), 2: a(2), 3: a(3), 8: a(3), 9: a(2), 10: a(1), 11: 28 }, { tour: 2 });
   const n = appliquerCoup(e, 2, { t: 'avance', carte: '2C', pion: 11, pas: 2, allee: true });
   assert.equal(n.phase, 'fini');
   assert.equal(n.gagnant, 0);
@@ -413,7 +431,6 @@ test('parties aléatoires complètes : invariants et fin de partie', () => {
         assert.equal(new Set(al).size, al.length, "deux pions sur la même case d'allée");
         for (const x of al) assert.ok(x <= ALLEE + 3);
       }
-      p.etat.frais.forEach((f, g) => f && assert.equal(p.etat.pions[g], (g >> 2) * 16));
       if (p.etat.phase === 'jeu') assert.deepEqual(p.mains.map((m) => m.length), p.etat.cartesRestantes);
       // tous les coups « sept » générés sont validés par le moteur
       if (garde % 37 === 0) {

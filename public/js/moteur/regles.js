@@ -13,8 +13,10 @@
 //   { t: 'defausse', carte }                       aucune carte jouable : défausse
 //
 // Choix d'interprétation (cahier des charges) :
-//  - L'allée d'arrivée s'ouvre sur la case de départ du joueur. Un pion qui vient de sortir
-//    (« frais ») ne peut pas y entrer directement : il doit d'abord avoir bougé.
+//  - L'allée d'arrivée s'ouvre 3 cases avant la case de départ du joueur (case d'entrée,
+//    voir plateau.js). Un pion qui passe par sa case d'entrée, ou qui s'y trouve, peut tourner
+//    dans l'allée ; ce n'est jamais obligatoire. Tout est affaire de position : un pion sorti
+//    puis reculé de 4 est une case avant l'entrée et rentre avec 2 à 5 (5 = fond de l'allée).
 //  - Un pion sur la case de départ de sa propre couleur est protégé : aucun déplacement ne
 //    peut le dépasser ni s'y arrêter (7 et 4 compris), il ne peut être ni échangé ni déplacé
 //    par un adversaire (option « 5 adverse »). Seule la sortie d'un pion de la même couleur
@@ -24,7 +26,7 @@
 
 import { rang } from './cartes.js';
 import { tailleDonne } from './cartes.js';
-import { BASE, ALLEE, NB_CASES, NB_PIONS, LONGUEUR_ALLEE, caseDepart, partenaire, equipe } from './plateau.js';
+import { BASE, ALLEE, NB_CASES, NB_PIONS, LONGUEUR_ALLEE, caseDepart, caseEntree, partenaire, equipe } from './plateau.js';
 
 const PAS_PAR_RANG = {
   A: [1, 11],
@@ -45,7 +47,6 @@ export function etatInitial(reglages = {}) {
     v: 1,
     reglages: { cinqAdverse: !!reglages.cinqAdverse },
     pions: Array(NB_PIONS).fill(BASE), // position des 16 pions
-    frais: Array(NB_PIONS).fill(false), // pion tout juste sorti, qui n'a pas encore bougé
     phase: 'echange', // 'echange' | 'jeu' | 'fini'
     donne: 0, // numéro de donne depuis le début de la partie
     tour: 0, // siège dont c'est le tour (premier à jouer pendant la phase d'échange)
@@ -62,7 +63,6 @@ export function clonerEtat(etat) {
   return {
     ...etat,
     pions: etat.pions.slice(),
-    frais: etat.frais.slice(),
     echanges: etat.echanges.slice(),
     cartesRestantes: etat.cartesRestantes.slice(),
     pile: etat.pile.slice(),
@@ -123,7 +123,7 @@ function alleeOccupee(pions, siege, k) {
  * @param sept       true : déplacement de 7, tous les pions dépassés sont capturés
  * @returns {{pos:number, captures:number[]}|null}
  */
-function resoudreAvance(pions, frais, g, pas, versAllee, sept) {
+function resoudreAvance(pions, g, pas, versAllee, sept) {
   const p = pions[g];
   if (p === BASE || !Number.isInteger(pas) || pas < 1) return null;
   const o = g >> 2;
@@ -139,8 +139,7 @@ function resoudreAvance(pions, frais, g, pas, versAllee, sept) {
 
   const captures = [];
   if (versAllee) {
-    const d = (o * 16 - p + NB_CASES) % NB_CASES; // distance jusqu'à sa case de départ
-    if (d === 0 && frais[g]) return null; // un pion qui vient de sortir ne rentre pas directement
+    const d = (caseEntree(o) - p + NB_CASES) % NB_CASES; // distance jusqu'à sa case d'entrée (0 s'il y est)
     const r = pas - d; // nombre de cases parcourues dans l'allée
     if (r < 1 || r > LONGUEUR_ALLEE) return null;
     for (let i = 1; i <= d; i++) {
@@ -193,14 +192,13 @@ function estPion(g) {
 
 /**
  * Joue le coup sur une copie du plateau.
- * @returns {{pions:number[], frais:boolean[], captures:number[], deplacements:object[]}|null}
+ * @returns {{pions:number[], captures:number[], deplacements:object[]}|null}
  *          null si le coup est illégal (hors question de main, de tour et de défausse)
  */
 function jouerSurPlateau(etat, siege, coup) {
   if (!coup || typeof coup.carte !== 'string') return null;
   const r = rang(coup.carte);
   const pions = etat.pions.slice();
-  const frais = etat.frais.slice();
   const captures = [];
   const deplacements = [];
   const c = fini(pions, siege) ? partenaire(siege) : siege;
@@ -208,14 +206,12 @@ function jouerSurPlateau(etat, siege, coup) {
   const renvoyer = (q) => {
     deplacements.push({ pion: q, de: pions[q], vers: BASE, capture: true });
     pions[q] = BASE;
-    frais[q] = false;
     captures.push(q);
   };
   const poser = (g, pos, res) => {
     for (const q of res.captures) renvoyer(q);
     deplacements.push({ pion: g, de: pions[g], vers: pos });
     pions[g] = pos;
-    frais[g] = false;
   };
 
   switch (coup.t) {
@@ -228,7 +224,6 @@ function jouerSurPlateau(etat, siege, coup) {
       if (q >= 0) renvoyer(q); // pion adverse, allié ou le sien : retour à la base
       deplacements.push({ pion: g, de: BASE, vers: depart });
       pions[g] = depart;
-      frais[g] = true;
       break;
     }
     case 'avance': {
@@ -238,7 +233,7 @@ function jouerSurPlateau(etat, siege, coup) {
       const o = g >> 2;
       let res = null;
       if (o === c) {
-        res = resoudreAvance(pions, frais, g, pas, !!coup.allee, false);
+        res = resoudreAvance(pions, g, pas, !!coup.allee, false);
       } else if (
         r === '5' &&
         etat.reglages.cinqAdverse &&
@@ -246,7 +241,7 @@ function jouerSurPlateau(etat, siege, coup) {
         !coup.allee &&
         echangeable(pions, g) // sur le circuit et non protégé
       ) {
-        res = resoudreAvance(pions, frais, g, pas, false, false);
+        res = resoudreAvance(pions, g, pas, false, false);
       }
       if (!res) return null;
       poser(g, res.pos, res);
@@ -280,7 +275,7 @@ function jouerSurPlateau(etat, siege, coup) {
         if (!e || !estPion(e.pion) || !Number.isInteger(e.pas) || e.pas < 1 || e.pas > reste) return null;
         const actif = fini(pions, siege) ? partenaire(siege) : siege;
         if (e.pion >> 2 !== actif) return null;
-        const res = resoudreAvance(pions, frais, e.pion, e.pas, !!e.allee, true);
+        const res = resoudreAvance(pions, e.pion, e.pas, !!e.allee, true);
         if (!res) return null;
         poser(e.pion, res.pos, res);
         reste -= e.pas;
@@ -291,7 +286,7 @@ function jouerSurPlateau(etat, siege, coup) {
     default:
       return null;
   }
-  return { pions, frais, captures, deplacements };
+  return { pions, captures, deplacements };
 }
 
 // ---------------------------------------------------------------------------
@@ -299,17 +294,17 @@ function jouerSurPlateau(etat, siege, coup) {
 // ---------------------------------------------------------------------------
 
 function coupsAvance(etat, siege, carte, pas, coups) {
-  const { pions, frais } = etat;
+  const { pions } = etat;
   const c = couleurActive(etat, siege);
   for (let g = c * 4; g < c * 4 + 4; g++) {
     const p = pions[g];
     if (p === BASE) continue;
     if (p >= ALLEE) {
-      if (resoudreAvance(pions, frais, g, pas, true, false)) coups.push({ t: 'avance', carte, pion: g, pas, allee: true });
+      if (resoudreAvance(pions, g, pas, true, false)) coups.push({ t: 'avance', carte, pion: g, pas, allee: true });
       continue;
     }
-    if (resoudreAvance(pions, frais, g, pas, false, false)) coups.push({ t: 'avance', carte, pion: g, pas, allee: false });
-    if (resoudreAvance(pions, frais, g, pas, true, false)) coups.push({ t: 'avance', carte, pion: g, pas, allee: true });
+    if (resoudreAvance(pions, g, pas, false, false)) coups.push({ t: 'avance', carte, pion: g, pas, allee: false });
+    if (resoudreAvance(pions, g, pas, true, false)) coups.push({ t: 'avance', carte, pion: g, pas, allee: true });
   }
 }
 
@@ -328,7 +323,7 @@ function clePlateau(pions) {
 }
 
 /** Options d'étape (pion, pas, allee) possibles pour un 7, sans vérifier que le reste est jouable. */
-function etapesBrutes(pions, frais, siege, reste) {
+function etapesBrutes(pions, siege, reste) {
   const options = [];
   const c = fini(pions, siege) ? partenaire(siege) : siege;
   for (let g = c * 4; g < c * 4 + 4; g++) {
@@ -336,29 +331,24 @@ function etapesBrutes(pions, frais, siege, reste) {
     if (p === BASE) continue;
     for (let pas = 1; pas <= reste; pas++) {
       if (p >= ALLEE) {
-        const res = resoudreAvance(pions, frais, g, pas, true, true);
+        const res = resoudreAvance(pions, g, pas, true, true);
         if (res) options.push({ pion: g, pas, allee: true, res });
         continue;
       }
-      const tout = resoudreAvance(pions, frais, g, pas, false, true);
+      const tout = resoudreAvance(pions, g, pas, false, true);
       if (tout) options.push({ pion: g, pas, allee: false, res: tout });
-      const entree = resoudreAvance(pions, frais, g, pas, true, true);
+      const entree = resoudreAvance(pions, g, pas, true, true);
       if (entree) options.push({ pion: g, pas, allee: true, res: entree });
     }
   }
   return options;
 }
 
-function appliquerEtape(pions, frais, option) {
+function appliquerEtape(pions, option) {
   const np = pions.slice();
-  const nf = frais.slice();
-  for (const q of option.res.captures) {
-    np[q] = BASE;
-    nf[q] = false;
-  }
+  for (const q of option.res.captures) np[q] = BASE;
   np[option.pion] = option.res.pos;
-  nf[option.pion] = false;
-  return [np, nf];
+  return np;
 }
 
 /** Toutes les façons distinctes (par plateau final) de jouer un 7 en entier. */
@@ -366,7 +356,7 @@ function coupsSept(etat, siege, carte, coups) {
   const finals = new Set();
   const vus = new Set();
   const etapes = [];
-  const explorer = (pions, frais, reste) => {
+  const explorer = (pions, reste) => {
     const cle = clePlateau(pions);
     if (reste === 0) {
       if (!finals.has(cle)) {
@@ -378,24 +368,22 @@ function coupsSept(etat, siege, carte, coups) {
     const cleReste = cle + '|' + reste;
     if (vus.has(cleReste)) return;
     vus.add(cleReste);
-    for (const option of etapesBrutes(pions, frais, siege, reste)) {
-      const [np, nf] = appliquerEtape(pions, frais, option);
+    for (const option of etapesBrutes(pions, siege, reste)) {
       etapes.push({ pion: option.pion, pas: option.pas, allee: option.allee });
-      explorer(np, nf, reste - option.pas);
+      explorer(appliquerEtape(pions, option), reste - option.pas);
       etapes.pop();
     }
   };
-  explorer(etat.pions, etat.frais, 7);
+  explorer(etat.pions, 7);
 }
 
-function septCompletable(pions, frais, siege, reste, memo) {
+function septCompletable(pions, siege, reste, memo) {
   if (reste === 0) return true;
   const cle = clePlateau(pions) + '|' + reste;
   if (memo.has(cle)) return memo.get(cle);
   let ok = false;
-  for (const option of etapesBrutes(pions, frais, siege, reste)) {
-    const [np, nf] = appliquerEtape(pions, frais, option);
-    if (septCompletable(np, nf, siege, reste - option.pas, memo)) {
+  for (const option of etapesBrutes(pions, siege, reste)) {
+    if (septCompletable(appliquerEtape(pions, option), siege, reste - option.pas, memo)) {
       ok = true;
       break;
     }
@@ -413,22 +401,20 @@ function septCompletable(pions, frais, siege, reste, memo) {
  */
 export function etapesSeptPossibles(etat, siege, etapes = []) {
   let pions = etat.pions;
-  let frais = etat.frais;
   let reste = 7;
   for (const e of etapes) {
     if (!e || !estPion(e.pion) || !Number.isInteger(e.pas) || e.pas < 1 || e.pas > reste) return null;
     const actif = fini(pions, siege) ? partenaire(siege) : siege;
     if (e.pion >> 2 !== actif) return null;
-    const res = resoudreAvance(pions, frais, e.pion, e.pas, !!e.allee, true);
+    const res = resoudreAvance(pions, e.pion, e.pas, !!e.allee, true);
     if (!res) return null;
-    [pions, frais] = appliquerEtape(pions, frais, { pion: e.pion, res });
+    pions = appliquerEtape(pions, { pion: e.pion, res });
     reste -= e.pas;
   }
   const memo = new Map();
   const options = [];
-  for (const option of etapesBrutes(pions, frais, siege, reste)) {
-    const [np, nf] = appliquerEtape(pions, frais, option);
-    if (septCompletable(np, nf, siege, reste - option.pas, memo)) {
+  for (const option of etapesBrutes(pions, siege, reste)) {
+    if (septCompletable(appliquerEtape(pions, option), siege, reste - option.pas, memo)) {
       options.push({
         pion: option.pion,
         pas: option.pas,
@@ -480,7 +466,7 @@ export function coupsLegaux(etat, siege, carte) {
       if (r === '5' && etat.reglages.cinqAdverse) {
         for (let g = 0; g < NB_PIONS; g++) {
           if (equipe(g >> 2) === equipe(siege) || !echangeable(etat.pions, g)) continue;
-          if (resoudreAvance(etat.pions, etat.frais, g, 5, false, false)) {
+          if (resoudreAvance(etat.pions, g, 5, false, false)) {
             coups.push({ t: 'avance', carte, pion: g, pas: 5, allee: false });
           }
         }
@@ -555,7 +541,7 @@ export function validerCoup(etat, siege, coup, main) {
 /** Aperçu d'un coup sans l'appliquer : plateau obtenu, captures et déplacements (ou null). */
 export function apercuCoup(etat, siege, coup) {
   if (coup && coup.t === 'defausse') {
-    return { pions: etat.pions.slice(), frais: etat.frais.slice(), captures: [], deplacements: [] };
+    return { pions: etat.pions.slice(), captures: [], deplacements: [] };
   }
   return jouerSurPlateau(etat, siege, coup);
 }
@@ -575,12 +561,11 @@ export function appliquerCoup(etat, siege, coup, main) {
   if (erreur) throw new Error(erreur);
   const res =
     coup.t === 'defausse'
-      ? { pions: etat.pions.slice(), frais: etat.frais.slice(), captures: [], deplacements: [] }
+      ? { pions: etat.pions.slice(), captures: [], deplacements: [] }
       : jouerSurPlateau(etat, siege, coup);
 
   const n = clonerEtat(etat);
   n.pions = res.pions;
-  n.frais = res.frais;
   n.pile.push(coup.carte);
   n.cartesRestantes[siege] -= 1;
   n.numCoup += 1;
