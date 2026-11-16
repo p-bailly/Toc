@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { creerClient } from '../public/js/reseau/client.js';
 import { initialiser } from '../public/js/reseau/firebase.js';
 import { choisirCoup, choisirDon } from './outils-reseau/ia-simple.js';
-import { coupsLegauxMain, generateurAleatoire, appliquerCoup, marquerEchange } from '../public/js/moteur/index.js';
+import { coupsLegauxMain, generateurAleatoire, appliquerCoup, marquerEchange, etatInitial } from '../public/js/moteur/index.js';
 import { attendre } from './outils-reseau/faux-magasin.js';
 
 const actif = !!(process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST && process.env.TOC_MODULES);
@@ -141,7 +141,7 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
           agi = true;
         }
       } catch (err) {
-        if (!/pas ton tour|déjà donné|pas le moment/.test(err.message)) throw err;
+        if (!/pas ton tour|déjà donné|pas le moment|terminée/.test(err.message)) throw err;
       }
     }
     if (!agi) await new Promise((r) => setTimeout(r, 5));
@@ -151,9 +151,21 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   assert.ok(fin.donne >= 3, 'au moins un remélange');
   await attendre(() => listes.every((l) => l?.find((r) => r.id === id)?.statut === 'finie'), 20000, 'liste');
   // Statistiques (mise à jour vérifiée par les règles).
-  await attendre(() => clients.every((x, i) => listes[i] && true), 1000);
   const { fs } = modules();
-  await attendre(async () => true);
+  // Analyse de fin de partie : toutes les donnes passées se relisent (règles comprises) et
+  // l'historique rejoue la partie à l'identique.
+  for (const s of sessions) {
+    const an = await s.donneesAnalyse();
+    assert.equal(an.donnes.length, fin.donne + 1);
+    assert.ok(an.donnes.every((x) => x.distribuees.length >= 4 && x.donnee && x.recue));
+    let et = etatInitial(an.reglages);
+    for (const h of an.historique) {
+      while (et.phase === 'echange') et = marquerEchange(et, et.echanges.indexOf(false));
+      et = appliquerCoup(et, h.siege, h.coup);
+    }
+    assert.deepEqual(et.pions, fin.pions);
+    assert.equal(et.gagnant, fin.gagnant);
+  }
   for (const x of clients) {
     let stats = null;
     const debutStats = Date.now();
@@ -230,7 +242,7 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(deleteDoc(ref(B)));
 
   // Lancement par le vrai client logique serait trop long à rejouer ici : on écrit le lancement à la main.
-  const { etatInitial, distribuerCycle } = await import('../public/js/moteur/index.js');
+  const { distribuerCycle } = await import('../public/js/moteur/index.js');
   const etat0 = etatInitial({});
   const cycle = distribuerCycle(generateurAleatoire(4));
   const lancer = writeBatch(db(A));
@@ -296,7 +308,6 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   // NB : la défausse est ici illégale selon le moteur (A a peut-être une carte jouable) ; les règles ne
   // peuvent pas le voir : c'est la limite assumée du modèle sans serveur.
   await assertSucceeds(updateDoc(ref(A), { etat: etatDef, historique: hist, enAttente: [B], majLe: serverTimestamp() }));
-  void appliquerCoup;
 
   // Statistiques : une partie non terminée ne se compte pas.
   await assertFails(updateDoc(doc(db(A), 'joueurs', A), { stats: { jouees: 1, gagnees: 1 }, comptees: [id] }));

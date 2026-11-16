@@ -48,7 +48,7 @@ export const app = {
 definirLecteurJoueurs((uid) => (typeof api.lireJoueur === 'function' ? api.lireJoueur(uid) : Promise.resolve(null)));
 
 const racine = document.getElementById('appli');
-const principal = h('main', { id: 'principal', class: 'principal' });
+const principal = h('main', { id: 'principal', class: 'zone-principale' });
 const onglets = h('nav', { class: 'onglets', 'aria-label': 'Navigation' });
 racine.replaceChildren(principal, onglets);
 

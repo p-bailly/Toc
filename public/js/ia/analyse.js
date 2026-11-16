@@ -16,8 +16,8 @@
 // calibrée sur des parties de l'IA contre elle-même (voir probaDepuisEvaluation), puis
 // moyennée sur les simulations du meilleur candidat.
 
-import { tailleDonne } from '../moteur/cartes.js';
 import { apercuCoup } from '../moteur/index.js';
+import { evaluerPlateau } from './evaluation.js';
 import { coupsMain, indexRang, clePions } from './simulation.js';
 import {
   preparer, evaluerCandidat, tirerMains, simuler, jouerDonne, retirerRang, maintenant, travailRestant, melangerAvec,
@@ -193,8 +193,13 @@ class AnalyseBase {
     return this.classement()[0].c;
   }
 
+  /**
+   * Poursuivre apporte-t-il encore quelque chose ? Non si le meilleur candidat est séparé de
+   * chacun des autres au-delà du bruit (ou en est indiscernable à moins d'une case près),
+   * ou si le plafond d'itérations est atteint.
+   */
   stable() {
-    if (this.candidats.length === 1) return this.iterations >= this.iterMax || (this.iterations >= 30 && erreurType(this.candidats[0]) < 2);
+    if (this.candidats.length === 1) return this.iterations >= Math.min(200, this.iterMax);
     if (this.iterations >= this.iterMax) return true;
     if (this.iterations < 12) return false;
     const l = this.classement();
@@ -203,7 +208,8 @@ class AnalyseBase {
     for (const c of this.actifs) {
       if (c === b) continue;
       const { m, se } = ecartApparie(b, c, this.iterations);
-      if (m <= 2.5 * se + 0.5) return false;
+      // ni séparé du meilleur, ni départagé à moins d'une case près : on continue
+      if (m <= 2.5 * se + 0.5 && se >= 1) return false;
     }
     return true;
   }
@@ -402,7 +408,6 @@ export class AnalyseDon extends AnalyseBase {
   }
 }
 
-import { evaluerPlateau } from './evaluation.js';
 function evaluerPlateauPublic(prep, etat, siege, info) {
   return evaluerPlateau(etat.pions, siege & 1, etat.tour, info, prep.ctx);
 }
@@ -417,4 +422,3 @@ export function creerAnalyseDon(etat, siege, main, options = {}) {
   return new AnalyseDon(etat, siege, main, options);
 }
 
-export { tailleDonne };

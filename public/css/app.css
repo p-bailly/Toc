@@ -128,7 +128,7 @@ a {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
-.principal {
+.zone-principale {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -742,7 +742,7 @@ details > .reglage:first-of-type {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(90px + env(safe-area-inset-bottom));
+  top: calc(10px + env(safe-area-inset-top));
   transform: translateX(-50%);
   background: var(--text);
   color: var(--bg);
@@ -755,7 +755,14 @@ details > .reglage:first-of-type {
   width: max-content;
   text-align: center;
   box-shadow: var(--ombre);
-  animation: montee 0.18s ease-out;
+  animation: descente 0.18s ease-out;
+  pointer-events: none;
+}
+@keyframes descente {
+  from {
+    transform: translate(-50%, -12px);
+    opacity: 0;
+  }
 }
 .toast.erreur {
   background: var(--err);
@@ -777,7 +784,14 @@ details > .reglage:first-of-type {
     'gauche tapis droite'
     '. bas .';
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
+}
+.table-attente > div {
+  display: flex;
+}
+.table-attente .siege {
+  flex: 1;
+  justify-content: center;
 }
 .place-haut {
   grid-area: haut;
@@ -1458,18 +1472,34 @@ details > .reglage:first-of-type {
     padding-top: 6px;
   }
 }
-/* Écrans bas (petit téléphone en portrait) : le statut se resserre. */
+/* Écrans bas (petit téléphone en portrait) : tout se resserre pour que la consigne et les boutons restent visibles
+   sous le plateau ; la barre de statut (pions rentrés) disparaît, les étiquettes du plateau suffisent. */
 @media (max-height: 700px) and (max-width: 899px) {
-  .statut .note,
-  .statut .jauge.adverse {
+  .ecran-jeu .statut {
     display: none;
   }
-  .statut {
-    padding-top: 4px;
+  .ecran-jeu .barre-jeu {
+    padding: 4px 8px;
   }
-  .pastille-couleur {
-    width: 32px;
-    height: 32px;
+  .ecran-jeu .barre-jeu .bouton-icone {
+    width: 40px;
+    height: 40px;
+  }
+  .chevalet {
+    min-height: 84px;
+    padding: 8px 6px 5px;
+  }
+  .carte-jeu {
+    max-width: 52px;
+  }
+  .consigne {
+    padding: 6px 12px;
+    min-height: 0;
+    font-size: calc(14px * var(--texte));
+  }
+  .panneau-bas {
+    padding-top: 6px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
   }
 }
 
@@ -1786,4 +1816,7 @@ details > .reglage:first-of-type {
 .ligne-avec-action > .bouton {
   height: auto;
   flex: none;
+}
+.bilan-analyse .stat .etiquette {
+  white-space: normal;
 }

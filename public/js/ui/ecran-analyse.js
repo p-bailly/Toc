@@ -240,7 +240,8 @@ function monterVue(contenu, { donnees, items, resultats, retour, lancer }) {
       return;
     }
     const b = bilan(items, resultats);
-    const tuile = (q) => h('div', { class: 'stat qualif-' + QUALIFICATIFS[q].classe }, h('div', { class: 'etiquette' }, QUALIFICATIFS[q].nom.replace(' coup', 's coups').replace('Imprécision', 'Imprécisions').replace('Erreur', 'Erreurs')), h('div', { class: 'valeur' }, String(b.compte[q])));
+    const NOMS = { meilleur: 'Meilleurs', bon: 'Bons', imprecision: 'Imprécisions', erreur: 'Erreurs' };
+    const tuile = (q) => h('div', { class: 'stat qualif-' + QUALIFICATIFS[q].classe }, h('div', { class: 'etiquette' }, NOMS[q]), h('div', { class: 'valeur' }, String(b.compte[q])));
     const couteux = b.couteux.map((c) =>
       h(
         'button',

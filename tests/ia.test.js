@@ -4,7 +4,7 @@ import {
   BASE, ALLEE, etatInitial, appliquerCoup, coupsLegaux, apercuCoup, validerCoup, nouvellePartie, donnerCarte, jouerCoup,
   generateurAleatoire, partenaire, coupsLegauxMain,
 } from '../public/js/moteur/index.js';
-import { choisirCoup, choisirDon, conseillerCoup, conseillerDon } from '../public/js/ia/ia.js';
+import { choisirCoup, choisirDon, conseillerCoup, conseillerDon, creerAnalyse, creerAnalyseDon } from '../public/js/ia/ia.js';
 import { coupsCarte } from '../public/js/ia/simulation.js';
 import { aleatoire } from '../outils/joueurs.js';
 import { jouerPartie } from '../outils/tournoi.js';
@@ -272,4 +272,98 @@ test('conseils de don : un rang par entrée, cohérent avec choisirDon', () => {
   for (let i = 1; i < conseils.length; i++) assert.ok(conseils[i].ecart >= conseils[i - 1].ecart);
   assert.ok(conseils[0].raisons.some((r) => r.includes("ton partenaire n'a aucun pion sorti")));
   for (const c of conseils) assert.ok(c.raisons.length >= 1 && c.raisons.length <= 3);
+});
+
+// ---------------------------------------------------------------------------
+// Analyse incrémentale
+// ---------------------------------------------------------------------------
+
+function positionDePartie(graine, coups) {
+  const rng = generateurAleatoire(graine);
+  let p = nouvellePartie({}, rng);
+  let k = 0;
+  while (k < coups || p.etat.phase !== 'jeu') {
+    if (p.etat.phase === 'echange') {
+      for (let s = 0; s < 4; s++) p = donnerCarte(p, s, choisirDon(p.etat, s, p.mains[s]));
+      continue;
+    }
+    const s = p.etat.tour;
+    p = jouerCoup(p, s, choisirCoup(p.etat, s, p.mains[s], { rng, budgetMs: 0 }), rng);
+    k++;
+  }
+  return p;
+}
+
+test('analyse : utilisable dès avancer(0), la marge décroît et l’évaluation converge', () => {
+  const p = positionDePartie(31, 40);
+  const s = p.etat.tour;
+  const a = creerAnalyse(p.etat, s, p.mains[s], { rng: generateurAleatoire(2), carteDonnee: p.dons[s] });
+  const r0 = a.avancer(0);
+  assert.equal(r0.iterations, 0);
+  assert.ok(r0.candidats.length >= 1);
+  assert.ok(r0.probaVictoire >= 0 && r0.probaVictoire <= 1);
+  const marges = [];
+  const evals = [];
+  for (const n of [10, 80, 300]) {
+    while (a.resultat().iterations < n && !(a.resultat().stable && a.resultat().iterations >= 3000)) a.avancer(20);
+    const r = a.resultat();
+    marges.push(r.marge);
+    evals.push(r.evaluation);
+    for (const c of r.candidats) assert.equal(validerCoup(p.etat, s, c.coup, p.mains[s]), null);
+  }
+  assert.ok(marges[2] < marges[0], `marges ${marges}`);
+  assert.ok(Math.abs(evals[2] - evals[1]) <= 3 * marges[1] + 1, `évaluations ${evals}, marges ${marges}`);
+});
+
+test('analyse : petites tranches = une grande tranche (à itérations égales), reproductible', () => {
+  const p = positionDePartie(32, 25);
+  const s = p.etat.tour;
+  const opts = () => ({ rng: generateurAleatoire(5), carteDonnee: p.dons[s], iterations: 30 });
+  const a = creerAnalyse(p.etat, s, p.mains[s], opts());
+  let tours = 0;
+  while (a.resultat().iterations < 30 && tours++ < 100000) a.avancer(0.3);
+  const b = creerAnalyse(p.etat, s, p.mains[s], opts());
+  b.avancer(100000);
+  assert.deepEqual(a.resultat(), b.resultat());
+  assert.equal(b.resultat().stable, true); // plafond d'itérations atteint
+});
+
+test('analyse : le coup joué est toujours présent, même mauvais', () => {
+  const e = etat({ 0: 20, 1: 30, 2: 40, 4: 25 }, { restes: [3, 3, 3, 3] });
+  const main = ['5P', '8C', '9T'];
+  const tous = creerAnalyse(e, 0, main, { rng: generateurAleatoire(1), max: 30 }).avancer(0).candidats;
+  const pire = tous[tous.length - 1].coup;
+  const a = creerAnalyse(e, 0, main, { rng: generateurAleatoire(1), coupJoue: pire, max: 2, iterations: 60 });
+  for (const budget of [0, 50, 5000]) {
+    const r = a.avancer(budget);
+    const j = r.candidats.filter((c) => c.joue);
+    assert.equal(j.length, 1);
+    assert.deepEqual(j[0].coup, pire);
+    assert.ok(j[0].ecart > 0);
+  }
+  // le coup joué continue d'être simulé
+  assert.equal(a.joue.n, a.iterations);
+});
+
+test('analyse du don : candidats, carte jouée, convergence', () => {
+  const p = positionDePartie(33, 30);
+  // on se place au début de la donne suivante (phase d'échange)
+  let q = p;
+  const rng = generateurAleatoire(8);
+  while (q.etat.phase !== 'echange') {
+    const s = q.etat.tour;
+    q = jouerCoup(q, s, choisirCoup(q.etat, s, q.mains[s], { rng, budgetMs: 0 }), rng);
+  }
+  const s = 1;
+  const main = q.mains[s];
+  const derniere = main[main.length - 1];
+  const a = creerAnalyseDon(q.etat, s, main, { rng: generateurAleatoire(3), carteJouee: derniere, iterations: 40 });
+  const r0 = a.avancer(0);
+  assert.equal(r0.candidats[0].carte, choisirDon(q.etat, s, main));
+  assert.ok(r0.candidats.some((c) => c.joue && c.carte === derniere));
+  const r = a.avancer(100000);
+  assert.equal(r.iterations, 40);
+  assert.ok(r.marge < 25);
+  assert.ok(r.candidats.some((c) => c.joue && c.carte === derniere));
+  for (const c of r.candidats) assert.ok(main.includes(c.carte) && c.raisons.length >= 1);
 });
