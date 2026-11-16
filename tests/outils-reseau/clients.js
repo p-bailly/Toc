@@ -13,6 +13,7 @@ export function nouveauClient(serveur, { graine = 1, session = {}, ...autres } =
     ia: { choisirDon, choisirCoup },
     rng,
     delaiReseau: 5000,
+    pauseRelance: 2,
     session: { delaiIA: 0, attenteAutres: [0, 3], budgetIA: 5, ...session },
     ...autres,
   });
@@ -21,5 +22,5 @@ export function nouveauClient(serveur, { graine = 1, session = {}, ...autres } =
 
 /** Contexte bas niveau (fonctions de parties.js) pour un uid déjà connu. */
 export function contexte(serveur, uid, graine = 1) {
-  return { magasin: serveur.client(uid), uid, rng: generateurAleatoire(graine), delaiReseau: 5000 };
+  return { magasin: serveur.client(uid), uid, rng: generateurAleatoire(graine), delaiReseau: 5000, pauseRelance: 2 };
 }

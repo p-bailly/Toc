@@ -952,8 +952,8 @@ details > .reglage:first-of-type {
 .carte-jeu .symbole-central.figure {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-weight: 800;
-  font-size: max(16px, 36cqw);
-  margin: 25% 29%;
+  font-size: max(15px, 32cqw);
+  margin: 27% 31%;
   border: 1.5px solid currentColor;
   border-radius: 4px;
   padding: 0;
@@ -1569,4 +1569,221 @@ details > .reglage:first-of-type {
   padding-left: 1.1em;
   font-size: calc(13px * var(--texte));
   line-height: 1.4;
+}
+
+/* Choix du coup : boutons plus serrés que les boutons de menu */
+.choix-coup .bouton {
+  min-height: 44px;
+  padding: 0 12px;
+}
+.choix-coup .bouton.choix-sept {
+  flex: 1 0 52px;
+  padding: 0 6px;
+  font-size: calc(16px * min(var(--texte), 1.15));
+}
+
+/* ─── Analyse de fin de partie ──────────────────────────────────────────── */
+.visionneuse {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scroll-margin-top: 8px;
+}
+.nav-tours {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-tours .principal {
+  flex: 1;
+  min-width: 0;
+}
+.nav-tours .bouton-icone:disabled {
+  opacity: 0.35;
+}
+.nav-tours .suivant svg {
+  transform: scaleX(-1);
+}
+.curseur-tours {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.visionneuse .zone-plateau {
+  border-radius: 6px;
+  overflow: hidden;
+}
+.main-analyse {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cartes-analyse {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--rack);
+}
+.cartes-analyse .carte-jeu.choisie {
+  translate: 0 -4px;
+}
+.meilleur-coup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--rayon);
+  border: 2px solid var(--ok);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.meilleur-coup.choisi {
+  box-shadow: inset 0 0 0 2px var(--ok);
+}
+.meilleur-coup .principal {
+  flex: 1;
+  min-width: 0;
+}
+.meilleur-coup .etiquette {
+  font-size: calc(12px * var(--texte));
+  font-weight: 700;
+  color: var(--ok);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.apercu.ok {
+  color: var(--ok);
+  font-weight: 700;
+}
+.barre-eval {
+  position: relative;
+  height: 26px;
+  border-radius: 6px;
+  border: 1.5px solid var(--bord);
+  background: #2b2f36;
+  overflow: hidden;
+}
+.barre-eval .part-nous {
+  height: 100%;
+  background: linear-gradient(90deg, #1f62c0, #4d8fe8);
+  transition: width 0.4s;
+}
+.barre-eval .texte-eval {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.ligne-eval {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 4px;
+}
+.courbe {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.courbe .fond-courbe {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+.courbe .mi-courbe {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+  stroke-width: 0.8;
+}
+.courbe .legende-courbe {
+  fill: var(--muted);
+  font-size: 8px;
+}
+.courbe .ligne-courbe {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+.courbe .curseur-courbe {
+  stroke: var(--dernier);
+  stroke-width: 1.5;
+}
+.courbe .point-courbe {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 0.8;
+}
+.courbe .zone-courbe {
+  fill: transparent;
+  cursor: pointer;
+}
+.point-courbe.qualif-ok {
+  fill: var(--ok);
+}
+.point-courbe.qualif-moyen {
+  fill: var(--dernier);
+}
+.point-courbe.qualif-mauvais {
+  fill: var(--err);
+}
+.badge.qualif-ok,
+.stat.qualif-ok .valeur {
+  color: var(--ok);
+}
+.badge.qualif-ok {
+  background: var(--surface-2);
+}
+.badge.qualif-bon {
+  background: var(--surface-2);
+  color: var(--lien);
+}
+.badge.qualif-moyen {
+  background: var(--dernier);
+  color: #2b1a00;
+}
+.badge.qualif-mauvais {
+  background: var(--err);
+  color: #fff;
+}
+.stat.qualif-moyen .valeur {
+  color: #b87500;
+}
+:root[data-theme='dark'] .stat.qualif-moyen .valeur {
+  color: var(--dernier);
+}
+.stat.qualif-mauvais .valeur {
+  color: var(--err);
+}
+.bilan-analyse {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bilan-analyse .stats {
+  flex-wrap: wrap;
+}
+.bilan-analyse .stat {
+  min-width: 70px;
+}
+.ligne-avec-action {
+  display: flex;
+  gap: 6px;
+}
+.ligne-avec-action > .ligne {
+  flex: 1;
+  min-width: 0;
+}
+.ligne-avec-action > .bouton {
+  height: auto;
+  flex: none;
 }

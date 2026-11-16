@@ -119,6 +119,10 @@ async function router() {
       ongletActif = 'ia';
       jeu = true;
       break;
+    case 'analyse':
+      module = await import('./ui/ecran-analyse.js');
+      ongletActif = reste[0] === 'locale' ? 'ia' : 'parties';
+      break;
     case 'partie':
       module = await import('./ui/ecran-partie.js');
       ongletActif = 'parties';

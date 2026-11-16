@@ -392,12 +392,19 @@ function lignePartie(p, app) {
   }
   const autres = [partenaire, ...adversaires].filter(Boolean);
   const premier = autres[0] || places.find((x) => x && x.uid !== app.joueur?.uid);
-  return h(
+  const ligne = h(
     'a',
     { class: 'ligne' + (p.aMoiDeJouer ? ' choisie' : ''), href: '#/partie/' + encodeURIComponent(p.id), 'data-partie': p.id },
     avatar({ uid: premier?.uid, nom: nomPlace(premier) || '?', ia: premier?.ia, fond: p.aMoiDeJouer ? 'var(--accent)' : 'var(--muted)' }),
     h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, sousTitre)),
     badge,
+  );
+  if (p.statut !== 'finie') return ligne;
+  return h(
+    'div',
+    { class: 'ligne-avec-action' },
+    ligne,
+    h('a', { class: 'bouton', href: '#/analyse/' + encodeURIComponent(p.id), 'aria-label': `Analyser ${titre}` }, 'Analyser'),
   );
 }
 

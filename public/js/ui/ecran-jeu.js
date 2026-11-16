@@ -39,6 +39,7 @@ export function afficher(racine, app) {
       session: enveloppe,
       retour: '#/ia',
       conseils: true,
+      analyse: '#/analyse/locale',
       libelleRetour: 'Retour au menu Contre l’IA',
       rejouer: () => {
         const reglages = vraie.partie?.etat?.reglages || {};

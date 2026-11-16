@@ -175,7 +175,8 @@ export function raisonsCoup(prep, etat, siege, main, cand) {
   }
   if (progression) {
     const { n: k, dp, quoi } = progression;
-    dire(dp <= 12 ? 16 : 8, `avance ${quoi} de ${k} case${k > 1 ? 's' : ''}${dp <= 12 ? ` : il n'est plus qu'à ${dp} case${dp > 1 ? 's' : ''} de l'entrée de l'allée` : ''}`);
+    const suite = dp === 0 ? " : il est sur la case d'entrée de l'allée" : dp <= 12 ? ` : il n'est plus qu'à ${dp} case${dp > 1 ? 's' : ''} de l'entrée de l'allée` : '';
+    dire(dp <= 12 ? 16 : 8, `avance ${quoi} de ${k} case${k > 1 ? 's' : ''}${suite}`);
   }
 
   // Pions adverses déplacés (valet, 5 adverse)

@@ -9,12 +9,16 @@
 //   evaluation.js  évaluation d'une position (progression, allée, risques, blocages, main)
 //   recherche.js   évaluation statique de chaque coup puis simulations déterminisées
 //                  de la fin de la donne, dans la limite du budget de temps
-//   conseils.js    notes et raisons pour conseiller le joueur (don et coup)
-//   ia.js          contrat public : choisirDon, choisirCoup, conseillerDon, conseillerCoup
+//   analyse.js     analyse incrémentale (« anytime ») : candidats, évaluation, probabilité
+//                  de victoire ; utilisée par choisirCoup et par les conseils
+//   conseils.js    notes du don et raisons (phrases) expliquant chaque choix
+//   ia.js          contrat public : choisirDon, choisirCoup, conseillerDon, conseillerCoup,
+//                  creerAnalyse, creerAnalyseDon
 
 import { coupsLegauxMain, validerCoup } from '../moteur/index.js';
-import { analyser } from './recherche.js';
-import { noterDons, conseillerDon, conseillerCoup } from './conseils.js';
+import { maintenant } from './recherche.js';
+import { noterDons } from './conseils.js';
+import { AnalyseCoup, AnalyseDon } from './analyse.js';
 
 /**
  * Choisit la carte à donner au partenaire en début de donne.
@@ -46,19 +50,68 @@ export function choisirDon(etat, siege, main, options = {}) {
  * @returns {Object} coup légal (voir regles.js)
  */
 export function choisirCoup(etat, siege, main, options = {}) {
+  const debut = maintenant();
+  const budget = options.budgetMs ?? 600;
   let coup = null;
   try {
-    coup = analyser(etat, siege, main, options).coup;
+    const analyse = new AnalyseCoup(etat, siege, main, options);
+    if (analyse.candidats.length > 1 && analyse.actifs.length > 1) {
+      // marge pour la validation finale et les imprévus
+      analyse.progresser(debut + budget * 0.92 - 1 - maintenant());
+    }
+    coup = analyse.meilleurCoup();
   } catch (e) {
     coup = null;
   }
   if (coup && validerCoup(etat, siege, coup, main) === null) return coup;
-  // Repli (ne devrait jamais servir) : meilleur coup du vrai moteur selon l'évaluation simple.
-  const coups = coupsLegauxMain(etat, siege, main);
-  return coups[0];
+  // Repli (ne devrait jamais servir) : premier coup légal du vrai moteur.
+  return coupsLegauxMain(etat, siege, main)[0];
 }
 
-// Conseils au joueur humain (voir conseils.js) :
-//   conseillerDon(etat, siege, main, options)  → [{ carte, note, ecart, raisons }]
-//   conseillerCoup(etat, siege, main, options) → [{ coup, note, ecart, raisons, joue? }]
-export { conseillerDon, conseillerCoup };
+// ---------------------------------------------------------------------------
+// Conseils et analyse (pour le joueur humain)
+// ---------------------------------------------------------------------------
+
+/**
+ * Conseil de coup : au plus options.max entrées (3 par défaut), plateaux finaux distincts,
+ * de la meilleure à la moins bonne : [{ coup, note, ecart, marge, raisons, joue? }].
+ * La première est le coup que choisirCoup jouerait avec le même budget et le même rng.
+ * Avec options.coupJoue, l'entrée de ce coup est ajoutée (joue: true).
+ */
+export function conseillerCoup(etat, siege, main, options = {}) {
+  const debut = maintenant();
+  const budget = options.budgetMs ?? 600;
+  const analyse = new AnalyseCoup(etat, siege, main, { ...options, max: options.max ?? 3 });
+  if (analyse.candidats.length > 1 && (analyse.actifs.length > 1 || analyse.joue)) {
+    analyse.progresser(debut + budget * 0.92 - 1 - maintenant());
+  }
+  return analyse.resultat().candidats;
+}
+
+/**
+ * Conseil de don : une entrée par rang distinct de la main, de la meilleure à la moins bonne :
+ * [{ carte, note, ecart, marge, raisons, joue? }]. Sans budget (défaut 0), c'est l'évaluation
+ * statique, identique au choix de choisirDon ; avec options.budgetMs, des simulations de la
+ * donne affinent le classement.
+ */
+export function conseillerDon(etat, siege, main, options = {}) {
+  const analyse = new AnalyseDon(etat, siege, main, { ...options, max: options.max ?? main.length });
+  return analyse.avancer(options.budgetMs ?? 0).candidats;
+}
+
+/**
+ * Analyse incrémentale d'un coup (phase 'jeu') : objet avec avancer(budgetMs) et resultat()
+ * → { iterations, evaluation, probaVictoire, marge, candidats, stable }. Voir analyse.js.
+ * options : { rng, carteDonnee, carteRecue, coupJoue, max = 5 }
+ */
+export function creerAnalyse(etat, siege, main, options = {}) {
+  return new AnalyseCoup(etat, siege, main, options);
+}
+
+/**
+ * Analyse incrémentale du don au partenaire (phase 'echange') : même objet, candidats
+ * [{ carte, note, ecart, marge, raisons, joue? }]. options : { rng, carteJouee, max = 5 }
+ */
+export function creerAnalyseDon(etat, siege, main, options = {}) {
+  return new AnalyseDon(etat, siege, main, options);
+}

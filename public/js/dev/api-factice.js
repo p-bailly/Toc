@@ -367,8 +367,19 @@ export async function quitterPartie(id) {
   changer();
 }
 
+/** Garde, pour l'analyse de fin de partie, les mains distribuées et les cartes échangées de chaque donne. */
+function suivreDonnes(p) {
+  if (!p.partie) return;
+  const e = p.partie.etat;
+  p.donnes = p.donnes || [];
+  if (!p.donnes[e.donne] && e.phase === 'echange') p.donnes[e.donne] = { mains: p.partie.mains.map((m) => m.slice()), dons: [null, null, null, null] };
+  if (p.donnes[e.donne] && e.phase !== 'fini') p.donnes[e.donne].dons = p.partie.dons.slice();
+}
+
 function lancer(p) {
   p.partie = nouvellePartie(p.reglages);
+  p.donnes = [];
+  suivreDonnes(p);
   p.statut = 'encours';
   p.invites = [];
   p.majLe = Date.now();
@@ -496,9 +507,13 @@ function simulerJusquALaFin(p) {
     const e = partie.etat;
     if (e.phase === 'echange') {
       for (let s = 0; s < 4; s++) if (!partie.etat.echanges[s]) partie = donnerCarte(partie, s, partie.mains[s][0]);
+      p.partie = partie;
+      suivreDonnes(p);
     } else {
       const coups = coupsLegauxMain(e, e.tour, partie.mains[e.tour]);
       partie = jouerCoup(partie, e.tour, coups[Math.floor(Math.random() * coups.length)]);
+      p.partie = partie;
+      suivreDonnes(p);
     }
   }
   p.partie = partie;
@@ -551,6 +566,7 @@ function trouverAction() {
         faire: () => {
           const carte = choisirDon(p.partie.etat, s, p.partie.mains[s]);
           p.partie = donnerCarte(p.partie, s, carte);
+          suivreDonnes(p);
           p.majLe = Date.now();
         },
       };
@@ -566,6 +582,7 @@ function trouverAction() {
             carteRecue: p.partie.dons[partenaire(s)],
           });
           p.partie = jouerCoup(p.partie, s, coup);
+          suivreDonnes(p);
           p.majLe = Date.now();
           terminerSiFini(p);
         },
@@ -621,6 +638,7 @@ export async function ouvrirSession(id) {
       await attendre(80);
       const q = exigerPartie(id);
       q.partie = donnerCarte(q.partie, siege, carte);
+      suivreDonnes(q);
       q.majLe = Date.now();
       changer();
     },
@@ -628,9 +646,21 @@ export async function ouvrirSession(id) {
       await attendre(80);
       const q = exigerPartie(id);
       q.partie = jouerCoup(q.partie, siege, coup);
+      suivreDonnes(q);
       q.majLe = Date.now();
       terminerSiFini(q);
       changer();
+    },
+    /** Données pour l'analyse de fin de partie (voir session-locale.js). */
+    async donneesAnalyse() {
+      const q = exigerPartie(id);
+      return {
+        reglages: { ...q.reglages },
+        joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid })),
+        siege,
+        historique: copie(q.partie.historique),
+        donnes: (q.donnes || []).map((d) => ({ distribuees: d.mains[siege].slice(), donnee: d.dons[siege], recue: d.dons[partenaire(siege)] })),
+      };
     },
     fermer() {
       abonnes.clear();

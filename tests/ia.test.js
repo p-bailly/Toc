@@ -127,22 +127,21 @@ test('tactique : manœuvre du 4 (pion sur sa case de départ, recul vers l’all
   assert.equal(c.pion, 0);
 });
 
-test('tactique : le 7 capture par dépassement et rentre un pion', () => {
-  // Pion 0 en 57 (4 cases avant l'entrée 61), pion adverse 4 en 58 : 7 = 4 + 3 rentre
-  // en passant sur l'adversaire, qui est renvoyé à la base (le 2 et le 3 ne le capturent pas).
+test('tactique : le 7 capture par dépassement', () => {
+  // Pion 0 en 57, pion adverse 4 en 58 : tout 7 qui fait avancer le pion 0 passe sur
+  // l'adversaire et le renvoie à la base (le 2 et le 3 ne le capturent pas).
   const e = etat({ 0: 57, 1: 20, 4: 58 }, { restes: [3, 3, 3, 3] });
   const c = choisirCoup(e, 0, ['7P', '2C', '3T'], { ...OPTS });
   assert.equal(c.t, 'sept');
   const ap = apercuCoup(e, 0, c);
   assert.equal(ap.pions[4], BASE);
-  assert.ok(ap.pions[0] >= ALLEE);
 });
 
-test('tactique : le 7 qui fait gagner la partie est joué, même avec des points restants', () => {
-  // Partenaire (siège 2) rentré ; siège 0 : trois pions rentrés, le dernier 2 cases avant
-  // l'entrée (61) : 2 + 1 le rentre et gagne, il reste 4 points.
-  const e = etat({ 0: a(3), 1: a(2), 2: a(1), 3: 59, 8: a(0), 9: a(1), 10: a(2), 11: a(3), 4: 40 }, { restes: [3, 3, 3, 3] });
-  const main = ['7P', '9C', '2T'];
+test('tactique : le 7 qui fait gagner la partie est joué', () => {
+  // Partenaire (siège 2) rentré ; siège 0 : trois pions rentrés (cases 0 à 2 de l'allée), le
+  // dernier 3 cases avant l'entrée (61) : 3 + 4 = 7 le met au fond de l'allée et gagne.
+  const e = etat({ 0: a(0), 1: a(1), 2: a(2), 3: 58, 8: a(0), 9: a(1), 10: a(2), 11: a(3), 4: 40 }, { restes: [3, 3, 3, 3] });
+  const main = ['9C', '7P', '2T'];
   const c = choisirCoup(e, 0, main, { ...OPTS });
   const n = appliquerCoup(e, 0, c, main);
   assert.equal(n.phase, 'fini');

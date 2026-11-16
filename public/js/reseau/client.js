@@ -39,6 +39,7 @@ export function creerClient(options) {
     uid,
     rng: options.rng,
     delaiReseau: options.delaiReseau,
+    pauseRelance: options.pauseRelance,
     horsLigne: options.horsLigne,
   });
 

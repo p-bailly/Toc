@@ -9,6 +9,8 @@
 //  - une partie des règles de sécurité (firestore.rules) : lecture des parties, des mains (donnes)
 //    et des dons, immuabilité des donnes et dons, liste des fiches bornée à 10. Cela vérifie que
 //    le client ne lit que ce que les vraies règles lui permettent ;
+//  - le refus d'une transaction périmée sur une partie (comme le vrai serveur, dont les règles
+//    voient le document déjà modifié) ;
 //  - un client hors ligne (transactions et lectures non en cache refusées, code « unavailable »).
 
 const HEURE = Object.freeze({ __faux: 'heure' });
@@ -52,6 +54,7 @@ export class FauxServeur {
     this.comptes = new Map(); // email → { uid, mdp }
     this.nbUid = 0;
     this.journal = []; // écritures validées : { uid, chemin, type }
+    this.refusSiPerime = true; // voir transaction()
   }
 
   // ─── Accès direct (préparation et vérification des tests) ───
@@ -263,6 +266,12 @@ export class FauxServeur {
           const change = [...lus].some(([chemin, v]) => (serveur.docs.get(chemin)?.version ?? 0) !== v);
           if (change) {
             serveur.relances = (serveur.relances || 0) + 1;
+            // Comme le vrai serveur : les règles sont évaluées contre le document déjà modifié par
+            // un autre client ; une écriture périmée sur une partie est donc refusée, pas relancée.
+            if (serveur.refusSiPerime && ecritures.some((w) => /^parties\/[^/]+$/.test(w.chemin))) {
+              serveur.refusPerimes = (serveur.refusPerimes || 0) + 1;
+              throw erreur('permission-denied', 'écriture périmée');
+            }
             continue;
           }
           serveur.appliquer(c.uid, ecritures);

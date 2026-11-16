@@ -46,6 +46,11 @@ const FICHIERS = [
   './js/ui/ecran-partie.js',
   './js/ui/ecran-regles.js',
   './js/ui/ecran-reglages.js',
+  './js/ui/ecran-analyse.js',
+  './js/ui/analyse-calcul.js',
+  './js/ui/analyse-boucle.js',
+  './js/ui/analyse-worker.js',
+  './js/ui/analyseur.js',
 ];
 
 self.addEventListener('install', (event) => {

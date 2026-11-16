@@ -39,7 +39,7 @@ const NOMS_FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆'
  * @param {Function} [o.rejouer]    partie d'entraînement : relancer une partie
  * @returns {Function} destruction
  */
-export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false }) {
+export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null }) {
   const plateau = new Plateau({ surPion: (g) => toucherPion(g), surCible: (i) => toucherCible(i) });
 
   const titre = h('span', { class: 'texte' }, 'Toc');
@@ -445,8 +445,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   function libelleOptionSept(o) {
     const depuisAllee = sept.pions[o.pion] >= ALLEE;
-    let t = o.allee ? (depuisAllee ? `Avancer de ${o.pas} dans l’allée` : `Entrer dans l’allée (${o.pas})`) : `Avancer de ${o.pas}`;
-    if (o.captures.length) t += ` · renvoie ${pluriel(o.captures.length, 'pion')}`;
+    let t = o.allee ? (depuisAllee ? `Allée +${o.pas}` : `Entrer +${o.pas}`) : `+${o.pas}`;
+    if (o.captures.length) t += ` (renvoie ${o.captures.length})`;
     return t;
   }
 
@@ -502,7 +502,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         if (pion === null) lignes.push(h('span', { class: 'note' }, 'Touchez un pion à avancer.'));
         else
           for (const [i, c] of ciblesCourantes.entries()) {
-            boutons.push(h('button', { type: 'button', class: 'bouton', onclick: () => toucherCible(i), 'data-choix': i }, c.libelle));
+            boutons.push(h('button', { type: 'button', class: 'bouton choix-sept', onclick: () => toucherCible(i), 'data-choix': i, 'aria-label': c.libelle.replace('+', 'avancer de ') }, c.libelle));
           }
       }
       if (sept.etapes.length) {
@@ -740,6 +740,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const equipe = (e) => [e, e + 2].map((si) => nomSiege(si));
     const boutons = [];
     if (rejouer) boutons.push(h('button', { type: 'button', class: 'bouton principal large', onclick: () => (feuilleFin?.fermer(), rejouer()) }, 'Rejouer'));
+    if (analyse) boutons.push(h('a', { class: 'bouton large', href: analyse, 'data-action': 'analyser', onclick: () => feuilleFin?.fermer() }, 'Analyser la partie'));
     boutons.push(
       h('a', { class: 'bouton large' + (rejouer ? '' : ' principal'), href: retour, onclick: () => feuilleFin?.fermer() }, vue.enLigne ? 'Mes parties' : 'Retour'),
     );

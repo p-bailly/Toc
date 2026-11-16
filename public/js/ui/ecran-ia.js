@@ -38,6 +38,20 @@ export function afficher(racine, app) {
       );
     }
 
+    if (sauvegarde && !enCours) {
+      const e = sauvegarde.partie.etat;
+      const gagne = e.gagnant === 0;
+      blocs.push(
+        h('h2', {}, 'Dernière partie'),
+        h(
+          'a',
+          { class: 'ligne', href: '#/analyse/locale', 'data-action': 'analyser' },
+          h('div', { class: 'avatar', style: { background: gagne ? 'var(--ok)' : 'var(--muted)' } }, gagne ? '🏆' : '🎲'),
+          h('div', { class: 'principal' }, h('div', { class: 'mot' }, gagne ? 'Victoire de ton équipe' : 'Victoire de l’équipe adverse'), h('div', { class: 'note' }, `${e.donne + 1} donnes · revois tes coups avec l’IA`)),
+          h('span', { class: 'bouton' }, 'Analyser'),
+        ),
+      );
+    }
     blocs.push(
       h('h2', {}, enCours ? 'Ou une nouvelle partie' : 'Nouvelle partie'),
       h(

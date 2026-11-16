@@ -35,7 +35,7 @@ const ECART_STATIQUE_MAX = 40;
  * le même avantage pèse davantage quand il reste peu à faire. Coefficient ajusté par maximum
  * de vraisemblance sur des positions de parties IA contre IA (outils/calibrage.js).
  */
-export const CALIBRAGE = { k: 0.55 };
+export const CALIBRAGE = { k: 0.127 };
 
 export function probaDepuisEvaluation(v, pions, victoire) {
   if (v >= victoire) return 1;
@@ -105,6 +105,12 @@ class AnalyseBase {
 
   /** Poursuit la recherche pendant au plus budgetMs (cumulatif) ; renvoie le résultat courant. */
   avancer(budgetMs = 0) {
+    this.progresser(budgetMs);
+    return this.resultat();
+  }
+
+  /** Comme avancer, sans construire le résultat (utilisé par choisirCoup). */
+  progresser(budgetMs = 0) {
     const limite = maintenant() + Math.max(0, budgetMs);
     while (this.iterations < this.iterMax && this.actifs.length > 0) {
       if (maintenant() >= limite) break;
@@ -130,7 +136,6 @@ class AnalyseBase {
       this.elaguer();
     }
     this.cache = null;
-    return this.resultat();
   }
 
   meilleurActif() {

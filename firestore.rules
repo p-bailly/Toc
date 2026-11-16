@@ -237,7 +237,8 @@ service cloud.firestore {
         let n = h.size();
         let nouvelleDonne = en.donne != ea.donne;
         return ea.phase == 'jeu' && peutAgir(av, s)
-          && n == av.historique.size() + 1 && av.historique.concat([h[n - 1]]) == h
+          && n == av.historique.size() + 1 && n >= 1
+          && av.historique.concat([h[n - 1]]) == h
           && h[n - 1].siege == s && h[n - 1].n == en.numCoup
           && en.dernierCoup.siege == s
           && (en.phase == 'fini'
@@ -265,7 +266,8 @@ service cloud.firestore {
           && ap.statut == (en.phase == 'fini' ? 'finie' : 'encours')
           && ap.enAttente is list && ap.enAttente.hasOnly(av.uids)
           && ap.majLe == request.time
-          && (echange(av, ea, en) || coup(av, ap, ea, en));
+          // Une seule branche évaluée, choisie par la phase (évite la limite de 1000 expressions).
+          && (ea.phase == 'echange' ? echange(av, ea, en) : coup(av, ap, ea, en));
       }
 
       allow update: if connecte() && (

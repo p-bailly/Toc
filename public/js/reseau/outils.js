@@ -32,7 +32,25 @@ export async function avecReseau(ctx, action) {
   }
 }
 
-/** Transaction Firestore avec les garanties ci-dessus. */
-export function transaction(ctx, fn) {
-  return avecReseau(ctx, () => ctx.magasin.transaction(fn));
+export const RELANCES_REFUS = 3;
+
+/**
+ * Transaction Firestore avec les garanties ci-dessus.
+ *
+ * Quand deux clients écrivent la même partie en même temps (échange simultané, humain et IA…),
+ * Firestore évalue les règles de la transaction périmée contre le document déjà modifié : elle est
+ * refusée (permission-denied) au lieu d'être relancée. On la relance donc nous-mêmes, après une
+ * courte pause aléatoire : elle relit l'état à jour et recalcule l'action (ou échoue proprement si
+ * l'action n'a plus lieu d'être). Un vrai refus reste un refus après ces quelques essais.
+ */
+export async function transaction(ctx, fn) {
+  for (let essai = 0; ; essai++) {
+    try {
+      return await avecReseau(ctx, () => ctx.magasin.transaction(fn));
+    } catch (e) {
+      if (e.cause?.code !== 'permission-denied' || essai >= RELANCES_REFUS) throw e;
+      const rng = ctx.rng || Math.random;
+      await new Promise((r) => setTimeout(r, (ctx.pauseRelance ?? 150) * (1 + rng()) * (essai + 1)));
+    }
+  }
 }
