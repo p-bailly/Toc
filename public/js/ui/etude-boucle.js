@@ -4,6 +4,8 @@
 // tours, puis elle affine ceux qui ne sont pas encore stables, à tour de rôle. Chaque tranche publie le résultat.
 //
 // Messages reçus :  { type: 'taches', taches: [{ id, type: 'coup'|'don', etat, siege, main, options, fait }] }
+//                   (un nouvel envoi remplace la liste à parcourir, par exemple pour analyser un autre joueur ;
+//                   les tours déjà connus gardent leur analyse en cours)
 //                   { type: 'cible', id }          tour affiché (prioritaire)
 //                   { type: 'arreter' }
 // Messages publiés : { type: 'pret', dispo }  { type: 'resultat', id, resultat }  { type: 'erreur', id, message }

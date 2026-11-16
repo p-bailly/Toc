@@ -6,7 +6,8 @@ import { creerBoucle } from './etude-boucle.js';
 /**
  * @param {Object[]} taches   voir etude-boucle.js
  * @param {(msg:Object)=>void} surMessage
- * @returns {{ cibler(id), arreter(), mode: () => 'worker'|'principal'|'' }}
+ * @returns {{ cibler(id), charger(taches), arreter(), mode: () => 'worker'|'principal'|'' }}
+ *   charger(taches) remplace la liste des tours à analyser (autre joueur) ; les analyses déjà faites sont gardées.
  */
 export function lancerAnalyse(taches, surMessage) {
   let mode = '';
@@ -54,6 +55,10 @@ export function lancerAnalyse(taches, surMessage) {
   }
 
   return {
+    charger(nouvelles) {
+      taches = nouvelles;
+      envoyer({ type: 'taches', taches });
+    },
     cibler(id) {
       cibleEnAttente = id;
       envoyer({ type: 'cible', id });
