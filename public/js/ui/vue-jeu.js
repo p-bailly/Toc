@@ -97,7 +97,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const ancienne = vue;
     vue = v;
     // Nouvel état : la saisie en cours n'a plus de sens si la main ou le tour ont changé.
-    if (!ancienne || ancienne.etat.numCoup !== v.etat.numCoup || ancienne.etat.phase !== v.etat.phase) reinitialiser();
+    // (Pendant l'échange, les dons des autres ne touchent pas à la carte choisie.)
+    const autreCoup = ancienne && ancienne.etat.numCoup !== v.etat.numCoup && v.etat.phase !== 'echange';
+    if (!ancienne || autreCoup || ancienne.etat.phase !== v.etat.phase || ancienne.etat.donne !== v.etat.donne) reinitialiser();
     if (carte && !v.main.includes(carte)) reinitialiser();
     rendre();
     animerSiBesoin(ancienne);
