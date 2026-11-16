@@ -25,7 +25,14 @@ export async function demarrer(config) {
 export function initialiser({ appMod, authMod, fs }, config, options = {}) {
   const { emulateurs, ...reglagesApp } = config;
   const app = appMod.initializeApp(reglagesApp, options.nomApp);
-  const auth = authMod.getAuth(app);
+  // Dans le navigateur : comme getAuth, mais sans le module de connexion par fenêtre surgissante
+  // (inutile ici, il télécharge apis.google.com/js/api.js à chaque ouverture).
+  const auth =
+    typeof indexedDB !== 'undefined' && authMod.initializeAuth && authMod.indexedDBLocalPersistence
+      ? authMod.initializeAuth(app, {
+          persistence: [authMod.indexedDBLocalPersistence, authMod.browserLocalPersistence, authMod.browserSessionPersistence],
+        })
+      : authMod.getAuth(app);
   let db;
   if (options.memoire) {
     db = fs.initializeFirestore(app, { ignoreUndefinedProperties: true });
