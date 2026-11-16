@@ -35,6 +35,7 @@ npm test             # tous les tests (Node 22, aucune dépendance à installer)
 | `firestore.rules` | Règles de sécurité Firestore. |
 | `tests/` | Tests `node:test` : règles (dont deux oracles indépendants), IA, réseau (faux magasin en mémoire, et émulateur s'il est disponible), interface (géométrie, libellés, analyse). |
 | `outils/` | Tournois entre IA et calibrage (`node outils/tournoi.js --a=ia --b=glouton --parties=100 --budget=600`). |
+| `outils/regles/` | Générateur de la page Règles (« Le Toc en une page ») : `SORTIE_APPLI=public node outils/regles/construire.mjs` réécrit `public/js/ui/regles-page.js` et `public/css/regles.css`. Les exemples illustrés y sont vérifiés par le moteur. |
 
 ## Règles : décisions
 

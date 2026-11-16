@@ -1,21 +1,35 @@
-// Règles du Toc (route #/regles) : résumé fidèle du cahier des charges.
+// Règles du Toc (route #/regles) : l'infographie « Le Toc en une page » (générée par outils/regles/construire.mjs),
+// puis les règles complètes, repliées.
 
 import { h, remplacer } from './dom.js';
 import { entete } from './composants.js';
 import { dessinCarte } from './carte.js';
-import { NIVEAUX } from './niveaux.js';
+import { HTML_REGLES } from './regles-page.js';
 
 const section = (titre, ...contenu) => [h('h2', {}, titre), h('div', { class: 'carte regles' }, contenu)];
 const liste = (...items) => h('ul', {}, items.map((i) => h('li', {}, i)));
 const valeur = (carte, texte) => h('div', { class: 'valeur-carte' }, dessinCarte(carte, { petite: true }), h('div', {}, texte));
 
+/** « Le Toc en une page » : l'infographie générée (schémas et textes), posée telle quelle. */
+function infographie() {
+  const page = h('div', { class: 'regles-info' });
+  page.innerHTML = HTML_REGLES;
+  return page;
+}
+
 export function afficher(racine) {
   remplacer(
     racine,
-    h(
+    h('div', { class: 'contenu pleine' }, entete('Le Toc en une page'), infographie(), h('details', { class: 'options regles-detail' }, h('summary', {}, 'Toutes les règles en détail'), detail())),
+  );
+  return null;
+}
+
+/** Les règles complètes, repliées sous l'infographie. */
+function detail() {
+  return h(
       'div',
-      { class: 'contenu' },
-      entete('Règles du Toc'),
+      { class: 'regles-texte' },
       h('p', { class: 'intro' }, 'Quatre joueurs en deux équipes de deux, partenaires face à face. Chaque joueur a 4 pions ; la première équipe qui rentre ses 8 pions dans ses allées d’arrivée gagne. Il existe aussi un jeu à 3, chacun pour soi (voir plus bas).'),
       section(
         'Le plateau',
@@ -23,7 +37,7 @@ export function afficher(racine) {
           'Un circuit carré de 64 cases (16 par côté), parcouru dans le sens des aiguilles d’une montre.',
           'Chaque joueur a une case de sortie au milieu de son côté (petit carré de sa couleur) et, juste derrière, sa base de 4 pions non sortis (grand carré de sa couleur).',
           'Son allée d’arrivée (rectangle de sa couleur, 4 cases) part vers le centre depuis une case d’entrée située 3 cases avant la sortie, à droite de celle-ci. Depuis sa case de sortie, un 4 recule le pion une case avant l’entrée ; un 5 l’amène ensuite au fond de l’allée.',
-          'Les cases au bord foncé (6e et 12e après chaque sortie) aident à compter.',
+          'Un anneau clair entoure la 6e et la 12e case après chaque sortie : des repères pour compter.',
           'Un pion posé sur sa propre case de sortie est protégé : personne ne peut le dépasser (son propriétaire non plus) ni le renvoyer à la base, et aucun autre joueur ne peut l’échanger. Deux exceptions, réservées à son propriétaire : il peut l’échanger avec son valet, et s’il sort un nouveau pion, celui-ci le renvoie à la base.',
         ),
       ),
@@ -83,11 +97,9 @@ export function afficher(racine) {
           'Valet : touche ton pion, puis le pion à échanger. 7 : avance pas à pas ; le compteur indique les points restants et les pions qui retourneront à la base ; le 7 part quand le dernier point est placé.',
           'Joker : choisis d’abord la carte qu’il copie, puis joue comme avec cette carte.',
           'En ligne, la partie attend le joueur dont c’est le tour, sans limite de temps : l’appli te prévient quand c’est à toi.',
-          `Force des IA : contre l’IA, tu choisis le niveau des adversaires (et de ton partenaire en 2 contre 2) ; en ligne, l’hôte choisit celui de chaque IA. Du plus faible au plus fort : ${NIVEAUX.map((n) => n.nom).join(', ')}. Les conseils et l’analyse utilisent toujours la meilleure force.`,
+          `Force des IA : contre l’IA, tu choisis le niveau des adversaires (et de ton partenaire en 2 contre 2) ; en ligne, l’hôte choisit celui de chaque IA. Le niveau va de 1 étoile (le plus faible) à 5 étoiles (le plus fort). Les conseils et l’analyse utilisent toujours la meilleure force.`,
           'Conseils de l’IA (désactivés au départ, à activer dans les Réglages) : dans les parties contre l’IA, un bouton « Conseil » propose les meilleurs coups avec leurs raisons ; dans l’analyse de fin de partie, le choix de l’IA et le bilan de tes coups. Jamais pendant une partie en ligne.',
         ),
       ),
-    ),
   );
-  return null;
 }

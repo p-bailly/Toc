@@ -2438,3 +2438,19 @@ details > .reglage:first-of-type {
     display: block;
   }
 }
+
+/* Page Règles : l'infographie occupe toute la largeur (pas de colonnes de texte), les règles détaillées sont repliées dessous */
+.contenu.pleine > .regles-info {
+  min-width: 0;
+}
+.regles-detail .regles-texte {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (min-width: 900px) {
+  .appli:not(.en-jeu) .contenu.pleine {
+    columns: auto;
+    max-width: 1100px;
+  }
+}
