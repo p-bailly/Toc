@@ -210,20 +210,33 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     let longueur = -1;
     while (!passer && nHisto < vueReelle.historique.length) {
       const histo = vueReelle.historique;
-      if (longueur !== histo.length) {
-        try {
-          rejeu = rejouerPartie(vueReelle.etat.reglages, histo);
-          longueur = histo.length;
-        } catch {
-          break; // historique illisible : on montre directement la position actuelle
+      const i = nHisto;
+      let etatApres;
+      if (i === histo.length - 1) {
+        // Dernier coup : c'est la position actuelle.
+        etatApres = vueReelle.etat;
+      } else {
+        // Coups intermédiaires : la partie est rejouée par le moteur (une fois par longueur d'historique).
+        if (longueur !== histo.length) {
+          try {
+            rejeu = rejouerPartie(vueReelle.etat.reglages, histo);
+            longueur = histo.length;
+          } catch {
+            rejeu = null;
+            longueur = histo.length;
+          }
+        }
+        etatApres = rejeu?.tours[i]?.apres;
+        // Historique illisible : on saute directement au dernier coup.
+        if (!etatApres) {
+          nHisto = histo.length - 1;
+          continue;
         }
       }
-      const i = nHisto;
-      const tour = rejeu.tours[i];
-      if (!tour) break;
       nHisto = i + 1;
       restants = histo.length - nHisto;
-      const intermediaire = { ...vueReelle, etat: tour.apres, historique: histo.slice(0, nHisto) };
+      const tour = { apres: etatApres };
+      const intermediaire = { ...vueReelle, etat: etatApres, historique: histo.slice(0, nHisto) };
       appliquerVue(intermediaire, { presentation: true });
       const r = leRythme();
       const mien = histo[i].siege === vueReelle.siege;
