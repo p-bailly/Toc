@@ -216,6 +216,8 @@ export function afficher(racine, app, { reste }) {
         invites.length ? `Invité${invites.length > 1 ? 's' : ''} : ${invites.map((i) => i.pseudo).join(', ')}. Ils reçoivent l’invitation dans « Mes parties ».` : `Touche le nom d’un joueur pour l’inviter (jusqu’à ${pluriel(nbLibres, 'joueur')}).`,
       ),
     );
+    const refus = (p.refus || []).filter((r) => !invites.some((i) => i.uid === r.uid));
+    if (refus.length) carte.append(h('span', { class: 'note ecart-neg' }, `${refus.map((r) => r.pseudo).join(', ')} a refusé. Tu peux inviter quelqu’un d’autre.`));
     const liste = h('div', { class: 'liste' });
     carte.append(liste);
     if (joueursConnus === null) {

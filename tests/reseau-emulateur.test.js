@@ -177,7 +177,11 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   const { assertFails, assertSucceeds } = rut;
   const { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, limit, orderBy, writeBatch, serverTimestamp } = fs;
   await e.clearFirestore();
-  const db = (uid) => e.authenticatedContext(uid).firestore();
+  const contextes = new Map();
+  const db = (uid) => {
+    if (!contextes.has(uid)) contextes.set(uid, e.authenticatedContext(uid).firestore());
+    return contextes.get(uid);
+  };
   const A = 'alice', B = 'bruno', C = 'chloe', X = 'intrus';
 
   // Fiches.

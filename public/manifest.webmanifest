@@ -1,0 +1,21 @@
+{
+  "name": "Toc – le jeu de plateau à quatre",
+  "short_name": "Toc",
+  "description": "Le jeu de Toc à quatre, en deux équipes : en ligne avec tes proches, ou contre l’ordinateur.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#a9d3f4",
+  "theme_color": "#a9d3f4",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
