@@ -31,7 +31,18 @@ export function zoomerVers(etat, k, px, py) {
 export function facteurMolette({ deltaY = 0, deltaMode = 0, ctrlKey = false }) {
   // En pixels, quelle que soit l'unité du navigateur (1 : lignes, 2 : pages).
   const dy = deltaY * (deltaMode === 1 ? 33 : deltaMode === 2 ? 300 : 1);
-  return Math.exp(-dy / (ctrlKey ? 200 : 450));
+  // Pincement du pavé tactile : petits pas, Ctrl enfoncé. Un cran de souris, avec ou sans Ctrl, garde le même pas.
+  const pincement = ctrlKey && Math.abs(dy) < 50;
+  return Math.exp(-dy / (pincement ? 100 : 450));
+}
+
+/**
+ * Un pas de l'animation du zoom à la molette : on rapproche l'échelle de la cible (en proportion, pour un
+ * mouvement régulier), en gardant immobile le point (px, py) de la zone. Arrivé assez près, on y est.
+ */
+export function pasVersZoom(etat, kCible, px, py, part = 0.3) {
+  const k = Math.abs(Math.log(kCible / etat.k)) < 0.004 ? kCible : etat.k * Math.pow(kCible / etat.k, part);
+  return zoomerVers(etat, k, px, py);
 }
 
 /**
@@ -45,6 +56,8 @@ export function activerZoom(zone, cible, { max = ZOOM_MAX, surChange } = {}) {
   let glisse = null; // { p0, etat0, actif } : un doigt déplace le plateau agrandi
   let dernierToucher = null;
   let sansClicJusqua = 0;
+  // Zoom à la molette en cours : l'échelle visée, le point de la zone qui reste immobile, l'image d'animation.
+  let molette = null;
 
   const local = (e) => {
     const r = zone.getBoundingClientRect();
@@ -135,29 +148,55 @@ export function activerZoom(zone, cible, { max = ZOOM_MAX, surChange } = {}) {
     }
   });
   // Ordinateur : la molette agrandit ou réduit autour du pointeur (avec ou sans Ctrl ; Ctrl + molette, c'est aussi
-  // ce qu'envoie un pincement sur un pavé tactile). Plateau entier et molette vers le bas : il n'y a rien à
-  // réduire, la page défile comme d'habitude.
+  // ce qu'envoie un pincement sur un pavé tactile). Chaque cran fixe une échelle visée, que le plateau rejoint en
+  // douceur, image par image, en gardant immobile le point sous le pointeur (pas de bond, et les crans rapides
+  // s'additionnent). Plateau entier et molette vers le bas, sans Ctrl : la page défile comme d'habitude. Avec Ctrl,
+  // c'est toujours le plateau qui zoome, jamais toute la page.
+  const animerMolette = () => {
+    if (!molette) return;
+    const { kCible, x, y } = molette;
+    poser(pasVersZoom(etat, kCible, x, y));
+    if (etat.k === kCible || Math.abs(Math.log(kCible / etat.k)) < 0.004) {
+      molette = null;
+      return;
+    }
+    molette.image = requestAnimationFrame(animerMolette);
+  };
   zone.addEventListener(
     'wheel',
     (e) => {
       if (!e.deltaY) return;
-      const k = Math.min(max, Math.max(1, etat.k * facteurMolette(e)));
-      if (k === etat.k && etat.k === 1) return;
+      const depart = molette ? molette.kCible : etat.k;
+      const kCible = Math.min(max, Math.max(1, depart * facteurMolette(e)));
+      if (kCible === depart && depart === 1 && !e.ctrlKey) return;
       e.preventDefault();
+      if (kCible === depart) return;
       const [x, y] = local(e);
-      // Un cran de souris se voit mieux avec un court mouvement ; un geste continu suit la main sans délai.
-      poser(zoomerVers(etat, k, x, y), !e.ctrlKey && Math.abs(e.deltaY) * (e.deltaMode === 1 ? 33 : 1) >= 50);
+      const image = molette?.image;
+      molette = { kCible, x, y, image };
+      cible.style.transition = 'none';
+      if (!image) molette.image = requestAnimationFrame(animerMolette);
     },
     { passive: false },
   );
+  // Un autre geste (pincement, bouton loupe, double toucher) interrompt le zoom à la molette.
+  const arreterMolette = () => {
+    if (molette?.image) cancelAnimationFrame(molette.image);
+    molette = null;
+  };
+  zone.addEventListener('pointerdown', arreterMolette, true);
 
   return {
     echelle: () => etat.k,
     /** Bouton loupe : agrandit sur le milieu du plateau, ou revient au plateau entier. */
     basculer() {
+      arreterMolette();
       const r = zone.getBoundingClientRect();
       poser(etat.k > 1 ? { k: 1, x: 0, y: 0 } : zoomerVers(etat, ZOOM_DOUBLE, r.width / 2, r.height / 2), true);
     },
-    reinitialiser: () => poser({ k: 1, x: 0, y: 0 }, true),
+    reinitialiser: () => {
+      arreterMolette();
+      poser({ k: 1, x: 0, y: 0 }, true);
+    },
   };
 }
