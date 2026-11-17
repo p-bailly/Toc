@@ -1215,6 +1215,17 @@ details > .reglage:first-of-type {
 .plateau-toc .fantome-pion {
   pointer-events: none;
 }
+/* Coup montré avant d'être validé : le trait de la case de départ à l'arrivée */
+.plateau-toc .trajet-coup {
+  fill: none;
+  stroke-linejoin: round;
+  stroke: #fff;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-dasharray: 0.2 2.2;
+  opacity: 0.9;
+  pointer-events: none;
+}
 .plateau-toc .croix-capture {
   stroke: var(--err);
   stroke-width: 1.3;

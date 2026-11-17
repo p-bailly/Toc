@@ -295,7 +295,8 @@ export class Plateau {
    * @param {Object} o.etat            état public du moteur
    * @param {Object[]} o.joueurs       [{ pseudo, ia, icone }]
    * @param {number[]} [o.pions]       positions affichées (aperçu du 7 en cours de saisie) ; défaut etat.pions
-   * @param {Object} [o.choix]         { candidats: Set<pion>, choisi, cibles: [{ pion, pos, libelle }], fantome: { pion, pos }, captures: number[] }
+   * @param {Object} [o.choix]         { candidats: Set<pion>, choisi, cibles: [{ pion, pos, libelle }], fantome: { pion, pos }, captures: number[],
+   *                                     trajet: { pion, de, vers, sens }, fantomeEchange: { pion, pos } } (coup prêt : voir dessinerChoix)
    * @param {string[]} [o.sousTitres]  texte sous chaque pseudo (par siège)
    */
   maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue }) {
@@ -528,9 +529,17 @@ export class Plateau {
     c.replaceChildren();
     if (!choix) return;
     const pos = (g, p) => this.geo.positionPion(g, p, siegeVue);
-    if (choix.fantome) {
-      const p = pos(choix.fantome.pion, choix.fantome.pos);
-      c.append(s('g', { class: 'fantome-pion', transform: `translate(${p.x} ${p.y})` }, dessinPion(choix.fantome.pion >> 2, { fantome: true })));
+    // Coup prêt à être validé : le trajet, case par case, de la case de départ à l'arrivée (un trait direct pour
+    // une sortie ou un échange), puis le pion (estompé) à l'arrivée.
+    if (choix.trajet && choix.trajet.de !== choix.trajet.vers) {
+      const { pion, de, vers, sens } = choix.trajet;
+      const points = chemin(pion, de, vers, sens || 'direct', this.geo.nbJoueurs).map((p) => pos(pion, p));
+      c.append(s('polyline', { class: 'trajet-coup', points: points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ') }));
+    }
+    for (const f of [choix.fantome, choix.fantomeEchange]) {
+      if (!f) continue;
+      const p = pos(f.pion, f.pos);
+      c.append(s('g', { class: 'fantome-pion', transform: `translate(${p.x} ${p.y})` }, dessinPion(f.pion >> 2, { fantome: true })));
     }
     for (const g of choix.captures || []) {
       const p = pos(g, positions[g]);

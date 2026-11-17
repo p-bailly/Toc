@@ -90,7 +90,8 @@ export function afficher(racine, app) {
         'div',
         { class: 'carte' },
         interrupteur({
-          titre: 'Confirmer avant de jouer',
+          titre: 'Voir le coup avant de le valider',
+          texte: 'Le coup choisi est montré sur le plateau ; il part quand tu touches « Jouer ».',
           actif: r.confirmerCoup,
           surChange: (confirmerCoup) => maj({ confirmerCoup }),
         }),

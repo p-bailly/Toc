@@ -1043,8 +1043,13 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       choix.candidats = new Set();
       choix.choisi = null;
     } else if (coupPret) {
+      // Le coup prêt, montré avant d'être validé : le pion à son arrivée, le trajet depuis sa case, les pions
+      // qu'il renvoie à la base ; pour un échange, les deux pions à la place l'un de l'autre.
       const d = destination(coupPret);
       choix.fantome = { pion: coupPret.pion, pos: d.pos };
+      const sens = coupPret.t === 'avance' ? 'avant' : coupPret.t === 'recul' ? 'arriere' : 'direct';
+      choix.trajet = { pion: coupPret.pion, de: etat.pions[coupPret.pion], vers: d.pos, sens };
+      if (coupPret.t === 'echange') choix.fantomeEchange = { pion: coupPret.cible, pos: etat.pions[coupPret.pion] };
       choix.captures = d.captures;
       choix.cibleChoisie = ciblesCourantes.findIndex((c) => cle(c.coup) === cle(coupPret));
     }
