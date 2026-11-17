@@ -10,11 +10,14 @@ import { jouerPartie } from '../outils/tournoi.js';
 const IDS = ['debutant', 'amateur', 'confirme', 'expert', 'champion'];
 const a = (k) => ALLEE + k;
 
-/** Joueur de tournoi au niveau donné (budget court pour le champion). */
-const joueur = (niveau, budget = 3) => ({
+/**
+ * Joueur de tournoi au niveau donné (budget court pour le champion). Avec `iterations`, la recherche
+ * est bornée par ce nombre de simulations : à budget large, le coup ne dépend plus de la vitesse de la machine.
+ */
+const joueur = (niveau, budget = 3, iterations) => ({
   don: (e, s, m, o) => choisirDon(e, s, m, { ...o, niveau }),
   coup: (e, s, m, o) => {
-    const c = choisirCoup(e, s, m, { ...o, budgetMs: budget, niveau });
+    const c = choisirCoup(e, s, m, { ...o, budgetMs: budget, iterations, niveau });
     assert.equal(validerCoup(e, s, c, m), null, `coup illégal au niveau ${niveau}`);
     return c;
   },
@@ -131,12 +134,12 @@ test('niveaux : les niveaux faibles répondent vite', () => {
 });
 
 test('niveaux : ordre sur une série courte à graines fixes (champion > amateur, confirmé > débutant)', () => {
-  const serie = (fort, faible, n, budget) => {
+  const serie = (fort, faible, n, budget, iterations) => {
     let v = 0;
     for (let i = 0; i < n; i++) {
       const pair = i % 2 === 0;
-      const F = joueur(fort, budget);
-      const f = joueur(faible, budget);
+      const F = joueur(fort, budget, iterations);
+      const f = joueur(faible, budget, iterations);
       const r = jouerPartie(pair ? [F, f, F, f] : [f, F, f, F], 700 + i, { cinqAdverse: i % 4 >= 2 }, budget);
       if (r.gagnant === (pair ? 0 : 1)) v++;
     }
@@ -144,6 +147,9 @@ test('niveaux : ordre sur une série courte à graines fixes (champion > amateur
   };
   const cd = serie('confirme', 'debutant', 10, 0);
   assert.ok(cd >= 8, `confirmé contre débutant : ${cd}/10`);
-  const ca = serie('champion', 'amateur', 6, 8);
+  // Le champion cherche 16 simulations par coup (ce qu'il fait en une dizaine de millisecondes), sans limite de
+  // temps atteignable : un budget en millisecondes donnait un nombre de simulations, donc un score, qui dépendait
+  // de la charge de la machine. L'amateur et les deux niveaux de la première série ne simulent pas.
+  const ca = serie('champion', 'amateur', 6, 100000, 16);
   assert.ok(ca >= 5, `champion contre amateur : ${ca}/6`);
 });
