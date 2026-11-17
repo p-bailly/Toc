@@ -74,10 +74,16 @@ pseudos recopiés dans ses parties (`joueurs[i].pseudo`) ne changent pas. Le nom
 
 - `joueurs/{uid}` : `pseudo`, `visible`, `recherche` (pseudo simplifié, présent seulement si
   visible), `icone`, `verrouille`, `stats { jouees, gagnees }`, `comptees` (parties déjà comptées),
-  `creeLe`.
-- `joueurs/{uid}/prive/partiesIA` : l'historique des parties contre l'IA du joueur (`parties` : 300 résumés au
-  plus, `retirees` : parties retirées, `majLe`). Ces parties se jouent hors ligne, sur l'appareil ; ce document
-  fait suivre leurs résultats et leurs statistiques d'un appareil à l'autre. Lisible et modifiable par lui seul.
+  `creeLe`, `enCoursIA` (dates des parties contre l'IA en cours gardées par le compte, voir plus bas).
+- `joueurs/{uid}/prive/…` : les parties contre l'IA du joueur. Elles se jouent hors ligne, sur l'appareil ; ces
+  documents les font suivre d'un appareil à l'autre. Lisibles et modifiables par lui seul.
+  - `partiesIA` : l'historique (`parties` : 300 résumés au plus, `retirees` : parties retirées, `completes` :
+    parties gardées en entier, `majLe`) ;
+  - `finie_{id}` : une partie terminée entière (`json` : sa sauvegarde en texte, `date`, `majLe`), pour l'analyser
+    depuis un autre appareil ; les 12 plus récentes seulement ;
+  - `encours3`, `encours4` : la partie en cours de chaque mode (même forme), une seule par mode : la plus
+    récemment jouée. Sa date est recopiée dans la fiche (`enCoursIA`), que chaque appareil écoute déjà : il sait
+    sans autre lecture qu'un autre appareil a joué.
 - `parties/{code}` : le code d'invitation (6 caractères sans 0/O/1/I/L) est l'identifiant. Nom,
   hôte, statut, réglages (`cinqAdverse` se change en salle d'attente), places (4, ou 3 ; une IA a son `niveau` de force : `debutant`, `amateur`,
   `confirme`, `expert` ou `champion`, absent = champion), `uids`, invitations, état public du moteur, historique
@@ -99,9 +105,9 @@ Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le mot
 - tout accès exige d'être connecté ; une fiche n'est modifiable que par son titulaire, qui ne peut ni
   poser ni lever le verrou de pseudo ; les statistiques ne bougent que d'une partie terminée à la fois,
   avec le bon résultat (son équipe à 4, son siège à 3), une seule fois ;
-- l'historique des parties contre l'IA (`joueurs/{uid}/prive/partiesIA`) n'est lu et écrit que par son
-  titulaire, dans une forme bornée ; son contenu n'est pas vérifié (ces parties se jouent hors ligne, et ces
-  statistiques ne regardent que lui) ;
+- les parties contre l'IA gardées par le compte (`joueurs/{uid}/prive/…` : historique, parties entières, partie
+  en cours) ne sont lues et écrites que par leur titulaire, dans une forme bornée (taille, noms des documents) ;
+  leur contenu n'est pas vérifié (ces parties se jouent hors ligne, et ne regardent que lui) ;
 - une partie en cours n'est lisible que par ses membres (et ses invités) ; seules se listent ses parties,
   ses invitations et les salles d'attente (parties pas encore lancées, 50 au plus par requête) ;
 - une **salle d'attente est ouverte à tous** : tout joueur connecté la lit, s'y assoit sur une place libre

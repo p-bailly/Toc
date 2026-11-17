@@ -84,9 +84,24 @@ function diffuser() {
 
 const copie = (x) => JSON.parse(JSON.stringify(x));
 
+// Parties contre l'IA gardées en entier par les comptes (en cours et terminées) : en mémoire seulement, elles
+// sont trop grosses pour sessionStorage. uid → { encours: { 3, 4 }, finies: Map }
+const sauvegardesIA = new Map();
+const sauvegardesDe = (uid) => sauvegardesIA.get(uid) || sauvegardesIA.set(uid, { encours: {}, finies: new Map() }).get(uid);
+
 function joueurCourant() {
   const c = db.comptes[db.moi];
-  return c ? { uid: c.uid, pseudo: c.pseudo, icone: c.icone || null, visible: c.visible, verrouille: c.verrouille, stats: { ...c.stats } } : null;
+  if (!c) return null;
+  const enCours = sauvegardesDe(c.uid).encours;
+  return {
+    uid: c.uid,
+    pseudo: c.pseudo,
+    icone: c.icone || null,
+    visible: c.visible,
+    verrouille: c.verrouille,
+    stats: { ...c.stats },
+    enCoursIA: { 3: enCours[3]?.date || 0, 4: enCours[4]?.date || 0 },
+  };
 }
 
 function exigerConnexion() {
@@ -233,8 +248,45 @@ export async function synchroniserPartiesIA({ parties = [], retirees = [] } = {}
   for (const p of [...(c.partiesIA || []), ...parties]) if (p?.id && !retire.includes(p.id) && !parId.has(p.id)) parId.set(p.id, copie(p));
   c.partiesIA = [...parId.values()].sort((a, b) => b.date - a.date).slice(0, 300);
   c.retireesIA = retire;
+  const finies = sauvegardesDe(c.uid).finies;
+  for (const id of [...finies.keys()]) if (!parId.has(id)) finies.delete(id);
   sauver();
-  return { parties: copie(c.partiesIA), retirees: retire.slice() };
+  return { parties: copie(c.partiesIA), retirees: retire.slice(), completes: completesDemo(c) };
+}
+
+/** Parties gardées en entier, dans l'ordre de l'historique (les 12 plus récentes). */
+function completesDemo(c) {
+  const finies = sauvegardesDe(c.uid).finies;
+  const gardees = (c.partiesIA || []).map((p) => p.id).filter((id) => finies.has(id));
+  for (const id of gardees.slice(12)) finies.delete(id);
+  return gardees.slice(0, 12);
+}
+
+export async function ecrirePartieIAFinie(id, json) {
+  await attendre(60);
+  const c = exigerConnexion();
+  if ((c.partiesIA || []).some((p) => p.id === id)) sauvegardesDe(c.uid).finies.set(id, String(json));
+  return { completes: completesDemo(c) };
+}
+
+export async function lirePartieIAFinie(id) {
+  await attendre(60);
+  return sauvegardesDe(exigerConnexion().uid).finies.get(id) ?? null;
+}
+
+export async function ecrirePartieIAEnCours(nb, json, date) {
+  await attendre(60);
+  const enCours = sauvegardesDe(exigerConnexion().uid).encours;
+  if ((enCours[nb]?.date || 0) >= date) return { ecrit: false };
+  enCours[nb] = { json: String(json), date };
+  changer(); // la fiche du joueur porte la date : les écrans la reçoivent
+  return { ecrit: true };
+}
+
+export async function lirePartieIAEnCours(nb) {
+  await attendre(60);
+  const s = sauvegardesDe(exigerConnexion().uid).encours[nb];
+  return s ? { ...s } : null;
 }
 
 export async function lireJoueur(uid) {

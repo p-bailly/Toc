@@ -101,6 +101,25 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   assert.deepEqual(histoA.parties.map((x) => x.id), ['ia2', 'ia1']);
   assert.deepEqual((await a.client.synchroniserPartiesIA({ parties: [], retirees: ['ia1'] })).parties.map((x) => x.id), ['ia2']);
   assert.deepEqual((await b.client.synchroniserPartiesIA({ parties: [], retirees: [] })).parties, []);
+  // Partie gardée en entier (analyse depuis un autre appareil) et partie en cours : écrites par un appareil, lues
+  // par l'autre ; la plus récente gagne ; la fiche annonce la date.
+  assert.deepEqual((await a.client.ecrirePartieIAFinie('ia2', '{"partie":{"etat":{}}}')).completes, ['ia2']);
+  assert.equal(await a2.client.lirePartieIAFinie('ia2'), '{"partie":{"etat":{}}}');
+  assert.equal(await b.client.lirePartieIAFinie('ia2'), null);
+  assert.deepEqual((await a.client.ecrirePartieIAFinie('ia1', '{}')).completes, ['ia2'], 'retirée de l’historique : pas gardée');
+  assert.deepEqual((await a2.client.synchroniserPartiesIA({ parties: [], retirees: ['ia2'] })).completes, []);
+  assert.equal(await a.client.lirePartieIAFinie('ia2'), null);
+  assert.equal(await a.client.lirePartieIAEnCours(4), null);
+  assert.deepEqual(await a.client.ecrirePartieIAEnCours(4, '{"coups":10}', 5000), { ecrit: true });
+  assert.deepEqual(await a2.client.ecrirePartieIAEnCours(4, '{"coups":3}', 4000), { ecrit: false });
+  assert.deepEqual(await a2.client.lirePartieIAEnCours(4), { json: '{"coups":10}', date: 5000 });
+  assert.deepEqual(await a2.client.ecrirePartieIAEnCours(4, '{"coups":12}', 6000), { ecrit: true });
+  assert.deepEqual(await a.client.lirePartieIAEnCours(4), { json: '{"coups":12}', date: 6000 });
+  assert.equal(await a.client.lirePartieIAEnCours(3), null);
+  let ficheA = null;
+  const arretFiche = a.client.surAuth((j) => (ficheA = j));
+  await attendre(() => ficheA?.enCoursIA?.[4] === 6000, 10000, 'date de la partie en cours dans la fiche');
+  arretFiche();
 
   const { id, code } = await a.client.creerPartie({ nom: 'Émulateur', cinqAdverse: false });
   let invitations = null;
@@ -239,6 +258,35 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(setDoc(histo(X, A), { parties: [], retirees: [], majLe: serverTimestamp() }));
   await assertFails(deleteDoc(histo(A)));
   await assertFails(getDocs(collection(db(A), 'joueurs', A, 'prive')));
+  await assertSucceeds(updateDoc(histo(A), { completes: ['abc'], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(histo(A), { completes: Array(13).fill('abc'), majLe: serverTimestamp() }));
+  // Parties gardées en entier (terminées, et en cours de chaque mode) : du texte JSON borné, privé lui aussi.
+  const prive = (u, nom, de = u) => doc(db(u), 'joueurs', de, 'prive', nom);
+  const entiere = { json: '{"partie":{}}', date: 1000, majLe: serverTimestamp() };
+  await assertSucceeds(setDoc(prive(A, 'finie_abc'), entiere));
+  await assertSucceeds(setDoc(prive(A, 'encours4'), entiere));
+  await assertSucceeds(setDoc(prive(A, 'encours3'), { ...entiere, date: 2000 }));
+  await assertFails(setDoc(prive(A, 'encours5'), entiere));
+  await assertFails(setDoc(prive(A, 'finie_'), entiere));
+  await assertFails(setDoc(prive(A, 'finie_a-b'), entiere));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, json: 'x'.repeat(1000001) }));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, json: { partie: 1 } }));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, date: 'hier' }));
+  await assertFails(setDoc(prive(A, 'encours4'), { json: '{}', date: 1 }));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, autre: 1 }));
+  await assertSucceeds(getDoc(prive(A, 'encours4')));
+  await assertFails(getDoc(prive(X, 'encours4', A)));
+  await assertFails(getDoc(prive(X, 'finie_abc', A)));
+  await assertFails(setDoc(prive(X, 'encours4', A), entiere));
+  await assertFails(deleteDoc(prive(X, 'finie_abc', A)));
+  await assertFails(deleteDoc(prive(A, 'encours4')));
+  await assertSucceeds(deleteDoc(prive(A, 'finie_abc')));
+  // La fiche porte la date de la partie en cours de chaque mode, et rien d'autre à cet endroit.
+  await assertSucceeds(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: { 4: 1000 } }));
+  await assertSucceeds(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: { 3: 2000, 4: 1000 } }));
+  await assertFails(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: { 5: 1 } }));
+  await assertFails(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: 'x' }));
+  await assertFails(updateDoc(doc(db(X), 'joueurs', A), { enCoursIA: { 4: 9 } }));
 
   // Partie : création valide, puis tentatives.
   const id = 'ABCDEF';

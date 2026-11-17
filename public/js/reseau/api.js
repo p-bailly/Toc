@@ -12,7 +12,9 @@
 // Le nom n'est pas secret : qui le connaît ouvre le compte (voir docs/firebase.md).
 //
 // Types :
-//   Joueur      = { uid, pseudo, icone, visible, verrouille, stats: { jouees, gagnees } }
+//   Joueur      = { uid, pseudo, icone, visible, verrouille, stats: { jouees, gagnees }, enCoursIA: { 3, 4 } }
+//                 enCoursIA[nb] : date (ms) de la partie contre l'IA en cours que le compte garde pour ce
+//                 mode (0 : aucune), voir ecrirePartieIAEnCours ;
 //                 icone : identifiant court d'un emoji du catalogue de l'interface, ou null ;
 //                 visible : accepte d'être trouvé par les autres joueurs ;
 //                 verrouille : pseudo imposé par l'administrateur (non modifiable)
@@ -97,11 +99,43 @@ export async function modifierProfil(changements) {
  *   local = { parties: [RésuméIA…], retirees: [id…] } → { parties: [RésuméIA…], retirees: [id…] }
  *   RésuméIA = { id, date (ms), nb, gagne, gagnants, joueurs: [{ pseudo, ia, niveau }], donnes, coups, cinqAdverse }
  *   retirees : parties retirées de l'historique (elles ne reviennent sur aucun appareil).
- * Seuls les résultats suivent : les coups d'une partie (son analyse) restent sur l'appareil où elle a été jouée.
+ * Le résultat a aussi `completes: [id…]` : les parties que le compte garde en entier (ecrirePartieIAFinie).
  */
 export async function synchroniserPartiesIA(local) {
   if (!reseauDisponible()) return nonConfigure();
   return client.synchroniserPartiesIA(local);
+}
+
+/**
+ * Garde en entier une partie contre l'IA terminée (json : sa sauvegarde { nom, joueurs, partie } en texte), pour
+ * l'analyser depuis un autre appareil. La partie doit être dans l'historique du compte ; seules les 12 plus
+ * récentes sont gardées. → { completes: [id…] }
+ */
+export async function ecrirePartieIAFinie(id, json) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.ecrirePartieIAFinie(id, json);
+}
+
+/** Sauvegarde (texte JSON) d'une partie terminée gardée en entier par le compte, ou null. */
+export async function lirePartieIAFinie(id) {
+  if (!reseauDisponible()) return null;
+  return client.lirePartieIAFinie(id);
+}
+
+/**
+ * Garde la partie contre l'IA en cours du mode nb (3 ou 4) : json = sa sauvegarde en texte, date = sa dernière
+ * modification sur l'appareil (ms). Une seule par mode, la plus récemment jouée : plus ancienne que celle du
+ * compte, elle n'est pas écrite. La date arrive dans Joueur.enCoursIA sur tous les appareils. → { ecrit }
+ */
+export async function ecrirePartieIAEnCours(nb, json, date) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.ecrirePartieIAEnCours(nb, json, date);
+}
+
+/** Partie contre l'IA en cours gardée par le compte pour ce mode → { json, date } | null */
+export async function lirePartieIAEnCours(nb) {
+  if (!reseauDisponible()) return null;
+  return client.lirePartieIAEnCours(nb);
 }
 
 /** Fiche publique d'un joueur (avec cache) → { uid, pseudo, icone } | null */

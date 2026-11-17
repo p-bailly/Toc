@@ -2,8 +2,8 @@
 // compte, les mêmes sur tous les appareils), le bilan avec et contre chaque joueur et les parties en ligne terminées,
 // puis le bilan contre l'IA par mode et par niveau et les dernières parties contre l'IA (à rouvrir pour les
 // analyser). Les parties contre l'IA viennent de l'appareil (parties-finies.js) et, avec un compte, de ses autres
-// appareils (synchro-ia.js : seul le résultat suit, l'analyse reste là où la partie a été jouée) ; celles en ligne
-// viennent de la veille de « Mes parties », et les totaux en ligne de la fiche du joueur (toutes ses parties).
+// appareils (synchro-ia.js : les résultats suivent tous, et les parties les plus récentes en entier, pour l'analyse) ;
+// celles en ligne viennent de la veille de « Mes parties », et les totaux en ligne de la fiche du joueur.
 // (Le fichier ne s'appelle pas « stats » : les bloqueurs de publicité refusent ce nom, voir tests/noms-fichiers.)
 
 import { h, remplacer, pluriel, ilYa } from './dom.js';
@@ -28,6 +28,9 @@ export function rattraperPartiesFinies(uid = null) {
     if (sv?.partie?.etat?.phase === 'fini') enregistrerPartieFinie(sv, n, { uid });
   }
 }
+
+/** Analysable : ses coups sont sur l'appareil, ou gardés par le compte (partie jouée sur un autre appareil). */
+const analysable = (p) => !!(p.sauvegarde || p.auCompte);
 
 const tuiles = (...paires) => h('div', { class: 'stats' }, paires.map(([etiquette, valeur]) => h('div', { class: 'stat' }, h('div', { class: 'etiquette' }, etiquette), h('div', { class: 'valeur' }, valeur))));
 
@@ -84,14 +87,14 @@ export function afficher(racine, app) {
               'div',
               { class: 'principal' },
               h('div', { class: 'mot' }, titreMode(p.nb, niveauAdverse(p))),
-              h('div', { class: 'note' }, `${resultat ? resultat + ' · ' : ''}${details}${p.sauvegarde ? '' : p.ailleurs ? ' · jouée sur un autre appareil' : ' · analyse non gardée'}`),
+              h('div', { class: 'note' }, `${resultat ? resultat + ' · ' : ''}${details}${p.ailleurs ? ' · jouée sur un autre appareil' : ''}${analysable(p) ? '' : ' · analyse non gardée'}`),
             ),
             h('span', { class: 'badge ' + (p.gagne ? 'ok' : 'neutre') }, p.gagne ? 'Gagnée' : 'Perdue'),
           ];
           return h(
             'div',
             { class: 'ligne-avec-action', 'data-finie': p.id },
-            p.sauvegarde
+            analysable(p)
               ? h('a', { class: 'ligne', href: '#/analyse/finie/' + encodeURIComponent(p.id), 'aria-label': 'Analyser cette partie' }, contenu)
               : h('div', { class: 'ligne', style: { cursor: 'default' } }, contenu),
             h(

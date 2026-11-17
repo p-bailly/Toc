@@ -18,7 +18,7 @@ import { piParties, piIA, piBilan, piRegles, piReglages } from './ui/pictos.js';
 import { definirLecteurJoueurs, retenirIcone } from './ui/composants.js';
 import { surEnAttente, nbEnAttente, surOuvertureNotification } from './ui/notifications.js';
 import { demarrerVeille, arreterVeille } from './ui/veille.js';
-import { synchroniserPartiesIA } from './ui/synchro-ia.js';
+import { synchroniserPartiesIA, envoyerPartiesEnCours, envoyerEnQuittant } from './ui/synchro-ia.js';
 
 const parametres = new URLSearchParams(location.search);
 const demo = parametres.has('demo');
@@ -196,8 +196,10 @@ api.surAuth((joueur) => {
   if (joueur) retenirIcone(joueur.uid, joueur.icone);
   if (joueur && (!avant || avant.uid !== joueur.uid)) {
     demarrerVeille(api);
-    // L'historique contre l'IA de cet appareil rejoint celui du compte (et inversement).
+    // Les parties contre l'IA de cet appareil rejoignent le compte (et inversement) : l'historique, et la partie
+    // en cours si elle n'a pas encore été envoyée.
     void synchroniserPartiesIA(app);
+    void envoyerPartiesEnCours(app);
   }
   if (!joueur && avant) arreterVeille();
   if (premierAvis) {
@@ -211,6 +213,8 @@ api.surAuth((joueur) => {
 });
 
 surOuvertureNotification((hash) => app.naviguer(hash));
+// La partie contre l'IA en cours part vers le compte quand l'appli passe en arrière-plan.
+envoyerEnQuittant(app);
 
 // Service worker : coquille de l'appli disponible hors ligne. Une nouvelle version prend la main au lancement suivant.
 if ('serviceWorker' in navigator && !parametres.has('sanssw')) {

@@ -8,6 +8,10 @@ import {
   connecterNom,
   creerAnnuaire,
   ficheVersJoueur,
+  ecrirePartieIAEnCours,
+  ecrirePartieIAFinie,
+  lirePartieIAEnCours,
+  lirePartieIAFinie,
   modifierProfil as modifierFiche,
   synchroniserPartiesIA,
 } from './comptes.js';
@@ -182,6 +186,10 @@ export function creerClient(options) {
     }),
 
     synchroniserPartiesIA: action(async (local) => synchroniserPartiesIA(await ctx(), local)),
+    ecrirePartieIAFinie: action(async (id, json) => ecrirePartieIAFinie(await ctx(), id, json)),
+    lirePartieIAFinie: action(async (id) => lirePartieIAFinie(await ctx(), id)),
+    ecrirePartieIAEnCours: action(async (nb, json, date) => ecrirePartieIAEnCours(await ctx(), nb, json, date)),
+    lirePartieIAEnCours: action(async (nb) => lirePartieIAEnCours(await ctx(), nb)),
 
     lireJoueur: action(async (uid) => (await annuaireCourant()).lireJoueur(uid)),
 

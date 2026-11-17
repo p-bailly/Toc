@@ -97,10 +97,17 @@ invitations et le lancement. Les statistiques du compte (parties en ligne jouée
 ## Un compte sur plusieurs appareils
 
 Le même prénom ouvre le même compte partout. Les parties en ligne et leurs statistiques sont dans le compte. Les
-parties contre l'IA se jouent hors ligne, sur l'appareil, mais leur résultat rejoint le compte dès qu'on est connecté
-(`public/js/ui/synchro-ia.js`) : l'historique et les statistiques contre l'IA sont les mêmes sur tous ses appareils.
-Restent sur l'appareil : la partie contre l'IA en cours, et les coups des parties terminées (leur analyse). Sur un
-appareil partagé, chacun ne voit que les parties de son compte.
+parties contre l'IA se jouent hors ligne, sur l'appareil, mais rejoignent le compte dès qu'on est connecté
+(`public/js/ui/synchro-ia.js`) :
+
+- l'historique et les statistiques contre l'IA sont les mêmes sur tous ses appareils ;
+- les 12 parties terminées les plus récentes sont gardées en entier : on les analyse depuis n'importe quel appareil ;
+- la partie en cours de chaque mode est envoyée au compte pendant qu'on joue (quelques secondes après chaque coup,
+  et en quittant l'écran) et reprise sur un autre appareil. Le compte n'en garde qu'une par mode : la plus récemment
+  jouée l'emporte, et une nouvelle partie remplace l'ancienne partout.
+
+Sans compte ou sans réseau, tout reste sur l'appareil et partira à la prochaine connexion. Sur un appareil partagé,
+chacun ne voit que les parties de son compte.
 
 ## Limites connues
 

@@ -21,14 +21,17 @@ service cloud.firestore {
     }
 
     // ─── Fiches des joueurs ───────────────────────────────────────────────
-    // { pseudo, recherche?, visible, icone?, verrouille?, stats: { jouees, gagnees }, comptees: [id…], creeLe }
+    // { pseudo, recherche?, visible, icone?, verrouille?, stats: { jouees, gagnees }, comptees: [id…], creeLe,
+    //   enCoursIA?: { '3'?: date, '4'?: date } }
     match /joueurs/{uid} {
       // Pseudo imposé par l'administrateur (champ `verrouille: true` posé dans la console).
       function verrouille(d) {
         return d.get('verrouille', false) == true;
       }
       function ficheValide(d) {
-        return d.keys().hasOnly(['pseudo', 'visible', 'recherche', 'verrouille', 'icone', 'stats', 'comptees', 'creeLe'])
+        return d.keys().hasOnly(['pseudo', 'visible', 'recherche', 'verrouille', 'icone', 'stats', 'comptees', 'creeLe', 'enCoursIA'])
+          // Dates des parties contre l'IA en cours gardées par le compte (une par mode).
+          && (!('enCoursIA' in d) || (d.enCoursIA is map && d.enCoursIA.keys().hasOnly(['3', '4'])))
           && d.pseudo is string && d.pseudo.size() > 0 && d.pseudo.size() <= 20
           // La clé de recherche (pseudo simplifié) n'existe que si le joueur accepte d'être trouvé.
           && (!('recherche' in d) || (d.recherche is string && d.recherche.size() <= 20 && d.get('visible', true) == true))
@@ -81,19 +84,36 @@ service cloud.firestore {
           || partieComptee(resource.data, request.resource.data));
       allow delete: if false;
 
-      // ── Données privées du joueur : joueurs/{uid}/prive/partiesIA, l'historique de ses parties contre l'IA
-      // (jouées hors ligne), pour qu'il suive d'un appareil à l'autre. Lui seul le lit et l'écrit. ──
+      // ── Données privées du joueur : ses parties contre l'IA (jouées hors ligne), gardées par le compte pour
+      // qu'elles suivent d'un appareil à l'autre. Lui seul les lit et les écrit.
+      //   prive/partiesIA   : l'historique (résumés, parties retirées, parties gardées en entier) ;
+      //   prive/finie_{id}  : une partie terminée entière (pour l'analyse) ;
+      //   prive/encours3, prive/encours4 : la partie en cours de chaque mode. ──
       match /prive/{nom} {
         function historiqueValide(d) {
-          return d.keys().hasOnly(['parties', 'retirees', 'majLe'])
+          return d.keys().hasOnly(['parties', 'retirees', 'completes', 'majLe'])
             && d.parties is list && d.parties.size() <= 300
             && d.retirees is list && d.retirees.size() <= 500
+            && (!('completes' in d) || (d.completes is list && d.completes.size() <= 12))
             && d.majLe == request.time;
         }
+        // Une sauvegarde entière, en texte JSON (un document tient 1 Mo).
+        function sauvegardeValide(d) {
+          return d.keys().hasOnly(['json', 'date', 'majLe'])
+            && d.json is string && d.json.size() <= 1000000
+            && d.date is number
+            && d.majLe == request.time;
+        }
+        function estFinie() {
+          return nom.matches('^finie_[A-Za-z0-9]{1,24}$');
+        }
         allow get: if connecte() && moi() == uid;
-        allow create, update: if connecte() && moi() == uid && nom == 'partiesIA'
-          && historiqueValide(request.resource.data);
-        allow list, delete: if false;
+        allow create, update: if connecte() && moi() == uid
+          && (nom == 'partiesIA'
+            ? historiqueValide(request.resource.data)
+            : (estFinie() || nom == 'encours3' || nom == 'encours4') && sauvegardeValide(request.resource.data));
+        allow delete: if connecte() && moi() == uid && estFinie();
+        allow list: if false;
       }
     }
 
