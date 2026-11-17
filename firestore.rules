@@ -180,15 +180,15 @@ service cloud.firestore {
           && (!('niveau' in p) || p.niveau in ['debutant', 'amateur', 'confirme', 'expert', 'champion']);
       }
       // Changement permis d'un siège en salle d'attente : soi-même s'y placer, en partir ou y changer de couleur ;
-      // l'hôte place, retire une IA ou change son niveau.
-      function siegeOk(a, b, hote) {
+      // tout joueur connecté place une IA, la retire ou change son niveau. Personne ne déplace un autre joueur.
+      function siegeOk(a, b) {
         return a == b
           || (a == null && estMoi(b))
           || (aMoi(a) && b == null)
           || (aMoi(a) && estMoi(b)) // changer la couleur de ses pions
-          || (hote && a == null && estIA(b))
-          || (hote && estIA(a) && b == null)
-          || (hote && estIA(a) && estIA(b)); // changer le niveau d'une IA
+          || (a == null && estIA(b))
+          || (estIA(a) && b == null)
+          || (estIA(a) && estIA(b)); // changer le niveau d'une IA
       }
       function nbMoi(j) {
         return un(aMoi(j[0])) + un(aMoi(j[1])) + un(aMoi(j[2])) + (j.size() > 3 ? un(aMoi(j[3])) : 0);
@@ -205,7 +205,7 @@ service cloud.firestore {
         && (membre(resource.data) || invite(resource.data)
           || (resource.data.statut == 'attente' && request.query.limit <= 50));
 
-      // ── Création : par l'hôte, seul joueur, au siège 0 ──
+      // ── Création : par son créateur (`hote`), seul joueur, au siège 0 ──
       allow create: if connecte() && creationValide(request.resource.data);
       function creationValide(d) {
         return d.keys().hasOnly(['nom', 'code', 'hote', 'statut', 'reglages', 'joueurs', 'uids', 'invites',
@@ -224,39 +224,60 @@ service cloud.firestore {
           && d.creeLe == request.time && d.majLe == request.time;
       }
 
-      // ── Salle d'attente : se placer (invité ou non), changer de siège, partir ; l'hôte place ou retire des IA ──
+      // ── Salle d'attente : se placer (invité ou non), changer de siège, partir ; placer ou retirer des IA.
+      // Le créateur de la salle n'a aucun droit de plus que les autres : il peut partir comme eux. ──
       function majPlaces(av, ap) {
-        let hote = av.hote == moi();
         let j = ap.joueurs;
         let n = nbMoi(j);
         return av.statut == 'attente' && ap.statut == 'attente'
           && affecte().hasOnly(['joueurs', 'uids', 'invites', 'majLe'])
           && j is list && j.size() == av.joueurs.size()
-          && siegeOk(av.joueurs[0], j[0], hote) && siegeOk(av.joueurs[1], j[1], hote)
-          && siegeOk(av.joueurs[2], j[2], hote) && (j.size() == 3 || siegeOk(av.joueurs[3], j[3], hote))
+          && siegeOk(av.joueurs[0], j[0]) && siegeOk(av.joueurs[1], j[1])
+          && siegeOk(av.joueurs[2], j[2]) && (j.size() == 3 || siegeOk(av.joueurs[3], j[3]))
           && n <= 1
-          && (!hote || n == 1) // l'hôte ne quitte pas son siège : il supprime la partie
           && ap.uids == (n == 1 ? (membre(av) ? av.uids : av.uids.concat([moi()])) : av.uids.removeAll([moi()]))
           // En entrant, l'invité sort de la liste des invités.
           && (ap.get('invites', []) == av.get('invites', []) || ap.invites == av.invites.removeAll([moi()]))
           && ap.majLe == request.time;
       }
 
-      // ── Règle du « 5 adverse » : tout joueur connecté l'active ou la désactive tant que la partie attend.
-      // Rien d'autre ne bouge dans les réglages (le nombre de joueurs reste figé). ──
-      function majReglages(av, ap) {
-        return av.statut == 'attente'
-          && affecte().hasOnly(['reglages', 'majLe'])
+      // ── Réglages de la salle : tout joueur connecté change le nom, la règle du « 5 adverse » ou le mode (3 ou
+      // 4 joueurs) tant que la partie attend. Changer de mode garde tout le monde à table : chaque place
+      // d'un joueur est reprise telle quelle (aucune n'est ajoutée, retirée ni dédoublée), les IA suivent. ──
+      function placeGardee(p, av) {
+        return p == null || estIA(p) || (p.ia == false && p in av.joueurs);
+      }
+      function estHumain(p) {
+        return p != null && p.ia == false;
+      }
+      function toutesDistinctes(j) {
+        return (j[0] == null || (j[0] != j[1] && j[0] != j[2] && (j.size() == 3 || j[0] != j[3])))
+          && (j[1] == null || (j[1] != j[2] && (j.size() == 3 || j[1] != j[3])))
+          && (j[2] == null || j.size() == 3 || j[2] != j[3]);
+      }
+      function majSalle(av, ap) {
+        let j = ap.joueurs;
+        return av.statut == 'attente' && ap.statut == 'attente'
+          && affecte().hasOnly(['nom', 'reglages', 'joueurs', 'majLe'])
+          && ap.nom is string && ap.nom.size() > 0 && ap.nom.size() <= 40
           && ap.reglages is map && ap.reglages.cinqAdverse is bool
-          && ap.reglages == (nbJ(av) == 3
+          && ap.reglages == (nbJ(ap) == 3
             ? { 'cinqAdverse': ap.reglages.cinqAdverse, 'nbJoueurs': 3 }
             : { 'cinqAdverse': ap.reglages.cinqAdverse })
+          && j is list && j.size() == nbJ(ap)
+          && (nbJ(ap) == nbJ(av)
+            ? j == av.joueurs
+            : placeGardee(j[0], av) && placeGardee(j[1], av) && placeGardee(j[2], av)
+              && (j.size() == 3 || placeGardee(j[3], av))
+              && toutesDistinctes(j)
+              && un(estHumain(j[0])) + un(estHumain(j[1])) + un(estHumain(j[2]))
+                + (j.size() == 3 ? 0 : un(estHumain(j[3]))) == av.uids.size())
           && ap.majLe == request.time;
       }
 
-      // ── Invitations directes : l'hôte invite ou annule ──
+      // ── Invitations directes : tout joueur connecté invite ou annule ──
       function majInvitations(av, ap) {
-        return av.statut == 'attente' && av.hote == moi()
+        return av.statut == 'attente'
           && affecte().hasOnly(['invites', 'pseudosInvites', 'refus', 'majLe'])
           && ap.invites is list && ap.invites.size() <= 8 && !ap.invites.hasAny(av.uids)
           && ap.pseudosInvites is map && ap.pseudosInvites.size() <= 32
@@ -264,7 +285,20 @@ service cloud.firestore {
           && ap.majLe == request.time;
       }
 
-      // ── Refuser une invitation : on se retire des invités, l'hôte le voit dans `refus` ──
+      // ── Abandon d'une partie en cours, d'un commun accord : un membre ajoute sa voix, ou fait tomber la
+      // proposition (refus, ou retrait). La partie est abandonnée à l'instant où tous ses joueurs humains ont
+      // accepté, pas avant ; rien d'autre ne change. ──
+      function majAbandon(av, ap) {
+        let votes = av.get('abandon', []);
+        return av.statut == 'encours' && membre(av)
+          && affecte().hasOnly(['abandon', 'statut', 'majLe'])
+          && ap.abandon is list
+          && (ap.abandon == [] || (!(moi() in votes) && ap.abandon == votes.concat([moi()])))
+          && ap.statut == (ap.abandon.size() > 0 && ap.abandon.hasAll(av.uids) ? 'abandonnee' : 'encours')
+          && ap.majLe == request.time;
+      }
+
+      // ── Refuser une invitation : on se retire des invités, la salle le voit dans `refus` ──
       function refus(av, ap) {
         return av.statut == 'attente' && invite(av)
           && affecte().hasOnly(['invites', 'refus', 'majLe'])
@@ -273,11 +307,11 @@ service cloud.firestore {
           && ap.majLe == request.time;
       }
 
-      // ── Lancement : l'hôte, 4 sièges occupés, état initial, premier cycle de mains écrit ──
+      // ── Lancement : un joueur assis à la table, tous les sièges occupés, état initial, premier cycle de mains écrit ──
       function lancement(av, ap) {
         let e = ap.etat;
         let n = nbJ(av);
-        return av.statut == 'attente' && av.hote == moi() && ap.statut == 'encours'
+        return av.statut == 'attente' && membre(av) && ap.statut == 'encours'
           && affecte().hasOnly(['statut', 'etat', 'historique', 'enAttente', 'invites', 'majLe'])
           && av.joueurs[0] != null && av.joueurs[1] != null && av.joueurs[2] != null && (n == 3 || av.joueurs[3] != null)
           && ap.invites == [] && ap.historique == []
@@ -376,8 +410,9 @@ service cloud.firestore {
         || refus(resource.data, request.resource.data)
         || lancement(resource.data, request.resource.data)
         || majJeu(resource.data, request.resource.data)
-        // En dernier : un coup accepté ne paie pas cette vérification (limite de 1000 expressions).
-        || majReglages(resource.data, request.resource.data)
+        // En dernier : un coup accepté ne paie pas ces vérifications (limite de 1000 expressions).
+        || majSalle(resource.data, request.resource.data)
+        || majAbandon(resource.data, request.resource.data)
       );
 
       // Supprimer : tout joueur connecté, tant que la partie n'a pas commencé (une partie lancée ne se supprime plus).

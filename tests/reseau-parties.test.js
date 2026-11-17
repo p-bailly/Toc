@@ -75,8 +75,8 @@ test("salle d'attente : créer, rejoindre, sièges, IA, quitter", async () => {
 
   await b.client.choisirSiege(id, 2);
   await assert.rejects(b.client.choisirSiege(id, 0), /déjà pris/);
-  await assert.rejects(b.client.ajouterIA(id, 1), /créateur/);
-  await a.client.ajouterIA(id, 1);
+  // N'importe qui place une IA (ici Bruno, qui n'a pas créé la salle).
+  await b.client.ajouterIA(id, 1);
   await assert.rejects(a.client.ajouterIA(id, 1), /déjà pris/);
   p = serveur.get(`parties/${id}`);
   assert.deepEqual(p.joueurs[1], { uid: null, pseudo: 'IA Est', ia: true, niveau: 'champion' });
@@ -88,14 +88,118 @@ test("salle d'attente : créer, rejoindre, sièges, IA, quitter", async () => {
   await d.client.rejoindrePartie(code);
   assert.equal(serveur.get(`parties/${id}`).joueurs[1].uid, d.joueur.uid);
 
-  // Un invité quitte ; l'hôte lance (sièges incomplets refusés) ; l'hôte qui quitte supprime la partie.
+  // Un joueur quitte ; lancement refusé tant qu'il manque quelqu'un, ou par qui n'est pas assis.
   await d.client.quitterPartie(id);
   p = serveur.get(`parties/${id}`);
   assert.equal(p.joueurs[1], null);
   assert.ok(!p.uids.includes(d.joueur.uid));
   await assert.rejects(a.client.lancerPartie(id), /quatre joueurs/);
+  await assert.rejects(d.client.lancerPartie(id), /Assieds-toi/);
+  // Le créateur quitte comme les autres : la salle reste à ceux qui y sont, et le dernier à partir l'emporte.
   await a.client.quitterPartie(id);
+  p = serveur.get(`parties/${id}`);
+  assert.equal(p.joueurs[0], null);
+  assert.deepEqual(p.uids, [b.joueur.uid, c.joueur.uid]);
+  assert.equal(p.hote, a.joueur.uid);
+  await b.client.quitterPartie(id);
+  await c.client.quitterPartie(id);
   assert.equal(serveur.get(`parties/${id}`), null);
+});
+
+test("salle d'attente modifiable par tous : IA, invitations, nom, mode, lancement", async () => {
+  const serveur = new FauxServeur();
+  const [a, b, c, d] = await quatre(serveur);
+  const { id } = await a.client.creerPartie({ nom: 'À tous' });
+  await b.client.choisirSiege(id, 2);
+  // David n'est même pas assis : il place une IA, change son niveau, la retire, invite et annule.
+  await d.client.ajouterIA(id, 1, 'amateur');
+  await d.client.changerNiveauIA(id, 1, 'expert');
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[1], { uid: null, pseudo: 'IA Est', ia: true, niveau: 'expert' });
+  await b.client.retirerIA(id, 1);
+  await b.client.inviter(id, c.joueur.uid);
+  assert.deepEqual(serveur.get(`parties/${id}`).invites, [c.joueur.uid]);
+  await d.client.annulerInvitation(id, c.joueur.uid);
+  assert.deepEqual(serveur.get(`parties/${id}`).invites, []);
+
+  // Nom et règle du 5, par n'importe qui.
+  await d.client.modifierSalle(id, { nom: '  Soirée Toc  ', cinqAdverse: true });
+  let p = serveur.get(`parties/${id}`);
+  assert.equal(p.nom, 'Soirée Toc');
+  assert.deepEqual(p.reglages, { cinqAdverse: true });
+  await assert.rejects(d.client.modifierSalle(id, { nom: '   ' }), /Donne un nom/);
+  await assert.rejects(d.client.modifierSalle(id, { nbJoueurs: 5 }), /3 ou à 4/);
+
+  // Mode : de 4 à 3, les places occupées se resserrent (Alice, IA, Bruno) et l'IA prend le nom de son siège.
+  await b.client.ajouterIA(id, 1, 'debutant');
+  await b.client.modifierSalle(id, { nbJoueurs: 3 });
+  p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.reglages, { cinqAdverse: true, nbJoueurs: 3 });
+  assert.deepEqual(p.joueurs.map((x) => x && (x.uid || x.pseudo)), [a.joueur.uid, 'IA 2', b.joueur.uid]);
+  assert.deepEqual(p.uids, [a.joueur.uid, b.joueur.uid]);
+  // De 3 à 4 : une place libre s'ajoute ; table pleine à 4, on ne repasse pas à 3.
+  await d.client.modifierSalle(id, { nbJoueurs: 4 });
+  p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.reglages, { cinqAdverse: true });
+  assert.deepEqual(p.joueurs.map((x) => x && (x.uid || x.pseudo)), [a.joueur.uid, 'IA Est', b.joueur.uid, null]);
+  await c.client.choisirSiege(id, 3);
+  await assert.rejects(d.client.modifierSalle(id, { nbJoueurs: 3 }), /libère une place/);
+  assert.equal(serveur.get(`parties/${id}`).joueurs.length, 4);
+
+  // Lancement par un joueur assis qui n'a pas créé la salle ; ensuite plus rien ne se modifie.
+  await c.client.lancerPartie(id);
+  p = serveur.get(`parties/${id}`);
+  assert.equal(p.statut, 'encours');
+  assert.deepEqual(p.etat.reglages, { cinqAdverse: true });
+  await assert.rejects(b.client.modifierSalle(id, { nom: 'Trop tard' }), /commencé/);
+  await assert.rejects(d.client.ajouterIA(id, 1), /commencé/);
+});
+
+test('abandon : d’un commun accord seulement ; la partie disparaît et ne compte pas dans les statistiques', async () => {
+  const serveur = new FauxServeur();
+  const { id, a, b, c } = await partieLancee(serveur);
+  const [, , , d] = [a, b, c, nouveauClient(serveur, { graine: 9 })];
+  d.joueur = await d.client.connecter('David');
+  const listes = { a: null, b: null };
+  let salle = null;
+  const arrets = [a.client.surMesParties((l) => (listes.a = l)), b.client.surMesParties((l) => (listes.b = l)), b.client.surPartie(id, (r) => (salle = r))];
+  await attendre(() => listes.a?.length === 1 && listes.b?.length === 1 && salle);
+  assert.equal(salle.abandon, null);
+  // Un joueur extérieur ne vote pas.
+  await assert.rejects(d.client.voterAbandon(id, true), /commencé|ne joues pas|Refusé/);
+
+  // Alice propose : rien n'est abandonné, les autres voient la proposition.
+  assert.deepEqual(await a.client.voterAbandon(id, true), { abandonnee: false });
+  assert.deepEqual(await a.client.voterAbandon(id, true), { abandonnee: false }, 'voter deux fois ne change rien');
+  await attendre(() => salle.abandon);
+  assert.deepEqual(salle.abandon.pour.map((x) => x.pseudo), ['Alice']);
+  assert.deepEqual(salle.abandon.attendus.map((x) => x.pseudo), ['Bruno', 'Chloé']);
+  assert.equal(salle.abandon.jAiAccepte, false);
+  assert.equal(serveur.get(`parties/${id}`).statut, 'encours');
+  // Bruno refuse : la proposition tombe, la partie continue.
+  assert.deepEqual(await b.client.voterAbandon(id, false), { abandonnee: false });
+  await attendre(() => salle.abandon === null);
+  assert.deepEqual(serveur.get(`parties/${id}`).abandon, []);
+
+  // Nouvelle proposition : il faut tout le monde (l'IA ne vote pas) ; au dernier accord, la partie est abandonnée.
+  await b.client.voterAbandon(id, true);
+  await c.client.voterAbandon(id, true);
+  assert.equal(serveur.get(`parties/${id}`).statut, 'encours');
+  await attendre(() => salle.abandon?.attendus.length === 1);
+  assert.deepEqual(await a.client.voterAbandon(id, true), { abandonnee: true });
+  const p = serveur.get(`parties/${id}`);
+  assert.equal(p.statut, 'abandonnee');
+  // Elle disparaît de « Mes parties », on n'y joue plus, et elle n'est comptée pour personne.
+  await attendre(() => listes.a.length === 0 && listes.b.length === 0);
+  await attendre(() => salle.statut === 'abandonnee' && salle.abandon === null);
+  const ctxA = contexte(serveur, a.joueur.uid);
+  await assert.rejects(P.donnerCarte(ctxA, id, 0, serveur.get(`parties/${id}/donnes/0_0`).cartes[0]), /n'a pas commencé|terminée|commencé/);
+  assert.equal(await comptabiliserPartie(ctxA, id, p), false);
+  assert.deepEqual(serveur.get(`joueurs/${a.joueur.uid}`).stats, { jouees: 0, gagnees: 0 });
+  assert.deepEqual(await a.client.voterAbandon(id, true), { abandonnee: true });
+  // Une salle d'attente ou une partie terminée ne s'abandonne pas.
+  const autre = await a.client.creerPartie({});
+  await assert.rejects(a.client.voterAbandon(autre.id, true), /pas commencé/);
+  arrets.forEach((f) => f());
 });
 
 test("salle d'attente ouverte à tous : s'asseoir sans invitation, règle du 5, suppression, liste des salles", async () => {
@@ -172,7 +276,6 @@ test('surMesParties, surPartie et invitations directes', async () => {
   assert.equal(mes[0].monSiege, 0);
   assert.equal(salle.hote, a.joueur.uid);
 
-  await assert.rejects(b.client.inviter(id, c.joueur.uid), /créateur/);
   await a.client.inviter(id, b.joueur.uid);
   await a.client.inviter(id, c.joueur.uid);
   await attendre(() => invit?.length === 1);

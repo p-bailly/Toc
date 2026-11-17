@@ -11,7 +11,7 @@ let arret = [];
 let etat = { pret: false, parties: [], invitations: [], erreur: '' };
 const abonnes = new Set();
 // Ce qu'on savait déjà, pour ne prévenir que des changements.
-let connues = null; // Map id → { aMoi, statut }
+let connues = null; // Map id → { aMoi, statut, nom, abandonAttendu } (abandonAttendu : on attend ma réponse à un abandon)
 let invitationsConnues = null; // Set id
 /** Partie affichée à l'écran (pas de toast pour elle). */
 let partieOuverte = null;
@@ -83,11 +83,21 @@ function prevenir(cle, titre, texte, hash, genre, id) {
 }
 
 function signalerParties(parties) {
-  const suite = new Map(parties.map((p) => [p.id, { aMoi: !!p.aMoiDeJouer, statut: p.statut }]));
+  const reponseAttendue = (p) => !!p.abandon && !p.abandon.jAiAccepte;
+  const suite = new Map(parties.map((p) => [p.id, { aMoi: !!p.aMoiDeJouer, statut: p.statut, nom: p.nom || 'Partie de Toc', abandonAttendu: reponseAttendue(p) }]));
   if (connues) {
+    // Une partie en cours qui n'est plus dans la liste a été abandonnée d'un commun accord.
+    for (const [id, avant] of connues) {
+      if (avant.statut === 'encours' && !suite.has(id) && id !== partieOuverte) toast(`${avant.nom} : la partie a été abandonnée d’un commun accord.`);
+    }
     for (const p of parties) {
       const avant = connues.get(p.id);
       const nom = p.nom || 'Partie de Toc';
+      // Un joueur propose d'abandonner : ma réponse est attendue.
+      if (reponseAttendue(p) && !avant?.abandonAttendu && p.statut === 'encours') {
+        const qui = p.abandon.pour.map((x) => x.pseudo).join(', ') || 'Un joueur';
+        prevenir('abandon-' + p.id, 'Abandon proposé', `${nom} : ${qui} propose d’abandonner la partie.`, '#/partie/' + p.id, 'tour', p.id);
+      }
       if (p.aMoiDeJouer && !avant?.aMoi && p.statut === 'encours') {
         prevenir('tour-' + p.id, 'À toi de jouer', `${nom} : c’est à toi de jouer.`, '#/partie/' + p.id, 'tour', p.id);
       } else if (p.statut === 'finie' && avant && avant.statut !== 'finie') {

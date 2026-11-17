@@ -30,7 +30,7 @@ import {
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { ouvrirFeuille } from './composants.js';
-import { piRetour, piHistorique, piOk, piAnnuler, piConseil, piRevoir, piPrecedent, piSuivant, piLoupe } from './pictos.js';
+import { piRetour, piHistorique, piOk, piAnnuler, piConseil, piRevoir, piPrecedent, piSuivant, piLoupe, piDrapeau } from './pictos.js';
 import { activerZoom } from './zoom-plateau.js';
 import * as IA from '../ia/ia.js';
 import { trierMain, ordonnerMain, deplacer, detailJournal, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
@@ -45,12 +45,15 @@ const NOMS_FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆'
 /**
  * Monte l'écran de jeu dans `racine`.
  * @param {Object} o
- * @param {Object} o.session        Session (abonner, donner, jouer, fermer)
+ * @param {Object} o.session        Session (abonner, donner, jouer, fermer ; annuler si la partie le permet :
+ *                                  parties contre l'IA seulement, voir session-locale.js)
  * @param {string} o.retour         hash du bouton retour
  * @param {Function} [o.rejouer]    partie d'entraînement : relancer une partie
+ * @param {Object} [o.abandon]      partie en ligne : { bandeau, proposer } = l'élément où l'écran appelant affiche
+ *                                  la proposition d'abandon en cours, et ce que fait le bouton « Abandonner »
  * @returns {Function} destruction
  */
-export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null, essais = false }) {
+export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null, essais = false, abandon = null }) {
   const plateau = new Plateau({ surPion: (g) => toucherPion(g), surCible: (i) => toucherCible(i) });
 
   const titre = h('span', { class: 'texte' }, 'Toc');
@@ -70,12 +73,17 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     { type: 'button', class: 'bouton-icone', 'aria-label': 'Revoir les coups précédents', title: 'Revoir les coups', 'data-action': 'revoir', onclick: () => (revue ? quitterRevue() : ouvrirRevue()) },
     piRevoir(),
   );
+  // Partie en ligne : proposer aux autres joueurs d'abandonner la partie (elle l'est si tous acceptent).
+  const boutonAbandon = abandon
+    ? h('button', { type: 'button', class: 'bouton-icone', 'aria-label': 'Abandonner la partie', title: 'Abandonner la partie', 'data-action': 'abandonner', onclick: () => abandon.proposer() }, piDrapeau())
+    : null;
   const barre = h(
     'header',
     { class: 'barre-jeu' },
     h('a', { class: 'bouton-icone', href: retour, 'aria-label': libelleRetour }, piRetour()),
     h('div', { class: 'titre' }, titre, sousTitre),
     boutonConseilPlace(),
+    boutonAbandon,
     boutonRevoir,
     boutonJournal,
   );
@@ -91,12 +99,12 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       boutonZoom.replaceChildren(piLoupe(18, agrandi));
     },
   });
-  const main = h('div', { class: 'chevalet main-joueur', role: 'group', 'aria-label': 'Tes cartes (fais glisser une carte pour la ranger ailleurs)' });
+  const main = h('div', { class: 'chevalet main-joueur', role: 'group', 'aria-label': 'Tes cartes (fais-les glisser de côté pour les ranger, ou vers le plateau pour les jouer)' });
   const consigne = h('div', { class: 'apercu consigne', role: 'status', 'aria-live': 'polite' });
   const actions = h('div', { class: 'actions choix-coup' });
   // Journal visible en permanence sur grand écran (masqué sur téléphone : il reste dans sa feuille).
   const journalPanneau = h('div', { class: 'journal-panneau' });
-  const colonne = h('div', { class: 'colonne-jeu' }, main, consigne, h('div', { class: 'panneau-bas' }, actions), journalPanneau);
+  const colonne = h('div', { class: 'colonne-jeu' }, abandon?.bandeau || null, main, consigne, h('div', { class: 'panneau-bas' }, actions), journalPanneau);
   const ecran = h('div', { class: 'ecran-jeu' }, barre, zonePlateau, colonne);
   remplacer(racine, ecran);
 
@@ -111,7 +119,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let recuArrive = null; // { cle, t } : moment où la carte reçue est apparue dans la main (son entrée animée)
   let finMontree = false;
   // Rangement de la main : l'ordre choisi par le joueur pour la donne en cours ({ cle, cartes }), et la carte qu'il
-  // est en train de faire glisser ({ el, id, x0, actif }).
+  // est en train de faire glisser ({ el, id, x0, y0, actif, mode }) : mode 'rangement' (de côté, dans la main) ou
+  // 'table' (vers le plateau, pour la jouer).
   let ordreMain = null;
   let glisse = null;
   let sansClicJusqua = 0;
@@ -191,29 +200,52 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   main.addEventListener('pointerdown', (e) => {
     const el = e.target.closest?.('button.carte-jeu');
-    if (!el || e.button > 0 || glisse || revue || !vue || cartesAffichees().length < 2) return;
-    glisse = { el, id: e.pointerId, x0: e.clientX, actif: false };
+    if (!el || e.button > 0 || glisse || revue || !vue) return;
+    glisse = { el, id: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false, mode: null };
   });
   main.addEventListener('pointermove', (e) => {
     if (!glisse || e.pointerId !== glisse.id) return;
     const { el } = glisse;
     if (!glisse.actif) {
-      // Un toucher choisit la carte ; elle ne se déplace qu'après un vrai glissement.
-      if (Math.abs(e.clientX - glisse.x0) < 10) return;
+      // Un toucher choisit la carte ; elle ne se déplace qu'après un vrai glissement : vers le haut, elle part vers le
+      // plateau (pour la jouer) ; de côté, elle change de place dans la main.
+      const dx = e.clientX - glisse.x0;
+      const dy = e.clientY - glisse.y0;
+      if (Math.hypot(dx, dy) < 10) return;
+      const versTable = dy < 0 && -dy > Math.abs(dx);
+      if (!versTable && cartesAffichees().length < 2) {
+        glisse = null;
+        return;
+      }
       if (!el.isConnected) {
         glisse = null;
         return;
       }
       glisse.actif = true;
+      glisse.mode = versTable ? 'table' : 'rangement';
       try {
         el.setPointerCapture(e.pointerId);
       } catch {
         /* pointeur déjà relâché */
       }
       el.classList.add('glisse');
-      main.classList.add('rangement');
+      main.classList.add(glisse.mode === 'table' ? 'vers-table' : 'rangement');
     }
     e.preventDefault();
+    // Rangement qui sort de la main (vers le plateau, qui est à côté sur un grand écran) : la carte part vers la table.
+    if (glisse.mode === 'rangement') {
+      const r = main.getBoundingClientRect();
+      if (e.clientY < r.top - 12 || e.clientY > r.bottom + 12 || e.clientX < r.left - 12 || e.clientX > r.right + 12) {
+        glisse.mode = 'table';
+        main.classList.replace('rangement', 'vers-table');
+      }
+    }
+    if (glisse.mode === 'table') {
+      // La carte suit le doigt ; le plateau s'éclaire quand elle est au-dessus.
+      el.style.transform = `translate(${e.clientX - glisse.x0}px, ${e.clientY - glisse.y0}px) scale(0.9)`;
+      zonePlateau.classList.toggle('depot-carte', auDessusDuPlateau(e));
+      return;
+    }
     const dx = e.clientX - glisse.x0;
     el.style.transform = `translateX(${dx}px)`;
     // La carte prend la place de sa voisine dès que son milieu la dépasse. On déplace la voisine, jamais la carte
@@ -243,13 +275,76 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (!g.actif) return;
     g.el.classList.remove('glisse');
     g.el.style.transform = '';
-    main.classList.remove('rangement');
-    // Le relâchement ne doit pas compter comme un toucher de la carte (le clic suit aussitôt le relâchement).
-    sansClicJusqua = Date.now() + 80;
+    main.classList.remove('rangement', 'vers-table');
+    zonePlateau.classList.remove('depot-carte');
+    // Le relâchement ne doit pas compter comme un toucher de la carte (le clic suit le relâchement, parfois avec un
+    // temps de retard sur un écran tactile).
+    sansClicJusqua = Date.now() + 350;
     if (!vue) return;
+    if (g.mode === 'table') {
+      if (e.type === 'pointerup' && auDessusDuPlateau(e)) poserSurTable(g.el.dataset.carte, e);
+      return;
+    }
     rangerMain(cartesAffichees().map((b) => b.dataset.carte));
     rendre();
   };
+
+  /** Le pointeur est-il au-dessus du plateau ? */
+  function auDessusDuPlateau(e) {
+    const r = zonePlateau.getBoundingClientRect();
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  }
+
+  /** Pion le plus proche du point (coordonnées de l'écran) parmi `pions`, s'il est assez près pour être visé. */
+  function pionVise(pions, x, y) {
+    let meilleur = null;
+    let distance = Infinity;
+    for (const g of pions) {
+      const el = zonePlateau.querySelector(`[data-pion-dessin="${g}"]`);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
+      if (d < distance && d <= Math.max(22, r.width * 1.3)) {
+        distance = d;
+        meilleur = g;
+      }
+    }
+    return meilleur;
+  }
+
+  /**
+   * Carte lâchée sur le plateau : pendant l'échange, elle est donnée ; à son tour, elle est jouée comme si on l'avait
+   * touchée, et lâchée sur un de ses pions, c'est ce pion qui la joue. Le coup est montré avant de partir, comme
+   * d'habitude (réglage « Voir le coup avant de le valider »).
+   */
+  function poserSurTable(c, e) {
+    if (!c || !vue.main.includes(c) || enPresentation || revue || envoi) return;
+    const { etat, siege } = vue;
+    if (etat.phase === 'echange') {
+      if (vue.don) return;
+      carte = c;
+      if (lireReglages().confirmerCoup) rendre();
+      else donner();
+      return;
+    }
+    if (etat.phase !== 'jeu' || etat.tour !== siege) {
+      annoncer('Ce n’est pas encore à toi de jouer.');
+      return;
+    }
+    if (carte !== c) {
+      reinitialiser();
+      toucherCarte(c);
+    }
+    // La carte est choisie ; un coup est peut-être déjà prêt (seul coup possible, ou défausse).
+    if (carte !== c || coupPret || envoi || (estJoker(c) && !comme)) return;
+    const pions = sept ? (etatSept()?.options || []).map((o) => o.pion) : coupsCarte(c).map((k) => k.pion);
+    const g = pionVise(new Set(pions), e.clientX, e.clientY);
+    if (g === null) return;
+    if (sept) {
+      pion = g;
+      rendre();
+    } else toucherPion(g);
+  }
   main.addEventListener('pointerup', finGlisse);
   main.addEventListener('pointercancel', finGlisse);
   main.addEventListener(
@@ -388,7 +483,22 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const cleVu = () => (vueReelle?.enLigne ? `toc.vu.${vueReelle.id}` : null);
 
   const desabonner = session.abonner((v) => {
+    // Retour en arrière (le joueur a annulé son dernier coup) : la partie est revenue à une position plus ancienne.
+    const recul = !!vueReelle && v.etat.numCoup < vueReelle.etat.numCoup;
     vueReelle = v;
+    if (recul) {
+      // On montre la position rendue telle quelle : rien à rejouer, les animations en cours s'arrêtent.
+      nHisto = v.historique.length;
+      resume = null;
+      clearTimeout(minuterieAuto);
+      if (enPresentation) {
+        passerPresentation(); // la file s'arrête et affiche la position actuelle
+        return;
+      }
+      plateau.arreterAnimations();
+      appliquerVue(v);
+      return;
+    }
     if (nHisto < 0) {
       // Ouverture : en ligne, on reprend là où le joueur s'était arrêté (coups joués en son absence) ;
       // en entraînement, rien n'a bougé pendant son absence.
@@ -823,6 +933,32 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     return reussi;
   }
 
+  /** Peut-on annuler son dernier coup maintenant ? (Parties contre l'IA : la session le dit.) */
+  function coupAnnulable() {
+    return typeof session.annuler === 'function' && !!vueReelle?.annulable && !envoi && !revue;
+  }
+
+  /** Bouton « Annuler mon dernier coup », ou null. Proposé quand aucune saisie n'est en cours. */
+  function boutonAnnulerCoup() {
+    if (!coupAnnulable()) return null;
+    return h('button', { type: 'button', class: 'bouton discret', 'data-action': 'annuler-coup', title: 'Revenir juste avant ton dernier coup', onclick: annulerCoup }, piAnnuler(), 'Annuler mon dernier coup');
+  }
+
+  /** Annule le dernier coup du joueur (et ce que les IA ont joué depuis) : c'est de nouveau à lui. */
+  async function annulerCoup() {
+    if (!coupAnnulable()) return;
+    envoi = true;
+    try {
+      await session.annuler();
+      annoncer('Coup annulé : à toi de rejouer.');
+    } catch (e) {
+      annoncer(messageErreur(e), { erreur: true, duree: 6000 });
+    } finally {
+      envoi = false;
+      if (vue) rendre();
+    }
+  }
+
   async function donner() {
     if (!carte || envoi) return;
     const c = carte;
@@ -872,6 +1008,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
     plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
     rendreJournalPanneau();
+    if (boutonAbandon) boutonAbandon.hidden = etat.phase === 'fini';
     boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
     boutonConseil.hidden = !conseilsDispo || !lireReglages().conseilsIA;
     zonePlateau.classList.toggle('a-moi', aMoi());
@@ -1001,8 +1138,13 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       choix.candidats = new Set();
       choix.choisi = null;
     } else if (coupPret) {
+      // Le coup prêt, montré avant d'être validé : le pion à son arrivée, le trajet depuis sa case, les pions
+      // qu'il renvoie à la base ; pour un échange, les deux pions à la place l'un de l'autre.
       const d = destination(coupPret);
       choix.fantome = { pion: coupPret.pion, pos: d.pos };
+      const sens = coupPret.t === 'avance' ? 'avant' : coupPret.t === 'recul' ? 'arriere' : 'direct';
+      choix.trajet = { pion: coupPret.pion, de: etat.pions[coupPret.pion], vers: d.pos, sens };
+      if (coupPret.t === 'echange') choix.fantomeEchange = { pion: coupPret.cible, pos: etat.pions[coupPret.pion] };
       choix.captures = d.captures;
       choix.cibleChoisie = ciblesCourantes.findIndex((c) => cle(c.coup) === cle(coupPret));
     }
@@ -1060,6 +1202,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         );
         if (restants >= 6) lignes.push(h('span', { class: 'note' }, `${pluriel(restants, 'coup a été joué', 'coups ont été joués')} depuis ta dernière visite : ils te sont montrés un par un.`));
       }
+      // Pendant que les IA jouent : on peut encore revenir sur son coup.
+      const annulation = boutonAnnulerCoup();
+      if (annulation) boutons.push(annulation);
       remplacer(consigne, h('div', { class: 'mots' }, lignes));
       remplacer(actions, boutons);
       actions.hidden = !boutons.length;
@@ -1172,6 +1317,11 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     }
     if (monTour && actifCouleur !== siege && etat.phase === 'jeu') {
       lignes.push(h('span', { class: 'note joue-pour' }, puceCouleur(actifCouleur), ` Tes pions sont rentrés : tu joues les pions ${nomCouleurPartie(couleursPartie(vue.joueurs, vue.joueurs.length), actifCouleur, true)} de ${nomP}.`));
+    }
+    // Rien en cours de saisie : on peut revenir sur son dernier coup (parties contre l'IA).
+    if (!carte && !coupPret && !sept) {
+      const annulation = boutonAnnulerCoup();
+      if (annulation) boutons.push(annulation);
     }
     remplacer(consigne, h('div', { class: 'mots' }, lignes));
     remplacer(actions, boutons);

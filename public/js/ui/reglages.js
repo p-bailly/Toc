@@ -56,6 +56,12 @@ export function nomVitesse(vitesse) {
 export const VITESSE_ESSAIS = { pas: 4, max: 40, saut: 15, carte: 15, lecture: 10, delaiIA: 40, avantAuto: 60 };
 
 const CLE = 'toc.reglages';
+/**
+ * Version des réglages enregistrés. À la version 2, le coup choisi est montré sur le plateau avant d'être validé
+ * (confirmerCoup activé par défaut) : le « non » enregistré auparavant, qui n'était que l'ancienne valeur par
+ * défaut, ne compte plus.
+ */
+const VERSION = 2;
 const DEFAUT = {
   theme: 'clair', // clair par défaut ; « Auto » (suivre le téléphone) et « Sombre » se choisissent dans les Réglages
   texte: 'normal',
@@ -64,8 +70,11 @@ const DEFAUT = {
   notifTour: true,
   notifInvitations: true,
   notifFin: true,
-  /** Demander « Jouer ce coup ? » avant d'envoyer un coup (désactivé par défaut : un seul toucher). */
-  confirmerCoup: false,
+  /**
+   * Montrer le coup choisi sur le plateau (pion à l'arrivée, pions renvoyés à la base) et attendre « Jouer » avant
+   * de l'envoyer. Activé par défaut ; désactivé, le coup part dès qu'il est choisi.
+   */
+  confirmerCoup: true,
   /** Animer les déplacements des pions. */
   animations: true,
   /** Vitesse du jeu : curseur de 0 (très lente) à 100 (rapide), voir rythme(). */
@@ -91,7 +100,8 @@ export function lireReglages() {
     notifTour: booleen('notifTour'),
     notifInvitations: booleen('notifInvitations'),
     notifFin: booleen('notifFin'),
-    confirmerCoup: booleen('confirmerCoup'),
+    version: VERSION,
+    confirmerCoup: r.version === VERSION ? booleen('confirmerCoup') : DEFAUT.confirmerCoup,
     animations: booleen('animations'),
     vitesse: 'vitesse' in r ? vitesseValide(r.vitesse) : DEFAUT.vitesse,
     coupUniqueAuto: booleen('coupUniqueAuto'),

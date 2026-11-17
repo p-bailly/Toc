@@ -149,13 +149,23 @@ function resumeDe(p) {
     aMoiDeJouer: aMoiDeJouer(p, monSiege),
     gagnant: p.gagnant ?? null,
     majLe: new Date(p.majLe),
+    abandon: abandonDemo(p),
   };
+}
+
+/** Proposition d'abandon en cours (même forme que reseau/commun.js → abandonDe), ou null. */
+function abandonDemo(p) {
+  const votes = p.statut === 'encours' ? p.abandon || [] : [];
+  if (!votes.length) return null;
+  const nom = (u) => p.joueurs.find((j) => j && j.uid === u)?.pseudo || '?';
+  const fiche = (u) => ({ uid: u, pseudo: nom(u) });
+  return { pour: votes.map(fiche), attendus: p.joueurs.filter((j) => j && !j.ia && j.uid && !votes.includes(j.uid)).map((j) => fiche(j.uid)), jAiAccepte: votes.includes(db.moi) };
 }
 
 function mesParties() {
   if (!db.moi) return [];
   return Object.values(db.parties)
-    .filter((p) => siegeDe(p, db.moi) >= 0)
+    .filter((p) => siegeDe(p, db.moi) >= 0 && p.statut !== 'abandonnee')
     .sort((a, b) => b.majLe - a.majLe)
     .map(resumeDe);
 }
@@ -459,8 +469,9 @@ export async function supprimerPartie(id) {
   changer();
 }
 
-function exigerHote(p) {
-  if (p.hote !== db.moi) throw new Error('Seul l’hôte de la partie peut faire cela.');
+/** La salle se modifie par tout joueur connecté, tant que la partie n'est pas lancée. */
+function exigerSalle(p) {
+  exigerConnexion();
   if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
 }
 
@@ -469,7 +480,7 @@ const NIVEAUX_IDS = ['debutant', 'amateur', 'confirme', 'expert', 'champion'];
 export async function ajouterIA(id, siege, niveau) {
   await attendre();
   const p = exigerPartie(id);
-  exigerHote(p);
+  exigerSalle(p);
   if (p.joueurs[siege]) throw new Error('Cette place est déjà prise.');
   const noms = ['IA Nord', 'IA Est', 'IA Sud', 'IA Ouest'];
   p.joueurs[siege] = { uid: null, pseudo: noms[siege], ia: true, niveau: NIVEAUX_IDS.includes(niveau) ? niveau : 'champion' };
@@ -481,7 +492,7 @@ export async function ajouterIA(id, siege, niveau) {
 export async function changerNiveauIA(id, siege, niveau) {
   await attendre();
   const p = exigerPartie(id);
-  exigerHote(p);
+  exigerSalle(p);
   if (!p.joueurs[siege]?.ia) throw new Error('Il n’y a pas d’IA à cette place.');
   if (!NIVEAUX_IDS.includes(niveau)) throw new Error('Niveau inconnu.');
   p.joueurs[siege].niveau = niveau;
@@ -492,7 +503,7 @@ export async function changerNiveauIA(id, siege, niveau) {
 export async function retirerIA(id, siege) {
   await attendre();
   const p = exigerPartie(id);
-  exigerHote(p);
+  exigerSalle(p);
   if (!p.joueurs[siege]?.ia) throw new Error('Il n’y a pas d’IA à cette place.');
   p.joueurs[siege] = null;
   p.majLe = Date.now();
@@ -504,13 +515,80 @@ export async function quitterPartie(id) {
   const c = exigerConnexion();
   const p = exigerPartie(id);
   if (p.statut !== 'attente') throw new Error('On ne peut quitter qu’une partie en attente.');
-  if (p.hote === c.uid) delete db.parties[id];
-  else {
-    const s = siegeDe(p, c.uid);
-    if (s >= 0) p.joueurs[s] = null;
-    p.majLe = Date.now();
-  }
+  const s = siegeDe(p, c.uid);
+  if (s >= 0) p.joueurs[s] = null;
+  p.majLe = Date.now();
+  // Le dernier joueur à partir emporte la salle.
+  if (!p.joueurs.some((j) => j && !j.ia)) delete db.parties[id];
   changer();
+}
+
+/** Salle d'attente : nom, mode (3 ou 4 joueurs) ou règle du 5, par tout joueur connecté. */
+export async function modifierSalle(id, { nom, nbJoueurs, cinqAdverse } = {}) {
+  await attendre();
+  const p = exigerPartie(id);
+  exigerSalle(p);
+  if (nom !== undefined) {
+    const n = String(nom || '').trim().slice(0, 40);
+    if (!n) throw new Error('Donne un nom à la partie.');
+    p.nom = n;
+  }
+  if (cinqAdverse !== undefined) p.reglages = { ...p.reglages, cinqAdverse: !!cinqAdverse };
+  if (nbJoueurs !== undefined && nbJoueurs !== p.joueurs.length) {
+    const nb = nbJoueurs === 3 ? 3 : 4;
+    const occupees = p.joueurs.filter(Boolean);
+    if (occupees.length > nb) throw new Error('La table est pleine : libère une place pour passer à 3 joueurs.');
+    const noms = nb === 3 ? ['IA 1', 'IA 2', 'IA 3'] : ['IA Nord', 'IA Est', 'IA Sud', 'IA Ouest'];
+    p.joueurs = occupees.concat(Array(nb - occupees.length).fill(null)).map((j, s) => (j?.ia ? { ...j, pseudo: noms[s] } : j));
+    p.reglages = nb === 3 ? { cinqAdverse: !!p.reglages.cinqAdverse, nbJoueurs: 3 } : { cinqAdverse: !!p.reglages.cinqAdverse };
+  }
+  p.majLe = Date.now();
+  changer();
+}
+
+/** Partie en cours : vote d'abandon. Les faux joueurs acceptent après un instant (Inès refuse, pour montrer le refus). */
+export async function voterAbandon(id, accepte) {
+  await attendre();
+  const c = exigerConnexion();
+  const p = exigerPartie(id);
+  if (siegeDe(p, c.uid) < 0) throw new Error('Tu ne joues pas dans cette partie.');
+  if (p.statut !== 'encours') throw new Error('La partie n’est pas en cours.');
+  if (!accepte) {
+    p.abandon = [];
+    p.majLe = Date.now();
+    changer();
+    return { abandonnee: false };
+  }
+  p.abandon = [...new Set([...(p.abandon || []), c.uid])];
+  p.majLe = Date.now();
+  const abandonnee = conclureAbandon(p);
+  if (!abandonnee) reponsesAbandon(p.id);
+  changer();
+  return { abandonnee };
+}
+
+const humainsDe = (p) => p.joueurs.filter((j) => j && !j.ia && j.uid).map((j) => j.uid);
+
+function conclureAbandon(p) {
+  if (!humainsDe(p).every((u) => (p.abandon || []).includes(u))) return false;
+  p.statut = 'abandonnee';
+  return true;
+}
+
+function reponsesAbandon(id) {
+  setTimeout(() => {
+    const p = db.parties[id];
+    if (!p || p.statut !== 'encours' || !(p.abandon || []).length) return;
+    const faux = humainsDe(p).filter((u) => db.comptes[u]?.faux && !p.abandon.includes(u));
+    if (!faux.length) return;
+    if (faux[0] === 'f-ines') p.abandon = [];
+    else {
+      p.abandon.push(faux[0]);
+      if (!conclureAbandon(p)) reponsesAbandon(id);
+    }
+    p.majLe = Date.now();
+    changer();
+  }, delai(2200));
 }
 
 /** Garde, pour l'analyse de fin de partie, les mains distribuées et les cartes échangées de chaque donne. */
@@ -534,7 +612,8 @@ function lancer(p) {
 export async function lancerPartie(id) {
   await attendre();
   const p = exigerPartie(id);
-  exigerHote(p);
+  exigerSalle(p);
+  if (siegeDe(p, db.moi) < 0) throw new Error('Assieds-toi à la table pour lancer la partie.');
   if (p.joueurs.some((j) => !j)) throw new Error(`Il faut ${p.joueurs.length} joueurs (ou IA) pour lancer la partie.`);
   lancer(p);
   changer();
@@ -543,7 +622,7 @@ export async function lancerPartie(id) {
 export async function inviter(id, uid) {
   await attendre();
   const p = exigerPartie(id);
-  exigerHote(p);
+  exigerSalle(p);
   const c = db.comptes[uid];
   if (!c) throw new Error('Ce joueur n’existe pas.');
   if (siegeDe(p, uid) >= 0) throw new Error(`${c.pseudo} est déjà dans la partie.`);
@@ -560,7 +639,7 @@ export async function inviter(id, uid) {
 export async function annulerInvitation(id, uid) {
   await attendre();
   const p = exigerPartie(id);
-  exigerHote(p);
+  exigerSalle(p);
   p.invites = (p.invites || []).filter((i) => i.uid !== uid);
   changer();
 }

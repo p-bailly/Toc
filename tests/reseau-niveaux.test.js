@@ -25,7 +25,7 @@ function iaEspionne() {
   };
 }
 
-test('niveau des IA : enregistré, exposé, modifiable par l’hôte, niveau inconnu refusé', async () => {
+test('niveau des IA : enregistré, exposé, modifiable par tous, niveau inconnu refusé', async () => {
   const serveur = new FauxServeur();
   const a = nouveauClient(serveur);
   const b = nouveauClient(serveur, { graine: 2 });
@@ -45,7 +45,10 @@ test('niveau des IA : enregistré, exposé, modifiable par l’hôte, niveau inc
   await assert.rejects(a.client.changerNiveauIA(id, 2, 'maitre'), /Niveau d’IA inconnu/);
   await assert.rejects(a.client.changerNiveauIA(id, 0, 'expert'), /pas tenu par une IA/);
   await b.client.rejoindrePartie(id);
-  await assert.rejects(b.client.changerNiveauIA(id, 1, 'champion'), /créateur/);
+  // Tout joueur connecté change le niveau d'une IA, pas seulement le créateur de la salle.
+  await b.client.changerNiveauIA(id, 1, 'champion');
+  assert.equal(serveur.get(`parties/${id}`).joueurs[1].niveau, 'champion');
+  await b.client.changerNiveauIA(id, 1, 'debutant');
 
   let resume = null;
   const arret = a.client.surPartie(id, (r) => (resume = r));

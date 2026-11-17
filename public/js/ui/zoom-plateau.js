@@ -1,6 +1,7 @@
-// Zoom du plateau, pour mieux voir : on écarte deux doigts (ou Ctrl + molette), on touche deux fois un endroit libre
-// du plateau, ou on se sert du bouton loupe. Agrandi, le plateau se déplace d'un doigt. Les touchers des pions et des
-// cases passent comme d'habitude ; seul un vrai geste (pincement, déplacement) n'est pas pris pour un toucher.
+// Zoom du plateau, pour mieux voir : on écarte deux doigts, on tourne la molette de la souris au-dessus du plateau,
+// on touche deux fois un endroit libre du plateau, ou on se sert du bouton loupe. Agrandi, le plateau se déplace d'un
+// doigt (ou à la souris, bouton enfoncé). Les touchers des pions et des cases passent comme d'habitude ; seul un vrai
+// geste (pincement, déplacement) n'est pas pris pour un toucher.
 //
 // Le plateau (`cible`) est agrandi par une transformation CSS dans sa zone (`zone`), qui le rogne : rien d'autre à
 // l'écran ne bouge. État : { k, x, y } = échelle (1 = entier) et décalage en pixels du coin haut gauche.
@@ -20,6 +21,17 @@ export function bornerZoom({ k, x, y }, largeur, hauteur, max = ZOOM_MAX) {
 export function zoomerVers(etat, k, px, py) {
   const r = k / etat.k;
   return { k, x: px - (px - etat.x) * r, y: py - (py - etat.y) * r };
+}
+
+/**
+ * Facteur d'échelle d'un événement de molette : un cran de souris agrandit ou réduit d'un quart environ ; un
+ * pincement sur un pavé tactile (que le navigateur envoie comme Ctrl + molette, par petits pas) suit le geste.
+ * Vers le haut (deltaY négatif) : on agrandit.
+ */
+export function facteurMolette({ deltaY = 0, deltaMode = 0, ctrlKey = false }) {
+  // En pixels, quelle que soit l'unité du navigateur (1 : lignes, 2 : pages).
+  const dy = deltaY * (deltaMode === 1 ? 33 : deltaMode === 2 ? 300 : 1);
+  return Math.exp(-dy / (ctrlKey ? 200 : 450));
 }
 
 /**
@@ -122,15 +134,19 @@ export function activerZoom(zone, cible, { max = ZOOM_MAX, surChange } = {}) {
       dernierToucher = { t, x, y };
     }
   });
-  // Ordinateur : Ctrl + molette (c'est aussi ce qu'envoie un pincement sur un pavé tactile).
+  // Ordinateur : la molette agrandit ou réduit autour du pointeur (avec ou sans Ctrl ; Ctrl + molette, c'est aussi
+  // ce qu'envoie un pincement sur un pavé tactile). Plateau entier et molette vers le bas : il n'y a rien à
+  // réduire, la page défile comme d'habitude.
   zone.addEventListener(
     'wheel',
     (e) => {
-      if (!e.ctrlKey) return;
+      if (!e.deltaY) return;
+      const k = Math.min(max, Math.max(1, etat.k * facteurMolette(e)));
+      if (k === etat.k && etat.k === 1) return;
       e.preventDefault();
       const [x, y] = local(e);
-      const k = Math.min(max, Math.max(1, etat.k * Math.exp(-e.deltaY / 200)));
-      poser(zoomerVers(etat, k, x, y));
+      // Un cran de souris se voit mieux avec un court mouvement ; un geste continu suit la main sans délai.
+      poser(zoomerVers(etat, k, x, y), !e.ctrlKey && Math.abs(e.deltaY) * (e.deltaMode === 1 ? 33 : 1) >= 50);
     },
     { passive: false },
   );

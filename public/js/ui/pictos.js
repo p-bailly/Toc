@@ -84,3 +84,7 @@ export const piLoupe = (t = 18, moins = false) =>
     ['circle', { cx: 10.5, cy: 10.5, r: 6.5 }],
     ['path', { d: moins ? 'm20 20-4.6-4.6M7.8 10.5h5.4' : 'm20 20-4.6-4.6M7.8 10.5h5.4M10.5 7.8v5.4' }],
   ], 2.2);
+/** Crayon : renommer. */
+export const piCrayon = (t = 18) => picto(t, [['path', { d: 'M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4' }]], 2);
+/** Drapeau : abandonner la partie (d'un commun accord). */
+export const piDrapeau = (t = 22) => picto(t, [['path', { d: 'M5 21V4M5 4h11l-2 4 2 4H5' }]], 2.2);
