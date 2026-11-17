@@ -117,6 +117,11 @@ Communes aux deux modes :
 - **Allée** : un pion s'y arrête sur la case où la carte le mène (pas forcément au fond), sans dépasser le fond
   ni un autre pion ; une carte trop grande le laisse sur le circuit ; entrée jamais obligatoire.
 - **Obligation de jouer** ; défausse au choix si aucune carte n'est jouable.
+- **Première donne un peu lissée** (`distribuerPremierCycle`), pour ne pas commencer la partie à défausser faute d'as
+  ou de roi. En 2 contre 2, on remélange tant qu'une équipe n'a ni as ni roi dans ses deux mains (un mélange simple
+  laisse une équipe sans sortie dans 15 % des cas ; un joueur seul peut toujours en manquer, son partenaire peut lui
+  en donner un à l'échange). À 3, on garde le meilleur de deux mélanges (un joueur sans sortie : 29 % des cas au lieu
+  de 43 %). Les donnes suivantes restent un mélange simple.
 
 2 contre 2 (72 cases, 52 cartes, donnes de 5-4-4) :
 

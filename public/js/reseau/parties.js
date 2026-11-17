@@ -20,6 +20,7 @@ import {
   appliquerCoup,
   destinataireDon,
   distribuerCycle,
+  distribuerPremierCycle,
   donneurDon,
   etatInitial,
   longueurCycle,
@@ -77,10 +78,11 @@ function exigerSiege(siege, p) {
 
 /**
  * Écrit les mains d'un cycle, dans la transaction : 12 documents dans les deux modes
- * (3 donnes × 4 sièges à 4 joueurs, 4 donnes × 3 sièges à 3).
+ * (3 donnes × 4 sièges à 4 joueurs, 4 donnes × 3 sièges à 3). Le premier cycle de la partie (donne 0) est un peu
+ * lissé, comme dans une partie locale (voir distribuerPremierCycle).
  */
 function ecrireCycle(ctx, tx, id, donne, n) {
-  const cycle = distribuerCycle(ctx.rng || Math.random, n);
+  const cycle = (donne === 0 ? distribuerPremierCycle : distribuerCycle)(ctx.rng || Math.random, n);
   for (let k = 0; k < longueurCycle(n); k++) {
     for (let s = 0; s < n; s++) {
       tx.creer(chemins.donne(id, donne + k, s), { donne: donne + k, siege: s, cartes: cycle[k][s] });

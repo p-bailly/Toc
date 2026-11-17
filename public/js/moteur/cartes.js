@@ -86,6 +86,37 @@ export function distribuerCycle(rng = Math.random, nbJoueurs = 4) {
   });
 }
 
+/** Carte qui fait sortir un pion de la base : un as ou un roi. */
+export const estCarteSortie = (carte) => !estJoker(carte) && (rang(carte) === 'A' || rang(carte) === 'R');
+
+/** Nombre de mélanges tentés au plus pour le premier cycle (un mélange sur trois environ est écarté à 4). */
+const ESSAIS_PREMIER_CYCLE = 60;
+
+/**
+ * Premier cycle d'une partie : le hasard y est un peu lissé, pour que le début ne se passe pas à défausser faute d'as
+ * ou de roi. Seule la première donne est regardée, et les donnes suivantes restent un mélange simple.
+ * - À 4 : on remélange tant qu'une équipe (les deux joueurs face à face) n'a ni as ni roi dans ses deux mains. Un
+ *   joueur peut toujours en manquer : son partenaire peut lui en donner un à l'échange.
+ * - À 3 (chacun pour soi) : deux mélanges, et l'on garde celui où le moins de joueurs sont sans as ni roi.
+ * Le paquet reste entier et chaque joueur est traité de la même façon.
+ */
+export function distribuerPremierCycle(rng = Math.random, nbJoueurs = 4) {
+  const sansSortie = (cycle) => cycle[0].map((main) => !main.some(estCarteSortie));
+  if (nbJoueurs === 3) {
+    const nombre = (cycle) => sansSortie(cycle).filter(Boolean).length;
+    const premier = distribuerCycle(rng, 3);
+    const second = distribuerCycle(rng, 3);
+    return nombre(second) < nombre(premier) ? second : premier;
+  }
+  let cycle = distribuerCycle(rng, nbJoueurs);
+  for (let essai = 1; essai < ESSAIS_PREMIER_CYCLE; essai++) {
+    const sans = sansSortie(cycle);
+    if (!(sans[0] && sans[2]) && !(sans[1] && sans[3])) break;
+    cycle = distribuerCycle(rng, nbJoueurs);
+  }
+  return cycle;
+}
+
 /** Générateur pseudo-aléatoire déterministe (mulberry32), pour les tests et les simulations. */
 export function generateurAleatoire(graine) {
   let a = graine >>> 0;
