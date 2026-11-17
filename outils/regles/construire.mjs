@@ -1313,7 +1313,7 @@ const infoA = `
     <div class="tuiles">
       ${tuile({ titre: 'Échanger', texte: "Le valet échange un de tes pions avec un autre pion du circuit. Ton pion peut partir de ta case de sortie.", figure: figures.valetSortieAvant })}
       ${tuile({ titre: 'Pion protégé', texte: "Sur sa case de sortie, un pion ne se dépasse pas et ne se capture pas. Seul son propriétaire peut l'échanger.", figure: figures.protegeNon })}
-      ${tuile({ titre: "Rentrer dans l'allée", texte: "Ton pion s'arrête là où la carte le mène, pas forcément au fond. Carte trop grande : il continue sur le circuit. Entrer n'est jamais obligatoire.", figure: figures.allee3 })}
+      ${tuile({ titre: "Rentrer dans l'allée", texte: "Ton pion s'arrête là où la carte le mène, pas forcément au fond. Carte trop grande : il continue sur le circuit. On n'entre pas avec un 4, qui fait reculer, et on ne dépasse pas un pion dans l'allée. Entrer n'est jamais obligatoire.", figure: figures.allee3 })}
     </div>
 
     <div class="trois">
