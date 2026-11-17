@@ -6,7 +6,7 @@
 // leurs parties et jouent (avec l'IA) quand c'est leur tour. L'état est gardé dans sessionStorage (onglet courant)
 // pour survivre à un rechargement. « &rapide » dans l'URL accélère tout (tests automatisés).
 
-import { nouvellePartie, donnerCarte, jouerCoup, coupsLegauxMain, donneurDon, nombreJoueurs } from '../moteur/index.js';
+import { nouvellePartie, donnerCarte, jouerCoup, coupsLegauxMain, donneurDon, nombreJoueurs, coteDeEtat } from '../moteur/index.js';
 import { choisirCoup, choisirDon } from '../ia/ia.js';
 import { choisirCoup3, choisirDon3 } from '../ia/ia3.js';
 
@@ -793,7 +793,7 @@ export async function ouvrirSession(id) {
     async donneesAnalyse() {
       const q = exigerPartie(id);
       return {
-        reglages: { ...q.reglages },
+        reglages: { ...q.reglages, plateau: coteDeEtat(q.partie.etat) },
         joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) })),
         siege,
         historique: copie(q.partie.historique),

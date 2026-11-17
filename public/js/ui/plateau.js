@@ -5,8 +5,8 @@
 // Le plateau n'applique aucune règle : il affiche ce qu'on lui donne et signale les touchers (pions, cibles).
 
 import { s } from './dom.js';
-import { BASE, caseDepart } from '../moteur/plateau.js';
-import { CELLULE, geometrie, chemin, TRIANGLE } from './geometrie.js';
+import { BASE, viser, viserPlateau } from '../moteur/plateau.js';
+import { CELLULE, geometrie, chemin } from './geometrie.js';
 import { PIONS, couleurSiege, couleurFonceeSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
@@ -14,7 +14,6 @@ import { estJoker } from '../moteur/cartes.js';
 import { nomNiveau, niveauEnLettres } from './niveaux.js';
 import { estHabille, contenuFigure, CADRE_FIGURE } from './figures.js';
 
-const COTE = 17 * CELLULE;
 /** Rayon d'un trou percé (case du circuit, de l'allée, emplacement de base) et d'une bille. */
 const RAYON_TROU = 3.4;
 const RAYON_PION = 3.15;
@@ -141,9 +140,9 @@ export class Plateau {
     else if (cible.dataset.action === 'cible') this.rappels.surCible?.(n);
   }
 
-  /** Change de forme (carré à 4, triangle à 3) : cadre, nombre de pions. */
-  preparer(nbJoueurs, siegeVue) {
-    const geo = geometrie(nbJoueurs);
+  /** Change de forme (carré à 4, triangle à 3) ou de taille (cases par côté) : cadre, nombre de pions. */
+  preparer(nbJoueurs, siegeVue, cote) {
+    const geo = geometrie(nbJoueurs, cote);
     if (this.geo === geo && this.siegeVue === siegeVue) return;
     const changeForme = this.geo !== geo;
     this.geo = geo;
@@ -178,7 +177,7 @@ export class Plateau {
     const bois = `url(#${this.idBois})`;
     const motif = `url(#${this.idVeinage})`;
     if (geo.forme === 'triangle') {
-      const { A, B, C } = TRIANGLE;
+      const { A, B, C } = geo.triangle;
       const points = [A, B, C].map((p) => `${p.x},${p.y}`).join(' ');
       f.append(
         s('polygon', { class: 'cadre cadre-triangle', points }),
@@ -187,6 +186,7 @@ export class Plateau {
       );
     } else {
       const b = geo.bord;
+      const COTE = geo.cote;
       f.append(
         s('rect', { class: 'cadre', x: b.x, y: b.y, width: b.l, height: b.h, rx: 7 }),
         s('rect', { class: 'tapis', x: -0.75, y: -0.75, width: COTE + 1.5, height: COTE + 1.5, rx: 3.5, style: { fill: bois } }),
@@ -214,12 +214,12 @@ export class Plateau {
         g.append(s('circle', { class: 'trou', cx: p.x, cy: p.y, r: RAYON_TROU, style: { fill: `url(#${this.idTrou})` } }));
       }
       // Sortie : petit carré plein de sa couleur.
-      g.append(rectTourne('zone-sortie', geo.caseCircuit(caseDepart(o), siegeVue), 9.8, 9.8, angle, { rx: 2, fill: couleurSiege(o) }));
+      g.append(rectTourne('zone-sortie', geo.caseCircuit(o * geo.casesParCote, siegeVue), 9.8, 9.8, angle, { rx: 2, fill: couleurSiege(o) }));
     }
-    const departs = new Set(Array.from({ length: n }, (_, o) => caseDepart(o)));
+    const departs = new Set(Array.from({ length: n }, (_, o) => o * geo.casesParCote));
     for (let i = 0; i < geo.nbCases; i++) {
       const p = geo.caseCircuit(i, siegeVue);
-      const repere = i % 16 === 6 || i % 16 === 12;
+      const repere = i % geo.casesParCote === 6 || i % geo.casesParCote === 12;
       const depart = departs.has(i);
       // Repère de comptage : un anneau clair incrusté autour du trou.
       if (repere) g.append(s('circle', { class: 'anneau-repere', cx: p.x, cy: p.y, r: 4.55 }));
@@ -249,7 +249,7 @@ export class Plateau {
    */
   maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue }) {
     const n = etat.pions.length >> 2;
-    this.preparer(n, siegeVue);
+    this.preparer(n, siegeVue, viser(etat)); // le plateau de la partie montrée : 18 cases par côté, 16 pour les premières
     this.etat = etat;
     const positions = pions || etat.pions;
     this.positions = positions;
@@ -517,6 +517,7 @@ export class Plateau {
   animer(dernierCoup, siegeVue, rythme = {}) {
     this.arreterAnimations();
     if (!dernierCoup || !this.geo) return 0;
+    viserPlateau(this.geo.casesParCote);
     const { pas = 110, max = 1100, saut = 380, carte: dureeCarte = 380 } = rythme;
     // La carte jouée part de son joueur vers le centre, puis les pions bougent.
     let depart = 0;

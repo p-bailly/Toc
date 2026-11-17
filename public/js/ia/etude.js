@@ -28,7 +28,7 @@
 // calibrée sur des parties de l'IA contre elle-même (voir probaDepuisEvaluation), puis
 // moyennée sur les simulations du meilleur candidat.
 
-import { apercuCoup, destinataireDon } from '../moteur/index.js';
+import { apercuCoup, destinataireDon, viser } from '../moteur/index.js';
 import { evaluerPlateau } from './evaluation.js';
 import { coupsMain, indexRang, clePions, equipeGagnantePions } from './simulation.js';
 import {
@@ -122,6 +122,7 @@ class AnalyseBase {
   /** Poursuit la recherche pendant au plus budgetMs (cumulatif) ; renvoie le résultat courant. */
   avancer(budgetMs = 0) {
     this.progresser(budgetMs);
+    viser(this.etat);
     return this.resultat();
   }
 
@@ -130,6 +131,7 @@ class AnalyseBase {
    * choixSeulement, s'arrête dès qu'un seul candidat reste en lice.
    */
   progresser(budgetMs = 0, choixSeulement = false) {
+    viser(this.etat); // la recherche reprend après une pause : une autre partie a pu viser son plateau entre-temps
     const limite = maintenant() + Math.max(0, budgetMs);
     while (this.iterations < this.iterMax && this.actifs.length > 0) {
       // pour choisir un coup, inutile de continuer quand un seul candidat reste en lice

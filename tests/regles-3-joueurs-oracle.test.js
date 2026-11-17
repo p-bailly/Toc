@@ -1,24 +1,26 @@
 // Oracle indépendant du jeu à 3 joueurs, comparé au moteur sur des milliers de positions
 // aléatoires (même esprit que tests/regles-revue.test.js). L'oracle est réécrit à partir des
-// règles décidées par le propriétaire : circuit de 48 cases, entrée de l'allée 3 cases avant la
-// case de sortie 16·s, chacun pour soi (pas de partenaire), 5 adverse sur n'importe quel autre
+// règles décidées par le propriétaire : circuit de 3 côtés de COTE cases (18 ; 16 pour les premières parties,
+// voir regles-3-joueurs-oracle-16.test.js), entrée de l'allée 3 cases avant la
+// case de sortie COTE·s, chacun pour soi (pas de partenaire), 5 adverse sur n'importe quel autre
 // joueur, joker = rang d'une carte posée pendant la donne en cours. Il avance case par case.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BASE, ALLEE, etatInitial, coupsLegaux, coupsLegauxMain, validerCoup, apercuCoup, etapesSeptPossibles,
-  mainJouable, generateurAleatoire,
+  mainJouable, generateurAleatoire, coteDesNouvellesParties,
 } from '../public/js/moteur/index.js';
 
-const NC = 48; // cases
+const COTE = coteDesNouvellesParties(); // cases d'une case de sortie à la suivante
+const NC = 3 * COTE; // cases
 const NP = 12; // pions
 const cle = (pions) => pions.join(',');
 
 const O = {
-  depart: (s) => 16 * s,
-  entree: (s) => (16 * s + NC - 3) % NC,
-  protege: (pions, q) => pions[q] === 16 * Math.floor(q / 4),
+  depart: (s) => COTE * s,
+  entree: (s) => (COTE * s + NC - 3) % NC,
+  protege: (pions, q) => pions[q] === COTE * Math.floor(q / 4),
   occupant(pions, cell, sauf) {
     for (let q = 0; q < NP; q++) if (q !== sauf && pions[q] === cell) return q;
     return -1;
@@ -188,7 +190,7 @@ function positionAleatoire(rng) {
   e.echanges = [true, true, true];
   const prises = new Set();
   const chaudes = [];
-  for (let s = 0; s < 3; s++) for (let d = -9; d <= 4; d++) chaudes.push((16 * s + d + NC) % NC);
+  for (let s = 0; s < 3; s++) for (let d = -9; d <= 4; d++) chaudes.push((COTE * s + d + NC) % NC);
   for (let g = 0; g < NP; g++) {
     const o = g >> 2;
     const t = rng();
@@ -270,7 +272,7 @@ test('oracle à 3 : 7 — plateaux finaux, validation, décompositions aléatoir
     if (rng() < 0.3) {
       // trois pions rentrés, le quatrième près de l'entrée : la fin de joueur pendant un 7
       for (let i = 0; i < 3; i++) e.pions[4 * siege + i] = ALLEE + 3 - i;
-      const cell = (16 * siege + 40 + Math.floor(rng() * 6)) % NC;
+      const cell = (COTE * siege + NC - 8 + Math.floor(rng() * 6)) % NC;
       e.pions[4 * siege + 3] = e.pions.includes(cell) ? BASE : cell;
     }
     const finals = O.explorerSept(e.pions, siege);

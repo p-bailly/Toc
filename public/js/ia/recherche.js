@@ -15,10 +15,10 @@
 // simulation d'une donne.
 
 import { paquetNeuf, tailleDonne } from '../moteur/cartes.js';
-import { destinataireDon } from '../moteur/plateau.js';
+import { destinataireDon, viser } from '../moteur/plateau.js';
 import { rangsCopiables } from '../moteur/regles.js';
 import {
-  coupsMain, indexRang, equipeGagnantePions, entree, masqueCopiables, rangEffectif, BASE, ALLEE,
+  coupsMain, indexRang, equipeGagnantePions, entree, masqueCopiables, rangEffectif, casesPlateau, BASE, ALLEE,
   R_A, R_R, R_7, R_4, R_V, R_J,
 } from './simulation.js';
 import { creerContexte, evaluerPlateau, valeurMain, POIDS_DEFAUT } from './evaluation.js';
@@ -66,6 +66,7 @@ function retirerRang(main, ir) {
  * options : { poids, carteDonnee, carteRecue }
  */
 export function preparer(etat, siege, main, options = {}) {
+  viser(etat);
   const poids = options.poids || POIDS_DEFAUT;
   const n = nbJoueurs(etat);
   const donneeEnMain = options.carteDonnee && !etat.pile.includes(options.carteDonnee) ? options.carteDonnee : null;
@@ -196,7 +197,7 @@ export function tirerMains(prep, rng) {
 
 /** Somme des distances restantes (jusqu'au fond de l'allée) de tous les pions, base comprise. */
 export function travailRestant(pions) {
-  const N = pions.length * 4;
+  const N = casesPlateau(pions);
   let r = 0;
   for (let g = 0; g < pions.length; g++) {
     const p = pions[g];

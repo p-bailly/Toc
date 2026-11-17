@@ -8,7 +8,7 @@
 //   passe en premier, les autres attendent un délai aléatoire, ce qui limite les courses.
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
 
-import { donneurDon, nombreJoueurs } from '../moteur/index.js';
+import { donneurDon, nombreJoueurs, coteDeEtat } from '../moteur/index.js';
 import { ConflitIA, ErreurToc, chemins, enErreurToc, nbJoueursDe, niveauDe, reglagesPartie, siegeDe } from './commun.js';
 
 /** Joueur tel que la vue le montre : { pseudo, ia } et, pour une IA, son niveau. */
@@ -285,7 +285,8 @@ export class SessionReseau {
         );
       }
       return {
-        reglages: reglagesPartie(p.reglages?.cinqAdverse, nbJoueursDe(p.reglages)),
+        // Le plateau se lit dans l'état de la partie (voir moteur/plateau.js) : il faut le même pour la rejouer.
+        reglages: { ...reglagesPartie(p.reglages?.cinqAdverse, nbJoueursDe(p.reglages)), plateau: coteDeEtat(p.etat) },
         joueurs: p.joueurs.map(vueJoueur),
         siege,
         historique: p.historique || [],

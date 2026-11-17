@@ -6,12 +6,13 @@
 //   ia             l'IA du projet (public/js/ia/ia.js), budget de temps du tournoi
 //   ia-statique    l'IA sans simulations (évaluation statique seule)
 //   ia3-provisoire l'IA provisoire à un coup du jeu à 3 (copie figée de l'ancien ia3.js)
-//   ia-avant       l'IA du jeu à 4 telle qu'avant la généralisation au jeu à 3 (non-régression)
+//   ia-avant       l'IA du jeu à 4 telle qu'avant la généralisation au jeu à 3 (non-régression) ; elle ne connaît
+//                  que le plateau de 16 cases par côté : tournoi.js --plateau=16
 //
 // Un nom peut être suivi d'options JSON : ia:{"candidatsMax":4,"profondeur":6}, ou d'un niveau :
 // ia:debutant, ia:amateur, ia:confirme, ia:expert, ia:champion
 
-import { coupsLegauxMain, apercuCoup, BASE, ALLEE, caseEntree } from '../public/js/moteur/index.js';
+import { coupsLegauxMain, apercuCoup, BASE, ALLEE, caseEntree, nbCases } from '../public/js/moteur/index.js';
 import { choisirCoup, choisirDon } from '../public/js/ia/ia.js';
 import { choisirCoup3, choisirDon3 } from './references/ia3-provisoire.js';
 import * as iaAvant from './references/ia-4-avant/ia.js';
@@ -29,7 +30,7 @@ export const aleatoire = {
 /** Potentiel d'un plateau pour le siège s : son camp moins les adversaires (moyenne à 3). */
 function potentiel(pions, s) {
   const nb = pions.length >> 2;
-  const N = nb * 16;
+  const N = nbCases(nb);
   let v = 0;
   for (let g = 0; g < pions.length; g++) {
     const p = pions[g];

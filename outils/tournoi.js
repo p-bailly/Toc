@@ -14,6 +14,8 @@
 //                 graine est jouée avec A à chacune des places possibles)
 //   --budget      budget de réflexion par coup (ms) passé aux IA
 //   --cinq        oui | non | les2 (alterne l'option « 5 adverse » d'une graine à l'autre)
+//   --plateau     18 (défaut) ou 16 : cases d'une case de sortie à la suivante. L'IA de référence « ia-avant » ne
+//                 connaît que le plateau de 16 cases.
 //   --graine      graine de départ (défaut 1)
 //   --fils        nombre de fils d'exécution parallèles (défaut : nombre de cœurs − 1)
 //   --journal     fichier où ajouter une ligne JSON par tournoi (pour outils/elo.js)
@@ -94,7 +96,7 @@ function partieNumero(cfg, i) {
     joueurs = aPair ? [A, B, A, B] : [B, A, B, A];
     estA = (g) => g === (aPair ? 0 : 1);
   }
-  const r = jouerPartie(joueurs, graine, { cinqAdverse: cinq }, cfg.budget);
+  const r = jouerPartie(joueurs, graine, { cinqAdverse: cinq, plateau: cfg.plateau }, cfg.budget);
   const tA = [];
   const tB = [];
   for (let s = 0; s < joueurs.length; s++) (joueurs[s] === A ? tA : tB).push(...r.temps[s]);
@@ -115,6 +117,7 @@ if (!isMainThread) {
     parties: Math.max(parGraine, parGraine * Math.round(Number(args.parties || 100) / parGraine)),
     budget: Number(args.budget ?? 600),
     cinq: args.cinq || 'les2',
+    plateau: Number(args.plateau) === 16 ? 16 : 18,
     graine: Number(args.graine || 1),
   };
   const fils = Math.max(1, Math.min(cfg.parties, Number(args.fils || Math.max(1, os.cpus().length - 1))));
