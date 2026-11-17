@@ -78,3 +78,62 @@ test('session locale : la couleur choisie est gardée avec la partie, les IA n�
     autre.fermer();
   }
 });
+
+test('session locale : annuler son dernier coup ramène la partie juste avant, une fois par coup', async () => {
+  const memoire = new Map();
+  const stockage = { getItem: (k) => memoire.get(k) ?? null, setItem: (k, v) => memoire.set(k, v), removeItem: (k) => memoire.delete(k) };
+  const rng = generateurAleatoire(7);
+  const session = new SessionLocale({ delaiIA: 0, budgetIA: 5, rng, stockage });
+  let vue = null;
+  session.abonner((v) => (vue = v));
+  const patienter = async (condition) => {
+    const debut = Date.now();
+    while (!condition()) {
+      assert.ok(Date.now() - debut < 20000, 'attente trop longue');
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  };
+  assert.equal(vue.annulable, false, 'rien à annuler avant d’avoir agi');
+  await assert.rejects(session.annuler(), /pas de coup à annuler/);
+
+  // Carte donnée, puis reprise : on est de nouveau dans l'échange, la carte en main.
+  const mainDepart = vue.main.slice().sort();
+  await session.donner(vue.main[0]);
+  assert.equal(vue.annulable, true);
+  await session.annuler();
+  assert.equal(vue.etat.phase, 'echange');
+  assert.equal(vue.don, null);
+  assert.deepEqual(vue.main.slice().sort(), mainDepart);
+  assert.equal(vue.annulable, false, 'une seule annulation par action');
+  await session.donner(vue.main[1]);
+  await patienter(() => vue.etat.phase === 'jeu' && vue.etat.tour === vue.siege);
+
+  // Coup joué, les IA jouent derrière, puis on annule : tout revient juste avant mon coup.
+  const avant = { numCoup: vue.etat.numCoup, pions: vue.etat.pions.slice(), main: vue.main.slice().sort(), histo: vue.historique.length };
+  const coups = coupsLegauxMain(vue.etat, vue.siege, vue.main);
+  await session.jouer(coups[0]);
+  await patienter(() => vue.etat.phase !== 'jeu' || vue.etat.tour === vue.siege || vue.historique.length >= avant.histo + 4);
+  assert.ok(vue.historique.length > avant.histo + 1, 'les IA ont joué après moi');
+  assert.equal(vue.annulable, true);
+  await session.annuler();
+  assert.equal(vue.etat.numCoup, avant.numCoup);
+  assert.deepEqual(vue.etat.pions, avant.pions);
+  assert.deepEqual(vue.main.slice().sort(), avant.main);
+  assert.equal(vue.historique.length, avant.histo);
+  assert.equal(vue.etat.tour, vue.siege, 'c’est de nouveau à moi');
+  assert.equal(vue.annulable, false);
+  // La sauvegarde suit : en rouvrant la partie, on la retrouve à l'état annulé (et sans annulation possible).
+  const reprise = new SessionLocale({ delaiIA: 1e9, stockage, reprendre: true });
+  let vue2 = null;
+  reprise.abonner((v) => (vue2 = v));
+  assert.equal(vue2.etat.numCoup, avant.numCoup);
+  assert.equal(vue2.annulable, false);
+  reprise.fermer();
+  // Les IA ne rejouent pas tant que je n'ai pas rejoué ; puis la partie reprend normalement.
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(vue.historique.length, avant.histo);
+  await session.jouer(coups[coups.length - 1]);
+  await patienter(() => vue.historique.length > avant.histo + 1 || vue.etat.phase !== 'jeu');
+  assert.equal(vue.annulable, vue.etat.phase !== 'fini');
+  session.fermer();
+});

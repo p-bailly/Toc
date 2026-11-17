@@ -10,6 +10,8 @@
 //   session.donner(carte) → Promise    donner une carte au partenaire (phase 'echange')
 //   session.jouer(coup)   → Promise    jouer un coup (phase 'jeu', à son tour) ; rejette si illégal
 //   session.fermer()                   arrêter les écoutes et les minuteries
+//   session.annuler() → Promise        (session locale seulement) annuler sa dernière action, voir vue.annulable.
+//       Une session en ligne n'a pas cette méthode : un coup joué en ligne a été vu par les autres joueurs.
 //   session.donneesAnalyse() → Promise<{ reglages, joueurs, siege, historique, donnes }>
 //       reglages : ceux de l'état, plus `plateau` (cases entre deux cases de départ : reglagesRejeu du moteur).
 //       pour l'analyse de fin de partie : donnes[d] = { distribuees, donnee, recue } = les cartes
@@ -31,6 +33,7 @@
 //     don,           carte que le joueur local a donnée pour la donne en cours, ou null
 //     recu,          carte reçue du partenaire (connue une fois la phase 'jeu' commencée), ou null
 //     historique,    [{ n, siege, coup, captures }] du plus ancien au plus récent
+//     annulable,     (session locale) true si le joueur peut annuler sa dernière action (session.annuler)
 //   }
 //
 // À 3 joueurs (options.nbJoueurs = 3, ou partie sauvegardée à 3) : l'interface est la même,
@@ -74,6 +77,9 @@ export class SessionLocale {
     this.abonnes = new Set();
     this.minuterie = null;
     this.ferme = false;
+    // La partie telle qu'elle était juste avant la dernière action du joueur (carte donnée ou coup joué) : c'est
+    // là qu'on revient s'il l'annule. En mémoire seulement : on n'annule plus après avoir quitté la partie.
+    this.avantMonAction = null;
 
     const sauvegarde = options.reprendre ? SessionLocale.lireSauvegarde(this.stockage, this.cle) : null;
     if (sauvegarde) {
@@ -153,6 +159,7 @@ export class SessionLocale {
       don: dons[s],
       recu: etat.phase === 'echange' ? null : dons[donneurDon(etat.donne, s, nombreJoueurs(etat))],
       historique,
+      annulable: this.peutAnnuler(),
     };
   }
 
@@ -170,12 +177,35 @@ export class SessionLocale {
   }
 
   async donner(carte) {
+    const avant = this.partie;
     this.partie = donnerCarte(this.partie, this.siege, carte);
+    this.avantMonAction = avant;
     this.notifier();
   }
 
   async jouer(coup) {
+    const avant = this.partie;
     this.partie = jouerCoup(this.partie, this.siege, coup, this.rng);
+    this.avantMonAction = avant;
+    this.notifier();
+  }
+
+  /** Le joueur peut-il annuler sa dernière action ? Une fois par action, et plus une fois la partie terminée. */
+  peutAnnuler() {
+    return !!this.avantMonAction && this.partie.etat.phase !== 'fini';
+  }
+
+  /**
+   * Annule la dernière action du joueur (coup joué ou carte donnée) : la partie revient juste avant, ce que les IA
+   * ont joué depuis est annulé aussi, et c'est de nouveau à lui. Partie d'entraînement : rien n'empêche de rejouer
+   * autrement après avoir vu la suite.
+   */
+  async annuler() {
+    if (!this.peutAnnuler()) throw new Error('Il n’y a pas de coup à annuler.');
+    if (this.minuterie) clearTimeout(this.minuterie);
+    this.minuterie = null;
+    this.partie = this.avantMonAction;
+    this.avantMonAction = null;
     this.notifier();
   }
 

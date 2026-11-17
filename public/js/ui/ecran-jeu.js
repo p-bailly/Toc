@@ -87,6 +87,7 @@ export function afficher(racine, app, { reste }) {
         }),
       donner: (c) => vraie.donner(c),
       jouer: (c) => vraie.jouer(c),
+      annuler: () => vraie.annuler(),
       fermer: () => vraie.fermer(),
     };
     demonter = monterJeu(racine, {

@@ -45,7 +45,8 @@ const NOMS_FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆'
 /**
  * Monte l'écran de jeu dans `racine`.
  * @param {Object} o
- * @param {Object} o.session        Session (abonner, donner, jouer, fermer)
+ * @param {Object} o.session        Session (abonner, donner, jouer, fermer ; annuler si la partie le permet :
+ *                                  parties contre l'IA seulement, voir session-locale.js)
  * @param {string} o.retour         hash du bouton retour
  * @param {Function} [o.rejouer]    partie d'entraînement : relancer une partie
  * @returns {Function} destruction
@@ -388,7 +389,22 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const cleVu = () => (vueReelle?.enLigne ? `toc.vu.${vueReelle.id}` : null);
 
   const desabonner = session.abonner((v) => {
+    // Retour en arrière (le joueur a annulé son dernier coup) : la partie est revenue à une position plus ancienne.
+    const recul = !!vueReelle && v.etat.numCoup < vueReelle.etat.numCoup;
     vueReelle = v;
+    if (recul) {
+      // On montre la position rendue telle quelle : rien à rejouer, les animations en cours s'arrêtent.
+      nHisto = v.historique.length;
+      resume = null;
+      clearTimeout(minuterieAuto);
+      if (enPresentation) {
+        passerPresentation(); // la file s'arrête et affiche la position actuelle
+        return;
+      }
+      plateau.arreterAnimations();
+      appliquerVue(v);
+      return;
+    }
     if (nHisto < 0) {
       // Ouverture : en ligne, on reprend là où le joueur s'était arrêté (coups joués en son absence) ;
       // en entraînement, rien n'a bougé pendant son absence.
@@ -823,6 +839,32 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     return reussi;
   }
 
+  /** Peut-on annuler son dernier coup maintenant ? (Parties contre l'IA : la session le dit.) */
+  function coupAnnulable() {
+    return typeof session.annuler === 'function' && !!vueReelle?.annulable && !envoi && !revue;
+  }
+
+  /** Bouton « Annuler mon dernier coup », ou null. Proposé quand aucune saisie n'est en cours. */
+  function boutonAnnulerCoup() {
+    if (!coupAnnulable()) return null;
+    return h('button', { type: 'button', class: 'bouton discret', 'data-action': 'annuler-coup', title: 'Revenir juste avant ton dernier coup', onclick: annulerCoup }, piAnnuler(), 'Annuler mon dernier coup');
+  }
+
+  /** Annule le dernier coup du joueur (et ce que les IA ont joué depuis) : c'est de nouveau à lui. */
+  async function annulerCoup() {
+    if (!coupAnnulable()) return;
+    envoi = true;
+    try {
+      await session.annuler();
+      annoncer('Coup annulé : à toi de rejouer.');
+    } catch (e) {
+      annoncer(messageErreur(e), { erreur: true, duree: 6000 });
+    } finally {
+      envoi = false;
+      if (vue) rendre();
+    }
+  }
+
   async function donner() {
     if (!carte || envoi) return;
     const c = carte;
@@ -1060,6 +1102,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         );
         if (restants >= 6) lignes.push(h('span', { class: 'note' }, `${pluriel(restants, 'coup a été joué', 'coups ont été joués')} depuis ta dernière visite : ils te sont montrés un par un.`));
       }
+      // Pendant que les IA jouent : on peut encore revenir sur son coup.
+      const annulation = boutonAnnulerCoup();
+      if (annulation) boutons.push(annulation);
       remplacer(consigne, h('div', { class: 'mots' }, lignes));
       remplacer(actions, boutons);
       actions.hidden = !boutons.length;
@@ -1172,6 +1217,11 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     }
     if (monTour && actifCouleur !== siege && etat.phase === 'jeu') {
       lignes.push(h('span', { class: 'note joue-pour' }, puceCouleur(actifCouleur), ` Tes pions sont rentrés : tu joues les pions ${nomCouleurPartie(couleursPartie(vue.joueurs, vue.joueurs.length), actifCouleur, true)} de ${nomP}.`));
+    }
+    // Rien en cours de saisie : on peut revenir sur son dernier coup (parties contre l'IA).
+    if (!carte && !coupPret && !sept) {
+      const annulation = boutonAnnulerCoup();
+      if (annulation) boutons.push(annulation);
     }
     remplacer(consigne, h('div', { class: 'mots' }, lignes));
     remplacer(actions, boutons);
