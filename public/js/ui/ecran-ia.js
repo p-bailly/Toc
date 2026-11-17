@@ -40,7 +40,7 @@ export function afficher(racine, app) {
     );
   };
 
-  rattraperPartiesFinies();
+  rattraperPartiesFinies(app.joueur?.uid);
 
   const dessiner = () => {
     const blocs = [entete('Contre l’IA')];

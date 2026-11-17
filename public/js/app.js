@@ -18,6 +18,7 @@ import { piParties, piIA, piBilan, piRegles, piReglages } from './ui/pictos.js';
 import { definirLecteurJoueurs, retenirIcone } from './ui/composants.js';
 import { surEnAttente, nbEnAttente, surOuvertureNotification } from './ui/notifications.js';
 import { demarrerVeille, arreterVeille } from './ui/veille.js';
+import { synchroniserPartiesIA } from './ui/synchro-ia.js';
 
 const parametres = new URLSearchParams(location.search);
 const demo = parametres.has('demo');
@@ -193,7 +194,11 @@ api.surAuth((joueur) => {
   const avant = app.joueur;
   app.joueur = joueur || null;
   if (joueur) retenirIcone(joueur.uid, joueur.icone);
-  if (joueur && (!avant || avant.uid !== joueur.uid)) demarrerVeille(api);
+  if (joueur && (!avant || avant.uid !== joueur.uid)) {
+    demarrerVeille(api);
+    // L'historique contre l'IA de cet appareil rejoint celui du compte (et inversement).
+    void synchroniserPartiesIA(app);
+  }
   if (!joueur && avant) arreterVeille();
   if (premierAvis) {
     premierAvis = false;

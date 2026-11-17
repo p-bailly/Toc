@@ -1,8 +1,9 @@
 // Statistiques (route #/stats), sur le modèle de l'appli Scrabble : « Mes statistiques » en ligne (les totaux du
 // compte, les mêmes sur tous les appareils), le bilan avec et contre chaque joueur et les parties en ligne terminées,
 // puis le bilan contre l'IA par mode et par niveau et les dernières parties contre l'IA (à rouvrir pour les
-// analyser). Les parties contre l'IA viennent de l'appareil (parties-finies.js), celles en ligne de la veille de
-// « Mes parties » ; les totaux en ligne viennent de la fiche du joueur (toutes ses parties, pas seulement les récentes).
+// analyser). Les parties contre l'IA viennent de l'appareil (parties-finies.js) et, avec un compte, de ses autres
+// appareils (synchro-ia.js : seul le résultat suit, l'analyse reste là où la partie a été jouée) ; celles en ligne
+// viennent de la veille de « Mes parties », et les totaux en ligne de la fiche du joueur (toutes ses parties).
 // (Le fichier ne s'appelle pas « stats » : les bloqueurs de publicité refusent ce nom, voir tests/noms-fichiers.)
 
 import { h, remplacer, pluriel, ilYa } from './dom.js';
@@ -11,7 +12,8 @@ import { nomNiveau, niveauEnLettres, forceNiveau } from './niveaux.js';
 import { surVeille } from './veille.js';
 import { sauvegardeLocale } from './ecran-jeu.js';
 import { piCroix } from './pictos.js';
-import { lirePartiesFinies, enregistrerPartieFinie, supprimerPartieFinie, bilanContreIA, bilanEnLigne, niveauAdverse } from './parties-finies.js';
+import { lirePartiesFinies, enregistrerPartieFinie, supprimerPartieFinie, partiesDuCompte, bilanContreIA, bilanEnLigne, niveauAdverse } from './parties-finies.js';
+import { synchroniserPartiesIA } from './synchro-ia.js';
 
 const NOM_MODE = { 4: '2 contre 2', 3: '3 joueurs' };
 const pourcent = (n, total) => (total ? Math.round((n / total) * 100) + ' %' : '–');
@@ -19,11 +21,11 @@ const defaites = (l) => l.parties - l.victoires;
 /** « 2 contre 2 · ★★★★ » : le mode et la force des IA adverses. */
 const titreMode = (nb, niveau) => [NOM_MODE[nb], h('span', { class: 'sep' }, ' · '), h('span', { class: 'etoiles', 'aria-label': 'IA ' + niveauEnLettres(niveau) }, nomNiveau(niveau))];
 
-/** Les parties terminées encore posées dans la sauvegarde de chaque mode entrent dans l'historique. */
-export function rattraperPartiesFinies() {
+/** Les parties terminées encore posées dans la sauvegarde de chaque mode entrent dans l'historique (du compte `uid`). */
+export function rattraperPartiesFinies(uid = null) {
   for (const n of [4, 3]) {
     const sv = sauvegardeLocale(n);
-    if (sv?.partie?.etat?.phase === 'fini') enregistrerPartieFinie(sv, n);
+    if (sv?.partie?.etat?.phase === 'fini') enregistrerPartieFinie(sv, n, { uid });
   }
 }
 
@@ -34,7 +36,8 @@ export function afficher(racine, app) {
   let toutVoir = false;
 
   const blocIA = () => {
-    const parties = lirePartiesFinies();
+    // Connecté : les parties du compte, celles jouées sur ses autres appareils comprises.
+    const parties = partiesDuCompte(lirePartiesFinies(), app.joueur?.uid);
     const blocs = [h('h2', {}, 'Contre l’IA')];
     if (!parties.length) {
       blocs.push(h('div', { class: 'vide-etat' }, 'Aucune partie terminée contre l’IA pour l’instant. Elles apparaîtront ici, avec leur analyse.'));
@@ -81,7 +84,7 @@ export function afficher(racine, app) {
               'div',
               { class: 'principal' },
               h('div', { class: 'mot' }, titreMode(p.nb, niveauAdverse(p))),
-              h('div', { class: 'note' }, `${resultat ? resultat + ' · ' : ''}${details}${p.sauvegarde ? '' : ' · analyse non gardée'}`),
+              h('div', { class: 'note' }, `${resultat ? resultat + ' · ' : ''}${details}${p.sauvegarde ? '' : p.ailleurs ? ' · jouée sur un autre appareil' : ' · analyse non gardée'}`),
             ),
             h('span', { class: 'badge ' + (p.gagne ? 'ok' : 'neutre') }, p.gagne ? 'Gagnée' : 'Perdue'),
           ];
@@ -99,9 +102,10 @@ export function afficher(racine, app) {
                 'aria-label': 'Retirer cette partie des statistiques',
                 'data-action': 'retirer',
                 onclick: () => {
-                  if (!confirm('Retirer cette partie de l’historique et des statistiques ?')) return;
+                  if (!confirm(app.joueur ? 'Retirer cette partie de l’historique et des statistiques, sur tous tes appareils ?' : 'Retirer cette partie de l’historique et des statistiques ?')) return;
                   supprimerPartieFinie(p.id);
                   dessiner();
+                  void synchroniserPartiesIA(app); // le compte la retire aussi : elle ne reviendra d'aucun appareil
                 },
               },
               piCroix(),
@@ -205,8 +209,11 @@ export function afficher(racine, app) {
     remplacer(racine, h('div', { class: 'contenu bilan' }, entete('Statistiques'), blocs));
   }
 
-  rattraperPartiesFinies();
+  rattraperPartiesFinies(app.joueur?.uid);
   dessiner();
+  let ouvert = true;
+  // Historique contre l'IA du compte : on verse les parties de cet appareil, on récupère celles des autres.
+  void synchroniserPartiesIA(app).then((change) => change && ouvert && dessiner());
   const arret = surVeille((v) => {
     veille = v;
     dessiner();
@@ -214,6 +221,7 @@ export function afficher(racine, app) {
   // La fiche du joueur change quand une partie terminée est comptée : les totaux suivent.
   app.surJoueur = () => dessiner();
   return () => {
+    ouvert = false;
     arret();
     app.surJoueur = null;
   };

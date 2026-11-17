@@ -91,6 +91,19 @@ export async function modifierProfil(changements) {
   return client.modifierProfil(changements);
 }
 
+/**
+ * Parties contre l'IA : elles se jouent hors ligne, sur l'appareil ; le compte en garde l'historique pour qu'il
+ * suive d'un appareil à l'autre. Verse celui de cet appareil dans celui du compte et renvoie le tout, fusionné.
+ *   local = { parties: [RésuméIA…], retirees: [id…] } → { parties: [RésuméIA…], retirees: [id…] }
+ *   RésuméIA = { id, date (ms), nb, gagne, gagnants, joueurs: [{ pseudo, ia, niveau }], donnes, coups, cinqAdverse }
+ *   retirees : parties retirées de l'historique (elles ne reviennent sur aucun appareil).
+ * Seuls les résultats suivent : les coups d'une partie (son analyse) restent sur l'appareil où elle a été jouée.
+ */
+export async function synchroniserPartiesIA(local) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.synchroniserPartiesIA(local);
+}
+
 /** Fiche publique d'un joueur (avec cache) → { uid, pseudo, icone } | null */
 export async function lireJoueur(uid) {
   if (!reseauDisponible()) return null;

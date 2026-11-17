@@ -94,6 +94,13 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   assert.equal((await b.client.lireJoueur(a.joueur.uid)).icone, 'chat');
   const liste = await b.client.listerJoueurs();
   assert.deepEqual(liste.map((j) => j.pseudo).sort(), ['Alice', 'Chloé']);
+  // Historique contre l'IA : versé par un appareil, retrouvé sur l'autre (même compte), invisible aux autres comptes.
+  const resumeIA = (idIA, date) => ({ id: idIA, date, nb: 4, gagne: true, gagnants: [0, 2], joueurs: [{ pseudo: 'Alice', ia: false, niveau: null }, { pseudo: 'Léo', ia: true, niveau: 'expert' }], donnes: 4, coups: 80, cinqAdverse: false });
+  await a.client.synchroniserPartiesIA({ parties: [resumeIA('ia1', 1000)], retirees: [] });
+  const histoA = await a2.client.synchroniserPartiesIA({ parties: [resumeIA('ia2', 2000)], retirees: [] });
+  assert.deepEqual(histoA.parties.map((x) => x.id), ['ia2', 'ia1']);
+  assert.deepEqual((await a.client.synchroniserPartiesIA({ parties: [], retirees: ['ia1'] })).parties.map((x) => x.id), ['ia2']);
+  assert.deepEqual((await b.client.synchroniserPartiesIA({ parties: [], retirees: [] })).parties, []);
 
   const { id, code } = await a.client.creerPartie({ nom: 'Émulateur', cinqAdverse: false });
   let invitations = null;
@@ -215,6 +222,23 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(updateDoc(doc(db(B), 'joueurs', B), { pseudo: 'Autre' }));
   await assertFails(updateDoc(doc(db(B), 'joueurs', B), { verrouille: false }));
   await assertSucceeds(updateDoc(doc(db(B), 'joueurs', B), { visible: true, icone: 'lapin' }));
+
+  // Historique contre l'IA : document privé du joueur, lui seul le lit et l'écrit, forme bornée.
+  const histo = (u, de = u) => doc(db(u), 'joueurs', de, 'prive', 'partiesIA');
+  const resume = { id: 'abc', date: 1000, nb: 4, gagne: true, gagnants: [0, 2], joueurs: [{ pseudo: 'Alice', ia: false, niveau: null }], donnes: 4, coups: 80, cinqAdverse: false };
+  await assertSucceeds(getDoc(histo(A))); // absent : lisible par son titulaire
+  await assertFails(setDoc(histo(A), { parties: [resume], retirees: [] })); // sans l'heure du serveur
+  await assertFails(setDoc(histo(A), { parties: [resume], retirees: [], majLe: serverTimestamp(), autre: 1 }));
+  await assertFails(setDoc(histo(A), { parties: 'x', retirees: [], majLe: serverTimestamp() }));
+  await assertFails(setDoc(histo(A), { parties: Array(301).fill(resume), retirees: [], majLe: serverTimestamp() }));
+  await assertFails(setDoc(doc(db(A), 'joueurs', A, 'prive', 'autre'), { parties: [], retirees: [], majLe: serverTimestamp() }));
+  await assertSucceeds(setDoc(histo(A), { parties: [resume], retirees: [], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(histo(A), { parties: [resume, { ...resume, id: 'def' }], retirees: ['xyz'], majLe: serverTimestamp() }));
+  await assertSucceeds(getDoc(histo(A)));
+  await assertFails(getDoc(histo(X, A))); // l'historique d'un autre
+  await assertFails(setDoc(histo(X, A), { parties: [], retirees: [], majLe: serverTimestamp() }));
+  await assertFails(deleteDoc(histo(A)));
+  await assertFails(getDocs(collection(db(A), 'joueurs', A, 'prive')));
 
   // Partie : création valide, puis tentatives.
   const id = 'ABCDEF';

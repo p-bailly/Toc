@@ -2,9 +2,11 @@
 //   #/jeu/locale    2 contre 2 (toi et une IA contre deux IA)
 //   #/jeu/locale3   3 joueurs, chacun pour soi (toi contre deux IA)
 // Chaque mode a sa propre sauvegarde : on peut avoir une partie en cours dans chacun.
+// Une partie terminée entre dans l'historique de l'appareil et, avec un compte, dans celui du compte (synchro-ia.js).
 
 import { SessionLocale } from '../session-locale.js';
 import { enregistrerPartieFinie } from './parties-finies.js';
+import { synchroniserPartiesIA } from './synchro-ia.js';
 import { monterJeu } from './vue-jeu.js';
 import { lire, ecrire } from './dom.js';
 import { lireReglages, rythme } from './reglages.js';
@@ -51,11 +53,19 @@ export function afficher(racine, app, { reste }) {
     // Le joueur connecté voit son icône à sa place sur le plateau.
     const icone = app.joueur?.icone;
     const vraie = session;
+    let versee = false;
     const enveloppe = {
       abonner: (cb) =>
         vraie.abonner((v) => {
-          // Partie terminée : elle entre dans l'historique de l'appareil (statistiques, analyse).
-          if (v.etat.phase === 'fini') enregistrerPartieFinie({ nom: vraie.nom, joueurs: vraie.joueurs, partie: vraie.partie }, nbJoueurs);
+          // Partie terminée : elle entre dans l'historique de l'appareil (statistiques, analyse), puis dans celui
+          // du compte connecté, pour se retrouver sur ses autres appareils.
+          if (v.etat.phase === 'fini') {
+            enregistrerPartieFinie({ nom: vraie.nom, joueurs: vraie.joueurs, partie: vraie.partie }, nbJoueurs, { uid: app.joueur?.uid });
+            if (!versee) {
+              versee = true;
+              void synchroniserPartiesIA(app);
+            }
+          }
           cb({ ...v, joueurs: v.joueurs.map((j, i) => (i === v.siege ? { ...j, icone } : j)) });
         }),
       donner: (c) => vraie.donner(c),

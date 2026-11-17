@@ -80,6 +80,21 @@ service cloud.firestore {
         && ((request.resource.data.stats == resource.data.stats && request.resource.data.comptees == resource.data.comptees)
           || partieComptee(resource.data, request.resource.data));
       allow delete: if false;
+
+      // ── Données privées du joueur : joueurs/{uid}/prive/partiesIA, l'historique de ses parties contre l'IA
+      // (jouées hors ligne), pour qu'il suive d'un appareil à l'autre. Lui seul le lit et l'écrit. ──
+      match /prive/{nom} {
+        function historiqueValide(d) {
+          return d.keys().hasOnly(['parties', 'retirees', 'majLe'])
+            && d.parties is list && d.parties.size() <= 300
+            && d.retirees is list && d.retirees.size() <= 500
+            && d.majLe == request.time;
+        }
+        allow get: if connecte() && moi() == uid;
+        allow create, update: if connecte() && moi() == uid && nom == 'partiesIA'
+          && historiqueValide(request.resource.data);
+        allow list, delete: if false;
+      }
     }
 
     // ─── Parties ──────────────────────────────────────────────────────────

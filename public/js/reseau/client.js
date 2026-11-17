@@ -9,6 +9,7 @@ import {
   creerAnnuaire,
   ficheVersJoueur,
   modifierProfil as modifierFiche,
+  synchroniserPartiesIA,
 } from './comptes.js';
 import * as P from './parties.js';
 import { avecReseau } from './outils.js';
@@ -179,6 +180,8 @@ export function creerClient(options) {
       (await annuaireCourant()).retenir(j.uid, { uid: j.uid, pseudo: j.pseudo, icone: j.icone });
       return j;
     }),
+
+    synchroniserPartiesIA: action(async (local) => synchroniserPartiesIA(await ctx(), local)),
 
     lireJoueur: action(async (uid) => (await annuaireCourant()).lireJoueur(uid)),
 

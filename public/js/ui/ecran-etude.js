@@ -116,7 +116,11 @@ async function donneesLocales(nbJoueurs) {
 async function donneesArchive(idPartie) {
   const entree = partieFinie(idPartie);
   if (!entree) return 'Cette partie n’est plus dans l’historique de cet appareil.';
-  if (!entree.sauvegarde) return 'Seul le résultat de cette partie a été gardé : ses coups ne sont plus disponibles pour l’analyse.';
+  if (!entree.sauvegarde) {
+    return entree.ailleurs
+      ? 'Cette partie a été jouée sur un autre appareil : seul son résultat est ici, l’analyse se fait là où elle a été jouée.'
+      : 'Seul le résultat de cette partie a été gardé : ses coups ne sont plus disponibles pour l’analyse.';
+  }
   const stockage = { getItem: () => JSON.stringify(entree.sauvegarde), setItem() {}, removeItem() {} };
   const session = new SessionLocale({ stockage, cle: 'partie', reprendre: true, delaiIA: 1e9, nbJoueurs: entree.nb });
   try {

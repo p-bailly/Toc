@@ -11,10 +11,16 @@
 //   - recherche : pseudo normalisé, écrit seulement si le joueur accepte d'être trouvé (visible) ;
 //   - verrouille : pseudo imposé par l'administrateur (console), que le joueur ne peut ni changer ni déverrouiller ;
 //   - comptees : parties déjà comptées dans stats (mise à jour idempotente, vérifiée par les règles).
+//
+//   joueurs/{uid}/prive/partiesIA = { parties: [résumé…], retirees: [id…], majLe }   (lisible par lui seul)
+//   - l'historique de ses parties contre l'IA, qui se jouent hors ligne sur chaque appareil : chaque appareil
+//     y verse les siennes et y prend celles des autres (voir synchroniserPartiesIA) ;
+//   - retirees : parties retirées de l'historique (pour qu'un autre appareil ne les y remette pas).
 
 import {
   ErreurToc,
   ICONE_MAX,
+  PSEUDO_MAX,
   PSEUDO_VERROUILLE,
   chemins,
   emailDe,
@@ -154,6 +160,73 @@ export async function comptabiliserPartie(ctx, id, partie) {
       comptees: comptees.concat([id]),
     });
     return true;
+  });
+}
+
+// ─── Historique des parties contre l'IA, partagé entre les appareils du joueur ─────────────
+
+export const MAX_PARTIES_IA = 300;
+export const MAX_RETIREES_IA = 500;
+const NIVEAUX = ['debutant', 'amateur', 'confirme', 'expert', 'champion'];
+
+const entier = (v, max) => (Number.isInteger(v) && v >= 0 ? Math.min(v, max) : 0);
+const idValide = (id) => typeof id === 'string' && id.length > 0 && id.length <= 24;
+
+/** Résumé d'une partie contre l'IA, remis en forme (rien d'inattendu n'entre dans le document) ; null si invalide. */
+export function resumePartieIA(p) {
+  if (!p || !idValide(p.id) || !Number.isFinite(p.date)) return null;
+  const nb = p.nb === 3 ? 3 : 4;
+  return {
+    id: p.id,
+    date: Math.round(p.date),
+    nb,
+    gagne: !!p.gagne,
+    gagnants: (Array.isArray(p.gagnants) ? p.gagnants : []).filter((s) => Number.isInteger(s) && s >= 0 && s < nb).slice(0, 2),
+    joueurs: (Array.isArray(p.joueurs) ? p.joueurs : []).slice(0, nb).map((j) => ({
+      pseudo: String(j?.pseudo ?? '').slice(0, PSEUDO_MAX),
+      ia: !!j?.ia,
+      niveau: NIVEAUX.includes(j?.niveau) ? j.niveau : null,
+    })),
+    donnes: entier(p.donnes, 9999),
+    coups: entier(p.coups, 99999),
+    cinqAdverse: !!p.cinqAdverse,
+  };
+}
+
+/**
+ * Fusion de deux historiques : toutes les parties (une fois chacune, celle de `base` gagne), sauf les retirées ;
+ * de la plus récente à la plus ancienne, MAX_PARTIES_IA au plus. Fonction pure.
+ */
+export function fusionnerPartiesIA(base, ajout) {
+  const retirees = [...new Set([...(base.retirees || []), ...(ajout.retirees || [])].filter(idValide))].slice(-MAX_RETIREES_IA);
+  const retire = new Set(retirees);
+  const parId = new Map();
+  for (const p of [...(base.parties || []), ...(ajout.parties || [])]) {
+    const r = resumePartieIA(p);
+    if (r && !retire.has(r.id) && !parId.has(r.id)) parId.set(r.id, r);
+  }
+  const parties = [...parId.values()].sort((a, b) => b.date - a.date || (a.id < b.id ? -1 : 1)).slice(0, MAX_PARTIES_IA);
+  return { parties, retirees };
+}
+
+/**
+ * Verse l'historique de cet appareil ({ parties: [résumé…], retirees: [id…] }) dans celui du compte et renvoie
+ * l'historique fusionné : c'est ce qui fait suivre les parties contre l'IA d'un appareil à l'autre.
+ * @returns {Promise<{ parties: Object[], retirees: string[] }>}
+ */
+export async function synchroniserPartiesIA(ctx, local = {}) {
+  const chemin = chemins.partiesIA(ctx.uid);
+  return transaction(ctx, async (tx) => {
+    const d = await tx.lire(chemin);
+    // (Comparaison sur la forme remise en ordre : Firestore ne garde pas l'ordre des champs.)
+    const avant = fusionnerPartiesIA({ parties: d?.parties || [], retirees: d?.retirees || [] }, {});
+    const apres = fusionnerPartiesIA(avant, local);
+    if (!d || JSON.stringify(apres) !== JSON.stringify(avant)) {
+      const donnees = { ...apres, majLe: ctx.magasin.horodatage() };
+      if (d) tx.maj(chemin, donnees);
+      else tx.creer(chemin, donnees);
+    }
+    return apres;
   });
 }
 

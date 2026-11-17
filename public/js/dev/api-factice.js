@@ -224,6 +224,19 @@ export async function modifierProfil({ pseudo, icone, visible } = {}) {
   return joueurCourant();
 }
 
+/** Historique des parties contre l'IA gardé par le compte (voir reseau/api.js) : fusion avec celui de l'appareil. */
+export async function synchroniserPartiesIA({ parties = [], retirees = [] } = {}) {
+  await attendre(60);
+  const c = exigerConnexion();
+  const retire = [...new Set([...(c.retireesIA || []), ...retirees])];
+  const parId = new Map();
+  for (const p of [...(c.partiesIA || []), ...parties]) if (p?.id && !retire.includes(p.id) && !parId.has(p.id)) parId.set(p.id, copie(p));
+  c.partiesIA = [...parId.values()].sort((a, b) => b.date - a.date).slice(0, 300);
+  c.retireesIA = retire;
+  sauver();
+  return { parties: copie(c.partiesIA), retirees: retire.slice() };
+}
+
 export async function lireJoueur(uid) {
   await attendre(60);
   const c = db.comptes[uid];

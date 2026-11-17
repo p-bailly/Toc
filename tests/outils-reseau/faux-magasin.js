@@ -76,6 +76,7 @@ export class FauxServeur {
     if (!uid) return false;
     const m = chemin.split('/');
     if (m[0] === 'joueurs' && m.length === 2) return true;
+    if (m[0] === 'joueurs' && m.length === 4 && m[2] === 'prive') return m[1] === uid; // privé : son titulaire seul
     if (m[0] !== 'parties') return false;
     const p = this.docs.get(`parties/${m[1]}`)?.donnees;
     if (m.length === 2) {

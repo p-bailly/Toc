@@ -47,7 +47,7 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 |---|---|
 | `public/js/moteur/` | Règles du jeu en JavaScript pur (plateau, cartes, coups légaux, partie locale, rejeu). Aucune dépendance, testé hors ligne. |
 | `public/js/ia/` | IA : moteur rapide, évaluation, recherche par simulations, conseils, analyse qui s'affine. |
-| `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu. `api.js` est le seul point d'entrée de l'interface. |
+| `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu, historique contre l'IA du compte. `api.js` est le seul point d'entrée de l'interface. |
 | `public/js/ui/` | Écrans, plateau en SVG, saisie des coups, réglages, analyse de fin de partie. |
 | `public/js/dev/` | API factice du mode `?demo`. |
 | `public/js/session-locale.js` | Partie hors ligne contre l'IA ; définit l'interface « Session » que la session réseau reprend. |
@@ -93,6 +93,14 @@ Communes aux deux modes :
 Une salle d'attente est ouverte à tous : elle apparaît dans « Mes parties » de chaque joueur connecté, qui peut s'y
 asseoir sans invitation, y activer ou désactiver l'option « 5 adverse », et la supprimer. L'hôte garde les IA, les
 invitations et le lancement. Les statistiques du compte (parties en ligne jouées et gagnées) sont dans l'onglet « Stats ».
+
+## Un compte sur plusieurs appareils
+
+Le même prénom ouvre le même compte partout. Les parties en ligne et leurs statistiques sont dans le compte. Les
+parties contre l'IA se jouent hors ligne, sur l'appareil, mais leur résultat rejoint le compte dès qu'on est connecté
+(`public/js/ui/synchro-ia.js`) : l'historique et les statistiques contre l'IA sont les mêmes sur tous ses appareils.
+Restent sur l'appareil : la partie contre l'IA en cours, et les coups des parties terminées (leur analyse). Sur un
+appareil partagé, chacun ne voit que les parties de son compte.
 
 ## Limites connues
 
