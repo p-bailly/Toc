@@ -1,5 +1,5 @@
-# Vérifie chaque pull request avant sa fusion : tous les tests, puis la couche réseau contre
-# l'émulateur Firebase avec les vraies règles de sécurité.
+# Vérifie chaque pull request avant sa fusion : tous les tests, la couche réseau contre l'émulateur Firebase
+# avec les vraies règles de sécurité, et la construction de l'APK Android.
 name: Vérification
 
 on:
@@ -55,3 +55,19 @@ jobs:
         run: >
           "$RUNNER_TEMP/outils/node_modules/.bin/firebase" emulators:exec --only auth,firestore --project demo-toc
           "node --test tests/reseau-emulateur.test.js"
+
+  # L'APK se construit (il n'est publié que depuis la branche par défaut, par android.yml).
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Compilation de l'APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease

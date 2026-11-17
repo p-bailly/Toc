@@ -1,0 +1,75 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version : « majeur.mineur » vient de package.json, la fin est le numéro de build de la CI (qui monte à chaque
+// construction ; 0 en local). C'est ce que « Mes applis » et les Réglages de l'appli affichent. Le versionCode sert à
+// Android pour savoir qu'un APK est plus récent.
+def paquet = new groovy.json.JsonSlurper().parse(file('../../package.json')).version.tokenize('.')
+def build = (System.getenv('GITHUB_RUN_NUMBER') ?: '0') as int
+
+// L'icône de l'appli est celle de la version web : une seule image à changer quand le logo change.
+def icone = layout.buildDirectory.dir('icone')
+def copierIcone = tasks.register('copierIcone', Copy) {
+    from '../../public/icons/icon-maskable-512.png'
+    into icone.map { it.dir('drawable-nodpi') }
+    rename { 'icone.png' }
+}
+
+android {
+    namespace = 'fr.perso.toc'
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = 'fr.perso.toc'
+        minSdk = 26
+        targetSdk = 35
+        versionCode = Math.max(build, 1)
+        versionName = "${paquet[0]}.${paquet[1]}.${build}"
+        // Adresse de la version web : c'est elle que portent les liens d'invitation envoyés depuis l'appli.
+        buildConfigField 'String', 'ADRESSE_WEB', '"https://p-bailly.github.io/Toc/"'
+    }
+
+    // L'appli web est embarquée telle quelle : aucun fichier copié, aucune étape de build.
+    sourceSets {
+        main {
+            assets.srcDirs = ['../../public']
+            res.srcDir(icone)
+        }
+    }
+
+    // Clé de signature fixe, versionnée exprès (comme pour les autres applis perso) : les APK construits ici ou par la
+    // CI ont la même signature, donc une nouvelle version s'installe sans désinstaller l'ancienne.
+    // Usage perso uniquement, pas pour le Play Store. Son empreinte est dans « Mes applis » (TrackedApps.kt).
+    signingConfigs {
+        perso {
+            storeFile = file('toc.keystore')
+            storePassword = 'toc-perso'
+            keyAlias = 'toc'
+            keyPassword = 'toc-perso'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            signingConfig = signingConfigs.perso
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+}
+
+preBuild.dependsOn(copierIcone)
+
+dependencies {
+    // Sert les fichiers embarqués à la WebView sous une adresse https (modules JavaScript, stockage local).
+    implementation 'androidx.webkit:webkit:1.12.1'
+}

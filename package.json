@@ -1,6 +1,6 @@
 {
   "name": "toc",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Jeu de Toc en ligne (PWA, Firebase)",
   "type": "module",

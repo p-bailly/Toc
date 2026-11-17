@@ -3,6 +3,7 @@
 // sont lus au moment où ils servent. Le pseudo, l'icône et « être trouvé » sont dans la fiche du joueur (réseau).
 
 import { lire, ecrire } from './dom.js';
+import { android } from './android.js';
 
 export const THEMES = [
   { theme: 'auto', nom: 'Auto' },
@@ -111,6 +112,7 @@ function appliquer(r) {
     m.removeAttribute('media');
     m.setAttribute('content', COULEUR_BARRE[sombre ? 'sombre' : 'clair']);
   }
+  android?.barres(COULEUR_BARRE[sombre ? 'sombre' : 'clair'], sombre);
 }
 
 /** Au lancement : applique les réglages et suit le thème du système tant qu'on est en « automatique ». */
