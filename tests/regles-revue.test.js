@@ -1,3 +1,4 @@
+import './plateau-16.js';
 // Relecture indépendante du moteur de règles (public/js/moteur) contre docs/cahier-des-charges.md.
 //
 // Géométrie testée (décision du propriétaire) : l'allée d'arrivée s'ouvre sur la « case

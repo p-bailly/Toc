@@ -3,10 +3,12 @@
 // et sont donc rejoués d'office au début de chaque donne.
 
 import { mainEffective } from './cartes.js';
+import { COTE_ANCIEN } from './plateau.js';
 import { etatInitial, appliquerCoup, marquerEchange } from './regles.js';
 
 /**
- * @param {Object} reglages    réglages de la partie ({ cinqAdverse, nbJoueurs } ; nbJoueurs absent = 4,
+ * @param {Object} reglages    réglages de la partie ({ cinqAdverse, nbJoueurs, plateau } : voir reglagesRejeu
+ *                             dans plateau.js ; plateau absent = 16 cases ; nbJoueurs absent = 4,
  *                             c'est-à-dire etat.reglages de la partie jouée)
  * @param {Object[]} historique [{ n, siege, coup, captures }] du plus ancien au plus récent
  * @returns {{tours: {n:number, siege:number, coup:Object, avant:Object, apres:Object}[],
@@ -17,7 +19,8 @@ import { etatInitial, appliquerCoup, marquerEchange } from './regles.js';
  * Lève une erreur si l'historique contient un coup illégal (historique incohérent).
  */
 export function rejouerPartie(reglages, historique) {
-  let etat = etatInitial(reglages);
+  // Sans `plateau`, la partie a été enregistrée avant le plateau de 18 cases : elle se rejoue sur celui de 16.
+  let etat = etatInitial({ ...reglages, plateau: (reglages && reglages.plateau) || COTE_ANCIEN });
   const tours = [];
   const echanges = [{ donne: 0, etat }];
   for (const entree of historique) {

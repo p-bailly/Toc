@@ -11,6 +11,7 @@ import {
   donneurDon,
   estJoker,
   etatInitial,
+  reglagesRejeu,
   rejouerPartie,
   siegesGagnants,
   tailleDonne,
@@ -168,7 +169,7 @@ test('à 3 : partie complète 2 humains + 1 IA, remélange après 4 donnes, joke
   // Un joker a été joué (avec le rang copié), et l'historique rejoue la partie à l'identique.
   assert.ok(p.historique.some((h) => estJoker(h.coup.carte) && h.coup.t !== 'defausse' && h.coup.comme));
   assert.ok(p.historique.some((h) => h.siege === 1), "l'IA a joué");
-  const rejeu = rejouerPartie(p.etat.reglages, p.historique);
+  const rejeu = rejouerPartie(reglagesRejeu(p.etat), p.historique);
   assert.deepEqual(rejeu.etat.pions, p.etat.pions);
   assert.equal(rejeu.etat.gagnant, p.etat.gagnant);
   assert.equal(rejeu.etat.numCoup, p.etat.numCoup);
@@ -176,7 +177,7 @@ test('à 3 : partie complète 2 humains + 1 IA, remélange après 4 donnes, joke
   // Analyse : carte reçue du voisin de chaque donne.
   for (const s of sessions) {
     const an = await s.donneesAnalyse();
-    assert.deepEqual(an.reglages, { cinqAdverse: true, nbJoueurs: 3 });
+    assert.deepEqual(an.reglages, { cinqAdverse: true, nbJoueurs: 3, plateau: 18 });
     assert.equal(an.joueurs.length, 3);
     assert.equal(an.donnes.length, p.etat.donne + 1);
     for (const [dn, x] of an.donnes.entries()) {

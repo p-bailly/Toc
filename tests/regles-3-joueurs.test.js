@@ -1,3 +1,4 @@
+import './plateau-16.js';
 // Règles du jeu à 3 joueurs (chacun pour soi), décidées par le propriétaire :
 //  - circuit de 48 cases (3 côtés de 16), géométrie de chaque siège identique au jeu à 4 ;
 //  - pas d'équipe ni de partenaire (valet, 7, 5 adverse, joueur qui a fini) ;
@@ -12,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BASE, ALLEE, NB_CASES, NB_PIONS, NB_SIEGES, etatInitial, coupsLegaux, coupsLegauxMain, appliquerCoup,
+  BASE, ALLEE, NB_PIONS, NB_SIEGES, etatInitial, coupsLegaux, coupsLegauxMain, appliquerCoup,
   validerCoup, mainJouable, apercuCoup, marquerEchange, estProtege, couleurActive, aFini, normaliserCoup,
   nouvellePartie, donnerCarte, jouerCoup, distribuerCycle, generateurAleatoire, tailleDonne, taillesDonne,
   longueurCycle, paquetNeuf, partenaire, equipe, caseDepart, caseEntree, nbCases, nbPions, destinataireDon,
@@ -93,7 +94,7 @@ test('3 joueurs : géométrie (48 cases, sorties 16·s, entrées 3 cases avant)'
   assert.equal(estCircuit(47, 3), true);
   assert.equal(estCircuit(48, 3), false);
   // le jeu à 4 est inchangé
-  assert.equal(NB_CASES, 64);
+  assert.equal(nbCases(4), 64);
   assert.equal(NB_PIONS, 16);
   assert.equal(NB_SIEGES, 4);
   assert.equal(nbCases(), 64);

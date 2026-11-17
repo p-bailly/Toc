@@ -25,6 +25,7 @@ import {
   cartesDeLaDonne,
   coupsLegauxMain,
   rejouerPartie,
+  reglagesRejeu,
 } from '../moteur/index.js';
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
@@ -217,7 +218,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         // Coups intermédiaires : la partie est rejouée par le moteur (une fois par longueur d'historique).
         if (longueur !== histo.length) {
           try {
-            rejeu = rejouerPartie(vueReelle.etat.reglages, histo);
+            rejeu = rejouerPartie(reglagesRejeu(vueReelle.etat), histo);
             longueur = histo.length;
           } catch {
             rejeu = null;

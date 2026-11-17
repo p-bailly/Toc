@@ -4,8 +4,18 @@
 
 import {
   BASE, ALLEE, etatInitial, coupsLegaux, coupsLegauxMain, appliquerCoup, validerCoup, rangsCopiables,
-  estProtege, aFini, destinataireDon, tailleDonne, caseEntree, caseDepart,
+  estProtege, aFini, destinataireDon, tailleDonne, caseEntree, caseDepart, nbCases, COTE_ACTUEL, plateauParDefaut,
 } from '../../public/js/moteur/index.js';
+
+// Les exemples se jouent sur le plateau des nouvelles parties (18 cases d'une case de sortie à la suivante). Leurs
+// positions s'écrivent à partir des cases qui comptent, pas en dur : E0 = case d'entrée de Bleu, D1 = sortie de Rouge…
+plateauParDefaut(COTE_ACTUEL);
+const E0 = caseEntree(0);
+const D1 = caseDepart(1);
+const DERNIERE = nbCases() - 1;
+/** Case d'entrée de Bleu sur le plateau à 3. */
+const E0_3 = caseEntree(0, 3);
+export const CASES = { E0, D1, DERNIERE, E0_3 };
 
 export { BASE, ALLEE };
 export const a = (k) => ALLEE + k;
@@ -70,7 +80,7 @@ export function exemples() {
     const coup1 = { t: 'recul', carte: '4C', pion: 0 };
     const milieu = appliquerCoup(avant, 0, coup1, ['4C']);
     ok('4 depuis la case de sortie : légal', legal(avant, 0, coup1));
-    ok('le pion recule sur la case 60, une case avant la case d\'entrée (61)', milieu.pions[0] === 60 && caseEntree(0) === 61);
+    ok('le pion recule une case avant sa case d\'entrée', milieu.pions[0] === E0 - 1 && E0 === nbCases() - 3);
     const milieu2 = { ...milieu, tour: 0 };
     const coup2 = { t: 'avance', carte: '5K', pion: 0, pas: 5, allee: true };
     ok('5 vers l\'allée : légal', legal(milieu2, 0, coup2));
@@ -89,7 +99,7 @@ export function exemples() {
     ok('le pion bleu arrive sur la case 8', apres.pions[0] === 8);
     ok('le pion rouge retourne à sa base', apres.pions[4] === BASE);
     ok('le pion vert dépassé ne bouge pas', apres.pions[12] === 5);
-    ok('la 4e case du trajet (case 6) est un repère : 6e case après la case de sortie', 6 % 16 === 6);
+    ok('la 4e case du trajet (case 6) est un repère : 6e case après la case de sortie', 6 % COTE_ACTUEL === 6);
     // Mêmes règles pour ses propres pions et ceux du partenaire.
     const sien = appliquerCoup(etat4({ 0: 1, 1: 7 }), 0, coup);
     ok('arriver sur son propre pion le renvoie à la base', sien.pions[1] === BASE && sien.pions[0] === 7);
@@ -100,30 +110,30 @@ export function exemples() {
 
   // 4. Pion protégé : ni dépassé ni capturé.
   ajouter('protege', 'Un pion protégé bloque le passage', (ok) => {
-    const avant = etat4({ 4: 16, 0: 12 });
-    ok('le pion rouge est protégé sur sa case de sortie (16)', estProtege(avant, 4));
+    const avant = etat4({ 4: D1, 0: D1 - 4 });
+    ok('le pion rouge est protégé sur sa case de sortie', estProtege(avant, 4));
     ok('6 : interdit (dépasserait)', jouables(avant, 0, '6T').length === 0);
     ok('5, 8, 9, 10, dame : interdits aussi (ils dépasseraient)', ['8T', '9T', '10T', 'DT', '5T'].every((c) => jouables(avant, 0, c).length === 0));
-    ok('3 : permis, le pion s\'arrête juste derrière (case 15)', a_le_coup(jouables(avant, 0, '3T'), { pion: 0, pas: 3, allee: false }));
+    ok('3 : permis, le pion s\'arrête juste derrière', a_le_coup(jouables(avant, 0, '3T'), { pion: 0, pas: 3, allee: false }));
     const apres = appliquerCoup(avant, 0, { t: 'avance', carte: '3T', pion: 0, pas: 3, allee: false });
-    ok('après le 3 : case 15', apres.pions[0] === 15);
+    ok('après le 3 : la case juste avant la sortie de Rouge', apres.pions[0] === D1 - 1);
     ok('valet : pas d\'échange avec le pion protégé', jouables(avant, 0, 'VT').length === 0);
     ok('7 : interdit aussi (7 pas dépasseraient)', jouables(avant, 0, '7T').length === 0);
     // Pile dessus : pion bleu à 4 cases derrière, on vérifie qu'on ne peut pas s'y arrêter (cas dédié).
-    const pile = etat4({ 4: 16, 0: 13 });
-    ok('s\'arrêter dessus (3 depuis la case 13) : interdit', jouables(pile, 0, '3T').length === 0);
+    const pile = etat4({ 4: D1, 0: D1 - 3 });
+    ok('s\'arrêter dessus (3 cases derrière) : interdit', jouables(pile, 0, '3T').length === 0);
     // Son propriétaire non plus ne le dépasse pas.
-    const rouge = etat4({ 4: 16, 5: 13 }, { tour: 1 });
+    const rouge = etat4({ 4: D1, 5: D1 - 3 }, { tour: 1 });
     ok('son propriétaire ne le dépasse pas non plus (son autre pion reste derrière)', !jouables(rouge, 1, '6T').some((c) => c.pion === 5) && jouables(rouge, 1, '6T').some((c) => c.pion === 4));
-    ok('reculer de 4 par-dessus : interdit', jouables(etat4({ 4: 16, 0: 18 }), 0, '4T').length === 0);
+    ok('reculer de 4 par-dessus : interdit', jouables(etat4({ 4: D1, 0: D1 + 2 }), 0, '4T').length === 0);
     // 5 adverse : on ne pousse pas un pion protégé.
-    const cinq = etat4({ 4: 16 }, { reglages: { cinqAdverse: true } });
+    const cinq = etat4({ 4: D1 }, { reglages: { cinqAdverse: true } });
     ok('5 adverse : ne pousse pas un pion protégé', jouables(cinq, 0, '5T').length === 0);
     // Sortir un nouveau pion renvoie l'ancien.
-    const sortie = appliquerCoup(etat4({ 4: 16 }, { tour: 1 }), 1, { t: 'sortie', carte: 'AP', pion: 5 });
-    ok('sortie d\'un pion de la même couleur : l\'ancien retourne à la base', sortie.pions[4] === BASE && sortie.pions[5] === 16);
+    const sortie = appliquerCoup(etat4({ 4: D1 }, { tour: 1 }), 1, { t: 'sortie', carte: 'AP', pion: 5 });
+    ok('sortie d\'un pion de la même couleur : l\'ancien retourne à la base', sortie.pions[4] === BASE && sortie.pions[5] === D1);
     // Un pion adverse sur MA case de sortie n'est pas protégé.
-    const intrus = etat4({ 4: 0, 0: 60 });
+    const intrus = etat4({ 4: 0, 0: E0 - 1 });
     ok('un pion adverse posé sur ma case de sortie n\'est pas protégé', !estProtege(intrus, 4) && a_le_coup(jouables(intrus, 0, '6T'), { pion: 0, pas: 6, allee: false }));
     const interdit = { t: 'avance', carte: '6T', pion: 0, pas: 6, allee: false };
     return { avant, apres, coup: { t: 'avance', carte: '3T', pion: 0, pas: 3, allee: false }, interdit };
@@ -131,11 +141,11 @@ export function exemples() {
 
   // 5a. Valet : échange avec un pion adverse.
   ajouter('valet', 'Valet : échanger deux pions', (ok) => {
-    const avant = etat4({ 0: 2, 4: 59 });
+    const avant = etat4({ 0: 2, 4: E0 - 2 });
     const coup = { t: 'echange', carte: 'VK', pion: 0, cible: 4 };
     ok('échange légal', legal(avant, 0, coup));
     const apres = appliquerCoup(avant, 0, coup, ['VK']);
-    ok('les deux pions ont échangé leurs cases (bleu 2 cases avant sa case d\'entrée)', apres.pions[0] === 59 && apres.pions[4] === 2 && caseEntree(0) - 59 === 2);
+    ok('les deux pions ont échangé leurs cases (bleu 2 cases avant sa case d\'entrée)', apres.pions[0] === E0 - 2 && apres.pions[4] === 2);
     ok('l\'échange ne capture personne', apres.dernierCoup.captures.length === 0);
     ok('pas deux de ses propres pions', !legal(etat4({ 0: 3, 1: 20 }), 0, { t: 'echange', carte: 'VK', pion: 0, cible: 1 }));
     ok('avec un pion du partenaire : permis', legal(etat4({ 0: 3, 8: 20 }), 0, { t: 'echange', carte: 'VK', pion: 0, cible: 8 }));
@@ -147,12 +157,12 @@ export function exemples() {
 
   // 5b. Valet : son propre pion depuis sa case de sortie.
   ajouter('valet-sortie', 'Valet : ton pion part de ta case de sortie', (ok) => {
-    const avant = etat4({ 0: 0, 12: 60 });
+    const avant = etat4({ 0: 0, 12: E0 - 1 });
     const coup = { t: 'echange', carte: 'VP', pion: 0, cible: 12 };
     ok('le pion bleu est protégé sur sa case de sortie', estProtege(avant, 0));
     ok('son propriétaire peut l\'échanger', legal(avant, 0, coup));
     const apres = appliquerCoup(avant, 0, coup, ['VP']);
-    ok('bleu sur la case 60 (une case avant sa case d\'entrée), vert sur la case 0', apres.pions[0] === 60 && apres.pions[12] === 0);
+    ok('bleu une case avant sa case d\'entrée, vert sur la case 0', apres.pions[0] === E0 - 1 && apres.pions[12] === 0);
     ok('le pion vert, sur la case de sortie bleue, n\'est pas protégé', !estProtege(apres, 12));
     ok('un autre joueur ne peut pas échanger ce pion protégé', !legal({ ...avant, tour: 3 }, 3, { t: 'echange', carte: 'VP', pion: 12, cible: 0 }));
     ok('le partenaire non plus', !legal(etat4({ 0: 0, 8: 20 }, { tour: 2 }), 2, { t: 'echange', carte: 'VP', pion: 8, cible: 0 }));
@@ -161,7 +171,7 @@ export function exemples() {
 
   // 6. 7 fractionné : 1 + 1 + 1 + 4, un pion dépassé retourne à sa base.
   ajouter('sept', '7 partagé : 1 + 1 + 1 + 4', (ok) => {
-    const avant = etat4({ 0: a(2), 1: a(1), 2: a(0), 3: 58, 4: 60, 8: 20 });
+    const avant = etat4({ 0: a(2), 1: a(1), 2: a(0), 3: E0 - 3, 4: E0 - 1, 8: 20 });
     const coup = {
       t: 'sept',
       carte: '7C',
@@ -175,7 +185,7 @@ export function exemples() {
     ok('7 en 1 + 1 + 1 + 4 : légal', legal(avant, 0, coup));
     const apres = appliquerCoup(avant, 0, coup, ['7C']);
     ok('les 4 pions bleus sont dans l\'allée', [0, 1, 2, 3].every((g) => apres.pions[g] === a(3 - g)));
-    ok('le pion rouge dépassé (case 60) retourne à sa base', apres.pions[4] === BASE);
+    ok('le pion rouge dépassé retourne à sa base', apres.pions[4] === BASE);
     ok('bleu a rentré ses 4 pions', aFini(apres, 0));
     ok('la partie continue (jaune n\'a pas fini)', apres.phase === 'jeu');
     ok('1 + 1 + 1 seulement (3 points) : refusé', !legal(avant, 0, { ...coup, etapes: coup.etapes.slice(0, 3) }));
@@ -189,7 +199,7 @@ export function exemples() {
 
   // 6b. 7 simple : 3 + 4 sur le circuit, attention à son propre pion.
   ajouter('sept-simple', '7 partagé : 3 + 4', (ok) => {
-    const avant = etat4({ 0: 63, 1: 3, 12: 5 });
+    const avant = etat4({ 0: DERNIERE, 1: 3, 12: 5 });
     const coup = { t: 'sept', carte: '7P', etapes: [{ pion: 0, pas: 3, allee: false }, { pion: 1, pas: 4, allee: false }] };
     ok('7 en 3 + 4 : légal', legal(avant, 0, coup));
     const apres = appliquerCoup(avant, 0, coup, ['7P']);
@@ -210,7 +220,7 @@ export function exemples() {
     ok('avec un as, ce pion avance de 1', a_le_coup(jouables(avant, 0, 'AK'), { pion: 2, pas: 1, allee: true }));
     ok('main 7 + dame : aucune carte jouable, défausse au choix', coupsLegauxMain(avant, 0, ['7K', 'DK']).length === 2 && coupsLegauxMain(avant, 0, ['7K', 'DK']).every((c) => c.t === 'defausse'));
     // « Même pour gagner » : dernier pion à 2 cases de sa place, le 7 ne peut pas s'arrêter dans l'allée.
-    const gagner = etat3({ 0: a(3), 1: a(2), 2: a(1), 3: 44 });
+    const gagner = etat3({ 0: a(3), 1: a(2), 2: a(1), 3: E0_3 - 1 });
     ok('3 joueurs, dernier pion à 2 cases de sa place : le 7 ne peut pas le rentrer', !coupsLegaux(gagner, 0, '7K').some((c) => c.etapes.some((e) => e.allee)));
     ok('ce 7 reste jouable en continuant sur le circuit (7 cases)', a_le_coup(coupsLegaux(gagner, 0, '7K'), { etapes: [{ pion: 3, pas: 7, allee: false }] }));
     return { avant, carte: '7K' };
@@ -218,7 +228,7 @@ export function exemples() {
 
   // 8. L'allée : on s'y arrête où la carte mène (pas forcément au fond), sans jamais dépasser le fond.
   ajouter('allee', 'Entrer dans l\'allée', (ok) => {
-    const avant = etat4({ 0: 60 });
+    const avant = etat4({ 0: E0 - 1 });
     const coup5 = { t: 'avance', carte: '5P', pion: 0, pas: 5, allee: true };
     ok('5 vers l\'allée : légal', legal(avant, 0, coup5));
     const apres5 = appliquerCoup(avant, 0, coup5, ['5P']);
@@ -234,7 +244,7 @@ export function exemples() {
     // Dans l'allée : pas de dépassement, pas de capture.
     const file = etat4({ 0: a(0), 1: a(2) });
     ok('dans l\'allée : 1 permis, 2 (sur son pion) et 3 (dépassement) interdits', a_le_coup(jouables(file, 0, 'AP'), { pion: 0, pas: 1 }) && !jouables(file, 0, '2P').some((c) => c.pion === 0) && !jouables(file, 0, '3P').some((c) => c.pion === 0));
-    ok('on n\'entre pas par-dessus un pion de l\'allée', !legal(etat4({ 0: 60, 1: a(1) }), 0, { t: 'avance', carte: '5P', pion: 0, pas: 5, allee: true }));
+    ok('on n\'entre pas par-dessus un pion de l\'allée', !legal(etat4({ 0: E0 - 1, 1: a(1) }), 0, { t: 'avance', carte: '5P', pion: 0, pas: 5, allee: true }));
     ok('4 : pas de recul dans l\'allée', jouables(etat4({ 0: a(2) }), 0, '4P').length === 0);
     ok('un pion dans l\'allée n\'est ni échangé ni poussé', jouables(etat4({ 0: a(1), 4: 20 }, { tour: 1, reglages: { cinqAdverse: true } }), 1, 'VP').length === 0 && !jouables(etat4({ 0: a(1), 4: 20 }, { tour: 1, reglages: { cinqAdverse: true } }), 1, '5P').some((c) => c.pion === 0));
     return { avant, apres5, apres6, coup5, coup6 };
@@ -244,7 +254,7 @@ export function exemples() {
   ajouter('joker', 'Joker : copier une carte posée', (ok) => {
     // 2e donne (4 cartes chacun) : Rouge commence. Rouge a joué un roi, Jaune un 9. C'est à Bleu.
     const ancienne = ['2P', '3P', '5P', '6P', '8P', '10P', 'VP', 'DP', '2C', '3C', '5C', '6C', '8C', '10C', 'VC'];
-    const avant = etat3({ 4: 16, 8: 41 }, { donne: 1, tour: 0, cartesRestantes: [4, 3, 3], pile: [...ancienne, 'RC', '9T'] });
+    const avant = etat3({ 4: D1, 8: caseDepart(2) + 9 }, { donne: 1, tour: 0, cartesRestantes: [4, 3, 3], pile: [...ancienne, 'RC', '9T'] });
     ok('2e donne : 4 cartes chacun, Rouge joue le premier', tailleDonne(1, 3) === 4 && 1 % 3 === 1);
     ok('cartes à copier : le 9 et le roi, pas celles de la donne précédente', JSON.stringify(rangsCopiables(avant)) === JSON.stringify(['9', 'R']));
     const coup = { t: 'sortie', carte: 'J1', comme: 'R', pion: 0 };
@@ -272,7 +282,7 @@ export function exemples() {
     ok('5 adverse : on peut avancer un pion adverse de 5', a_le_coup(coupsLegaux(cinq, 0, '5T'), { pion: 4, pas: 5 }));
     ok('5 adverse : le pion poussé capture en arrivant (même mon pion)', appliquerCoup(cinq, 0, { t: 'avance', carte: '5T', pion: 4, pas: 5, allee: false }).pions[0] === BASE);
     ok('5 adverse : pas le pion du partenaire', !coupsLegaux(etat4({ 8: 20 }, { reglages: { cinqAdverse: true } }), 0, '5T').some((c) => c.pion === 8));
-    ok('5 adverse : jamais vers une allée', !legal(etat4({ 4: 12 }, { reglages: { cinqAdverse: true } }), 0, { t: 'avance', carte: '5T', pion: 4, pas: 5, allee: true }));
+    ok('5 adverse : jamais vers une allée', !legal(etat4({ 4: caseEntree(1) - 1 }, { reglages: { cinqAdverse: true } }), 0, { t: 'avance', carte: '5T', pion: 4, pas: 5, allee: true }));
     ok('sans l\'option : interdit', coupsLegaux(etat4({ 4: 20 }), 0, '5T').length === 0);
     // 4 : recule, passe par-dessus, capture à l'arrivée.
     const quatre = appliquerCoup(etat4({ 0: 10, 12: 8, 4: 6 }), 0, { t: 'recul', carte: '4T', pion: 0 });
@@ -291,18 +301,18 @@ export function exemples() {
     ok('un joueur qui a fini déplace les pions de son partenaire', a_le_coup(coupsLegaux(fini, 0, '6T'), { pion: 8, pas: 6 }) && a_le_coup(coupsLegaux(fini, 0, 'AP'), { t: 'sortie' }));
     ok('il joue aussi le 7 pour son partenaire', a_le_coup(coupsLegaux(fini, 0, '7T'), { etapes: [{ pion: 8, pas: 7, allee: false }] }));
     // Reste du 7 pour le partenaire : seulement si l'on rentre son 4e pion pendant ce 7.
-    const reste = etat4({ 0: a(3), 1: a(2), 2: a(1), 3: 60, 8: 40 });
+    const reste = etat4({ 0: a(3), 1: a(2), 2: a(1), 3: E0 - 1, 8: 40 });
     ok('7 : 2 pour rentrer son dernier pion, puis 5 pour le pion du partenaire', legal(reste, 0, { t: 'sept', carte: '7T', etapes: [{ pion: 3, pas: 2, allee: true }, { pion: 8, pas: 5, allee: false }] }));
     ok('7 : pas de points pour le partenaire tant qu\'on n\'a pas fini', !legal(etat4({ 0: 10, 8: 40 }), 0, { t: 'sept', carte: '7T', etapes: [{ pion: 0, pas: 3, allee: false }, { pion: 8, pas: 4, allee: false }] }));
     // Victoire.
-    const presque = etat4({ 0: a(0), 1: a(1), 2: a(2), 3: a(3), 8: a(3), 9: a(2), 10: a(1), 11: 28 });
+    const presque = etat4({ 0: a(0), 1: a(1), 2: a(2), 3: a(3), 8: a(3), 9: a(2), 10: a(1), 11: caseEntree(2) - 1 });
     const gagne = appliquerCoup(presque, 0, { t: 'avance', carte: '2T', pion: 11, pas: 2, allee: true });
     ok('2 contre 2 : la partie finit quand les 8 pions de l\'équipe sont rentrés', gagne.phase === 'fini' && gagne.gagnant === 0);
-    const trois = etat3({ 0: a(3), 1: a(2), 2: a(1), 3: 44 });
+    const trois = etat3({ 0: a(3), 1: a(2), 2: a(1), 3: E0_3 - 1 });
     const gagne3 = appliquerCoup(trois, 0, { t: 'avance', carte: '2T', pion: 3, pas: 2, allee: true });
     ok('3 joueurs : le premier qui rentre ses 4 pions gagne', gagne3.phase === 'fini' && gagne3.gagnant === 0);
     ok('3 joueurs : le valet échange avec n\'importe quel autre joueur', legal(etat3({ 0: 5, 8: 30 }), 0, { t: 'echange', carte: 'VT', pion: 0, cible: 8 }));
-    ok('géométrie : case de sortie au milieu (16 × siège), case d\'entrée 3 cases avant', caseDepart(1) === 16 && caseEntree(1) === 13 && caseEntree(0, 3) === 45);
+    ok('géométrie : 18 cases d\'une sortie à la suivante (72 à 4, 54 à 3), case d\'entrée 3 cases avant', caseDepart(1) === 18 && caseEntree(1) === 15 && nbCases() === 72 && nbCases(3) === 54 && caseEntree(0, 3) === 51);
     // Le premier joueur change à chaque donne.
     let d = etat4();
     d.cartesRestantes = [0, 0, 0, 1];

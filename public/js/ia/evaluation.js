@@ -17,12 +17,13 @@
 //    le dernier, et les deux autres ne sont pas supposés coopérer.
 // La valeur des cartes gardées en main est comptée à part (valeurMain).
 
-import { BASE, ALLEE, R_A, R_4, R_7, R_V, R_R, R_J, finiPions, occupation, entree, memeCamp, couleurActivePions } from './simulation.js';
+import { COTE, CASES_MAX } from '../moteur/plateau.js';
+import { BASE, ALLEE, R_A, R_4, R_7, R_V, R_R, R_J, finiPions, occupation, entree, memeCamp, couleurActivePions, casesPlateau } from './simulation.js';
 
 export const POIDS_DEFAUT = {
   sorti: 16, // valeur d'un pion sorti (hors progression)
   pas: 1, // valeur d'une case de progression
-  rentre: 98, // valeur d'un pion dans l'allée à 4 joueurs (avant pénalité de trous) ; −16 à 3
+  rentre: 98, // valeur d'un pion dans l'allée sur un circuit de 64 cases (avant pénalité de trous) ; ± 1 par case du circuit
   trou: 5, // pénalité par case vide au-dessus d'un pion de l'allée
   approche: 0.25, // bonus par case de proximité de l'allée, dans les 12 dernières cases
   alpha: 0.75, // poids d'une menace d'un joueur qui joue avant que la victime puisse réagir
@@ -104,7 +105,7 @@ function proba(ctx, info, j, masque) {
   return 1 - ctx.pAucune[n][ctx.sommeMasque[masque]];
 }
 
-const occ = new Int8Array(64);
+const occ = new Int8Array(CASES_MAX);
 const valeurs = new Float64Array(16);
 const masquesAtt = new Int32Array(4);
 const forces = new Float64Array(4);
@@ -120,8 +121,8 @@ function valeurCircuit(g, p, P, N) {
 /** Valeur intrinsèque de chaque pion (sans le risque). */
 function valeursPions(pions, P) {
   const nb = pions.length >> 2;
-  const N = nb * 16;
-  const rentre = P.rentre - (64 - N);
+  const N = nb * COTE;
+  const rentre = P.rentre - (64 - N); // P.rentre vaut pour un circuit de 64 cases : une case de plus, un point de plus
   for (let o = 0; o < nb; o++) {
     // trous au-dessus de chaque case de l'allée
     let occupe = 0;
@@ -164,7 +165,7 @@ function gagnantPions(pions) {
 export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null) {
   const P = ctx.poids;
   const nb = pions.length >> 2;
-  const N = nb * 16;
+  const N = nb * COTE;
   const a3 = nb === 3;
   const nP = pions.length;
 
@@ -197,7 +198,7 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
     forces[o] += valeurs[g];
     const p = pions[g];
     if (p < 0 || p >= N) continue;
-    if (p === o * 16) continue; // protégé
+    if (p === o * COTE) continue; // protégé
     // Réaction possible des contrôleurs de la couleur o
     let mc = decal(o);
     if (!a3 && fini[(o + 2) & 3]) mc = Math.min(mc, decal((o + 2) & 3));
@@ -208,7 +209,7 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
       if (q < 0) continue;
       const cq = q >> 2;
       if (!memeCamp(pions, cq, o)) ajouterAttaque(cq, MASQUE_DIST[x]);
-      if (pions[q] === cq * 16) break; // pion protégé : rien ne passe derrière lui
+      if (pions[q] === cq * COTE) break; // pion protégé : rien ne passe derrière lui
     }
     // Attaquant en arrière (4) : pion 4 cases devant, chemin sans pion protégé
     {
@@ -217,7 +218,7 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
         let libre = true;
         for (let i = 1; i <= 3; i++) {
           const r = occ[(p + i) % N];
-          if (r >= 0 && pions[r] === (r >> 2) * 16) libre = false;
+          if (r >= 0 && pions[r] === (r >> 2) * COTE) libre = false;
         }
         if (libre) ajouterAttaque(q >> 2, MASQUE_RECUL);
       }
@@ -254,7 +255,7 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
         for (let b = 0; b < nP; b++) {
           if (memeCamp(pions, b >> 2, c)) continue;
           const pb = pions[b];
-          if (pb < 0 || pb >= N || pb === (b >> 2) * 16) continue;
+          if (pb < 0 || pb >= N || pb === (b >> 2) * COTE) continue;
           const gainA = valeurCircuit(a, pb, P, N) - valeurs[a];
           const perteB = valeurs[b] - valeurCircuit(b, pa, P, N);
           if (gainA + perteB > meilleur) {
@@ -276,10 +277,10 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
   // Blocages : pions qui ont un pion protégé juste devant eux
   if (P.bloque) {
     for (let c = 0; c < nb; c++) {
-      const q = occ[c * 16];
+      const q = occ[c * COTE];
       if (q < 0 || q >> 2 !== c) continue;
       for (let x = 1; x <= 12; x++) {
-        const r = occ[(c * 16 - x + N) % N];
+        const r = occ[(c * COTE - x + N) % N];
         if (r < 0) continue;
         if ((entree(r >> 2, N) - pions[r] + N) % N < x) continue; // il tournera dans son allée avant
         forces[r >> 2] -= (P.bloque * (13 - x)) / 12;
@@ -317,7 +318,7 @@ export function evaluerPlateau(pions, persp, prochain, info, ctx, detail = null)
  */
 export function valeurMain(compte, pions, s, P, copiables = 0) {
   if (!compte) return 0;
-  const N = pions.length * 4;
+  const N = casesPlateau(pions);
   const c = couleurActivePions(pions, s);
   let enBase = 0;
   let manoeuvre = false;

@@ -3,15 +3,17 @@
 // « pions d'avance », graduations du graphique, position montrée après un coup.
 
 import { POIDS_DEFAUT } from '../ia/evaluation.js';
+import { COTE } from '../moteur/plateau.js';
 
 /**
  * L'IA compte en « cases » (voir ia/evaluation.js) : une case de progression vaut 1, un pion rentré vaut
- * POIDS_DEFAUT.rentre cases (98 à 4 joueurs, 16 de moins sur le circuit plus court du jeu à 3), un pion à la base 0.
+ * POIDS_DEFAUT.rentre cases sur un circuit de 64 cases, une de plus ou de moins par case du circuit de la partie (plateau
+ * visé : 106 à 4 joueurs et 88 à 3 sur le plateau de 18 cases), un pion à la base 0.
  * L'écran, lui, compte en « pions d'avance » : 1 pion = la valeur d'un pion rentré, c'est-à-dire l'avantage
  * d'avoir un pion rentré de plus que l'adversaire (un tour complet, de la base à l'arrivée).
  */
 export function casesParPion(nbJoueurs = 4) {
-  return POIDS_DEFAUT.rentre - (64 - 16 * (nbJoueurs === 3 ? 3 : 4));
+  return POIDS_DEFAUT.rentre - (64 - COTE * (nbJoueurs === 3 ? 3 : 4));
 }
 
 /** Convertit une valeur de l'IA (en cases) en pions d'avance. */

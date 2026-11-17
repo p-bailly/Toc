@@ -109,7 +109,7 @@ test('partie complète : 3 humains + 1 IA, remélanges, fin, statistiques', { ti
   for (const [i, s] of sessions.entries()) {
     const an = await s.donneesAnalyse();
     assert.equal(an.siege, [0, 1, 3][i]);
-    assert.deepEqual(an.reglages, { cinqAdverse: true });
+    assert.deepEqual(an.reglages, { cinqAdverse: true, plateau: 18 });
     assert.equal(an.joueurs[2].ia, true);
     assert.equal(an.donnes.length, p.etat.donne + 1);
     for (const [d, x] of an.donnes.entries()) {

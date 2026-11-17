@@ -7,15 +7,17 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { geometrie, chemin, TRIANGLE } from '../../public/js/ui/geometrie.js';
-import { caseDepart } from '../../public/js/moteur/plateau.js';
-import { exemples, verifier, BASE, ALLEE, a } from './exemples.mjs';
+import { geometrie, chemin } from '../../public/js/ui/geometrie.js';
+import { COTE_ACTUEL, nbCases } from '../../public/js/moteur/plateau.js';
+import { exemples, verifier, BASE, ALLEE, a, CASES } from './exemples.mjs';
 
 if (verifier({ silencieux: true })) {
   console.error('Des contrôles du moteur échouent : lance « node outils/regles/exemples.mjs ».');
   process.exit(1);
 }
 const EX = Object.fromEntries(exemples().map((e) => [e.id, e]));
+// Cases des exemples : E0 = case d'entrée de Bleu, D1 = case de sortie de Rouge, DERNIERE = dernière case du circuit.
+const { E0, D1, DERNIERE } = CASES;
 
 // ─── Dessin du plateau ──────────────────────────────────────────────────────
 
@@ -32,17 +34,18 @@ function rectTourne(classe, { x, y }, l, h, angle, rx) {
 const dans = (fenetre, p, marge) => !fenetre || (p.x > fenetre[0] - marge && p.x < fenetre[0] + fenetre[2] + marge && p.y > fenetre[1] - marge && p.y < fenetre[1] + fenetre[3] + marge);
 
 function fond(nb, vue, fenetre = null) {
-  const geo = geometrie(nb);
+  const geo = geometrie(nb, COTE_ACTUEL);
   let s = '';
   if (geo.forme === 'triangle') {
-    const { A, B, C } = TRIANGLE;
+    const { A, B, C } = geo.triangle;
     const points = [A, B, C].map((p) => `${n2(p.x)},${n2(p.y)}`).join(' ');
     s += `<polygon class="cadre-t" points="${points}"/><polygon class="tapis-t" points="${points}"/><polygon class="grain-t" points="${points}"/>`;
   } else {
-    s += '<rect class="cadre" x="-4.5" y="-4.5" width="179" height="179" rx="7"/>';
-    s += '<rect class="tapis" x="-0.75" y="-0.75" width="171.5" height="171.5" rx="3.5"/>';
-    s += '<rect class="grain" x="-0.75" y="-0.75" width="171.5" height="171.5" rx="3.5"/>';
-    s += '<rect class="filet" x="12.4" y="12.4" width="145.2" height="145.2" rx="2.5"/>';
+    const L = geo.cote;
+    s += `<rect class="cadre" x="-4.5" y="-4.5" width="${n2(L + 9)}" height="${n2(L + 9)}" rx="7"/>`;
+    s += `<rect class="tapis" x="-0.75" y="-0.75" width="${n2(L + 1.5)}" height="${n2(L + 1.5)}" rx="3.5"/>`;
+    s += `<rect class="grain" x="-0.75" y="-0.75" width="${n2(L + 1.5)}" height="${n2(L + 1.5)}" rx="3.5"/>`;
+    s += `<rect class="filet" x="12.4" y="12.4" width="${n2(L - 24.8)}" height="${n2(L - 24.8)}" rx="2.5"/>`;
   }
   for (let o = 0; o < nb; o++) {
     const cote = geo.coteDe(o, vue);
@@ -64,13 +67,13 @@ function fond(nb, vue, fenetre = null) {
         s += `<circle class="trou" cx="${n2(p.x)}" cy="${n2(p.y)}" r="${RAYON_TROU}"/>`;
       }
     }
-    const sortie = geo.caseCircuit(caseDepart(o), vue);
+    const sortie = geo.caseCircuit(o * geo.casesParCote, vue);
     if (dans(fenetre, sortie, 8)) s += rectTourne(`zone c${o}`, sortie, 9.8, 9.8, angle, 2);
   }
   for (let i = 0; i < geo.nbCases; i++) {
     const p = geo.caseCircuit(i, vue);
     if (!dans(fenetre, p, 6)) continue;
-    if (i % 16 === 6 || i % 16 === 12) s += `<circle class="repere" cx="${n2(p.x)}" cy="${n2(p.y)}" r="4.55"/>`;
+    if (i % geo.casesParCote === 6 || i % geo.casesParCote === 12) s += `<circle class="repere" cx="${n2(p.x)}" cy="${n2(p.y)}" r="4.55"/>`;
     s += `<circle class="trou" cx="${n2(p.x)}" cy="${n2(p.y)}" r="${RAYON_TROU}"/>`;
   }
   return s;
@@ -86,7 +89,7 @@ function bille(couleur, { x, y }, classe = '') {
 
 /** Outils de dessin pour un plateau (4 ou 3 joueurs) vu du siège `vue`. */
 function outils(nb, vue) {
-  const geo = geometrie(nb);
+  const geo = geometrie(nb, COTE_ACTUEL);
   const pos = (pion, p) => geo.positionPion(pion, p, vue);
   const o = {
     geo,
@@ -192,9 +195,11 @@ function cj(carte) {
 }
 
 // ─── Fenêtres de recadrage (unités du plateau : 10 par case) ────────────────
+// Les cotes écrites en dur valent pour le plateau de 18 cases par côté : côté du bas à y = 185, case de sortie de
+// Bleu à x = 95.
 
-const HAUT = 114; // au-dessus du fond de l'allée
-const BAS = 174.5; // bord du cadre
+const HAUT = 134; // au-dessus du fond de l'allée
+const BAS = 194.5; // bord du cadre
 const F = (x1, x2, y1 = HAUT) => [x1, y1, x2 - x1, BAS - y1];
 
 // ─── Schémas ────────────────────────────────────────────────────────────────
@@ -209,53 +214,57 @@ const figures = {};
     `<g class="pastille" transform="translate(${x} ${y})"><circle r="5.4"/><text y="0.2">${n}</text></g>`;
   const nom = (x, y, texte, couleur, angle = 0) =>
     `<g transform="translate(${x} ${y}) rotate(${angle})"><circle class="bille b${couleur}" cx="${n2(-texte.length * 1.95 - 4.2)}" cy="0" r="2.8"/><text class="nom" x="${n2(-texte.length * 1.95 + 1)}" y="0">${texte}</text></g>`;
-  const cx = 85;
-  const cy = 85;
+  const geo = o.geo;
+  const L = geo.cote;
+  const cx = L / 2;
+  const cy = L / 2;
   const R = 17;
   // Flèche circulaire dans le sens des aiguilles d'une montre.
   const pt = (deg) => ({ x: cx + R * Math.cos((deg * Math.PI) / 180), y: cy + R * Math.sin((deg * Math.PI) / 180) });
   const p1 = pt(155);
   const p2 = pt(25);
+  const vers = (p, dx, dy) => ({ x: p.x + dx, y: p.y + dy });
   figures.plateau =
-    `<svg class="pl ensemble" viewBox="-17 -17 204 204" role="img" aria-label="Le plateau carré vu d'en haut : un circuit de 64 cases, et pour chaque joueur une base, une case de sortie et une allée de 4 cases.">` +
+    `<svg class="pl ensemble" viewBox="-17 -17 ${n2(L + 34)} ${n2(L + 34)}" role="img" aria-label="Le plateau carré vu d'en haut : un circuit de ${nbCases()} cases, et pour chaque joueur une base, une case de sortie et une allée de 4 cases.">` +
     fond(4, 0) +
     o.pions(Array(16).fill(BASE)) +
     `<path class="fleche sens" d="M${n2(p1.x)} ${n2(p1.y)} A${R} ${R} 0 1 1 ${n2(p2.x)} ${n2(p2.y)}"/>` +
     `<text class="lib centre" x="${cx}" y="${cy + 1.2}" text-anchor="middle">sens</text><text class="lib centre" x="${cx}" y="${cy + 7.4}" text-anchor="middle">du jeu</text>` +
-    pastille(1, 85, 119, [{ x: 85, y: 130.5 }]) +
-    pastille(2, 59, 150, [{ x: 80.3, y: 162.2 }]) +
-    pastille(3, 137, 152, [{ x: 119.2, y: 162.4 }]) +
-    pastille(4, 137, 131, [{ x: 120, y: 135 }]) +
-    pastille(5, 29, 143, [{ x: 25.6, y: 160.2 }, { x: 8.2, y: 128 }]) +
-    nom(85, 181, 'Toi', 0) +
-    nom(85, -10.5, 'Ton partenaire', 2) +
-    nom(-10.5, 85, 'Adversaire', 1, -90) +
-    nom(180.5, 85, 'Adversaire', 3, 90) +
+    pastille(1, cx, L - 51, [vers(geo.centreBase(0, 0), 0, -13.5)]) +
+    pastille(2, cx - 26, L - 20, [vers(o.cas(0), -4.7, -2.8)]) +
+    pastille(3, cx + 52, L - 18, [vers(o.cas(E0), 4.2, -2.6)]) +
+    pastille(4, cx + 52, L - 39, [vers(o.allee(0, 2), 5, 0)]) +
+    pastille(5, cx - 56, L - 27, [vers(o.cas(6), 0.6, -4.8), vers(o.cas(12), 3.2, 3)]) +
+    nom(cx, L + 11, 'Toi', 0) +
+    nom(cx, -10.5, 'Ton partenaire', 2) +
+    nom(-10.5, cy, 'Adversaire', 1, -90) +
+    nom(L + 10.5, cy, 'Adversaire', 3, 90) +
     '</svg>';
 }
 
 // Vue d'ensemble du plateau triangulaire.
 {
   const o = outils(3, 0);
+  const T = o.geo.triangle;
   figures.triangle =
-    `<svg class="pl ensemble" viewBox="-13 -13 186 197" role="img" aria-label="Le plateau triangulaire à 3 joueurs : un circuit de 48 cases, les bases à l'extérieur du triangle.">` +
+    `<svg class="pl ensemble" viewBox="-13 -13 ${n2(T.cote + 26)} ${n2(T.haut + 58.4)}" role="img" aria-label="Le plateau triangulaire à 3 joueurs : un circuit de ${nbCases(3)} cases, les bases à l'extérieur du triangle.">` +
     fond(3, 0) +
     o.pions(Array(12).fill(BASE)) +
     '</svg>';
 }
 
 /** Libellé sur deux lignes à gauche de la base, relié à la case de sortie. */
-const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', vers: { x: 80, y: 162 }, de: { x: 70.2, y: 156 } });
+const libelleSortie = (l1, l2) => note(79.4, 171.6, [l1, l2], { ancre: 'end', vers: { x: 90, y: 182 }, de: { x: 80.2, y: 176 } });
 
 // 1. Sortir un pion.
 {
   const { avant, apres } = EX.sortie;
   const o = outils(4, 0);
-  const f = F(50.5, 144.5);
+  const f = F(60.5, 154.5);
   figures.sortieAvant = schema({
     fenetre: f,
     pions: avant.pions,
-    dessus: note(69.4, 140, 'ta base', { ancre: 'end' }) + libelleSortie('case de', 'sortie') + note(122.6, 140, 'ton allée'),
+    dessus: note(79.4, 160, 'ta base', { ancre: 'end' }) + libelleSortie('case de', 'sortie') + note(132.6, 160, 'ton allée'),
     alt: 'Avant : les 4 pions bleus sont à la base, la case de sortie est vide.',
   });
   figures.sortieApres = schema({
@@ -271,34 +280,34 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant, milieu, apres } = EX['quatre-cinq'];
   const o = outils(4, 0);
-  const f = F(56, 150);
+  const f = F(66, 160);
   figures.qc1 = schema({
     fenetre: f,
-    dessous: o.anneau(0, 60),
+    dessous: o.anneau(0, E0 - 1),
     pions: avant.pions,
-    dessus: o.chiffres(0, 0, 60, { sens: 'arriere' }),
+    dessus: o.chiffres(0, 0, E0 - 1, { sens: 'arriere' }),
     alt: "Le pion bleu, sur sa case de sortie, recule de 4 cases : il passe sa case d'entrée et s'arrête une case plus loin.",
   });
   figures.qc2 = schema({
     fenetre: f,
     dessous: o.anneau(0, 0, 'depart') + o.anneau(0, a(3)),
     pions: milieu.pions,
-    dessus: o.chiffres(0, 60, a(3)),
+    dessus: o.chiffres(0, E0 - 1, a(3)),
     alt: "Le pion avance de 5 : une case sur le circuit jusqu'à la case d'entrée, puis les 4 cases de l'allée.",
   });
   figures.qc3 = schema({
     fenetre: f,
-    dessous: o.anneau(0, 60, 'depart') + o.anneau(0, a(3)),
+    dessous: o.anneau(0, E0 - 1, 'depart') + o.anneau(0, a(3)),
     pions: apres.pions,
     alt: 'Le pion bleu est au fond de son allée.',
   });
 }
 
-// 3. Capture en arrivant (le pion rouge est dans le coin du plateau).
+// 3. Capture en arrivant (le long du côté du bas, à gauche de la case de sortie).
 {
   const { avant, apres } = EX.capture;
   const o = outils(4, 0);
-  const f = [-4.5, 146, 75.3, BAS - 146];
+  const f = [8.8, 166, 72, BAS - 166];
   figures.captureAvant = schema({
     fenetre: f,
     dessous: o.anneau(0, 8),
@@ -310,7 +319,7 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
     fenetre: f,
     dessous: o.anneau(0, 2, 'depart') + o.anneau(0, 8),
     pions: apres.pions,
-    dessus: note(11.5, 153, 'Rouge retourne à sa base') + note(35, 158.7, "Vert n'a pas bougé", { ancre: 'middle' }),
+    dessus: note(21.5, 173, 'Rouge retourne à sa base') + note(45, 178.7, "Vert n'a pas bougé", { ancre: 'middle' }),
     alt: "Après : le pion bleu a pris la place du pion rouge, qui est retourné à sa base. Le pion vert n'a pas bougé.",
   });
 }
@@ -319,23 +328,23 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant } = EX.protege;
   const o = outils(4, 1);
-  const f = F(50.5, 144.5);
+  const f = F(60.5, 154.5);
   const libelle = libelleSortie('pion', 'protégé');
-  const c15 = o.cas(15);
-  const c16 = o.cas(16);
+  const c15 = o.cas(D1 - 1);
+  const c16 = o.cas(D1);
   figures.protegeNon = schema({
     vue: 1,
     fenetre: f,
     pions: avant.pions,
-    dessus: o.chiffres(0, 12, 18, { max: 3 }) + sensInterdit((c15.x + c16.x) / 2 + 0.4, c15.y - 6.6) + libelle,
+    dessus: o.chiffres(0, D1 - 4, D1 + 2, { max: 3 }) + sensInterdit((c15.x + c16.x) / 2 + 0.4, c15.y - 6.6) + libelle,
     alt: 'Interdit : avec un 6, le pion bleu devrait dépasser le pion rouge posé sur sa case de sortie.',
   });
   figures.protegeOui = schema({
     vue: 1,
     fenetre: f,
-    dessous: o.anneau(0, 15),
+    dessous: o.anneau(0, D1 - 1),
     pions: avant.pions,
-    dessus: o.chiffres(0, 12, 15) + libelle,
+    dessus: o.chiffres(0, D1 - 4, D1 - 1) + libelle,
     alt: "Permis : avec un 3, le pion bleu s'arrête juste derrière le pion rouge.",
   });
 }
@@ -344,19 +353,19 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant, apres } = EX.valet;
   const o = outils(4, 0);
-  const f = F(54, 148);
+  const f = F(64, 158);
   figures.valetAvant = schema({
     fenetre: f,
-    dessous: o.anneau(0, 2) + o.anneau(4, 59),
+    dessous: o.anneau(0, 2) + o.anneau(4, E0 - 2),
     pions: avant.pions,
-    dessus: note(146.5, 157.4, 'pion rouge', { ancre: 'end' }),
+    dessus: note(156.5, 177.4, 'pion rouge', { ancre: 'end' }),
     alt: "Avant : ton pion bleu est 2 cases après ta case de sortie ; un pion rouge est 2 cases avant ta case d'entrée.",
   });
   figures.valetApres = schema({
     fenetre: f,
-    dessous: o.anneau(0, 59) + o.anneau(4, 2),
+    dessous: o.anneau(0, E0 - 2) + o.anneau(4, 2),
     pions: apres.pions,
-    dessus: note(146.5, 157.4, 'ton pion', { ancre: 'end' }),
+    dessus: note(156.5, 177.4, 'ton pion', { ancre: 'end' }),
     alt: "Après : les deux pions ont échangé leurs cases. Ton pion bleu est 2 cases avant ta case d'entrée.",
   });
 }
@@ -365,19 +374,19 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant, apres } = EX['valet-sortie'];
   const o = outils(4, 0);
-  const f = F(56, 150);
+  const f = F(66, 160);
   figures.valetSortieAvant = schema({
     fenetre: f,
-    dessous: o.anneau(0, 0) + o.anneau(12, 60),
+    dessous: o.anneau(0, 0) + o.anneau(12, E0 - 1),
     pions: avant.pions,
-    dessus: note(148.5, 157.4, 'pion vert', { ancre: 'end' }),
+    dessus: note(158.5, 177.4, 'pion vert', { ancre: 'end' }),
     alt: "Avant : ton pion bleu est sur ta case de sortie ; un pion vert est une case avant ta case d'entrée.",
   });
   figures.valetSortieApres = schema({
     fenetre: f,
-    dessous: o.anneau(0, 60) + o.anneau(12, 0),
+    dessous: o.anneau(0, E0 - 1) + o.anneau(12, 0),
     pions: apres.pions,
-    dessus: note(148.5, 157.4, 'ton pion', { ancre: 'end' }),
+    dessus: note(158.5, 177.4, 'ton pion', { ancre: 'end' }),
     alt: "Après : ton pion bleu est une case avant ta case d'entrée ; le pion vert est sur ta case de sortie.",
   });
 }
@@ -386,19 +395,19 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant, apres } = EX['sept-simple'];
   const o = outils(4, 0);
-  const f = F(9, 103, 126);
+  const f = F(19, 113, 146);
   figures.septSimpleAvant = schema({
     fenetre: f,
     dessous: o.anneau(0, 2) + o.anneau(1, 7),
     pions: avant.pions,
-    dessus: o.chiffres(0, 63, 2) + o.chiffres(1, 3, 7, { debut: 4 }) + o.prise(12, 5),
+    dessus: o.chiffres(0, DERNIERE, 2) + o.chiffres(1, 3, 7, { debut: 4 }) + o.prise(12, 5),
     alt: 'Avant : deux pions bleus sur le circuit. Le premier va avancer de 3 cases, le second de 4 en dépassant un pion vert.',
   });
   figures.septSimpleApres = schema({
     fenetre: f,
-    dessous: o.anneau(0, 63, 'depart') + o.anneau(1, 3, 'depart') + o.anneau(0, 2) + o.anneau(1, 7),
+    dessous: o.anneau(0, DERNIERE, 'depart') + o.anneau(1, 3, 'depart') + o.anneau(0, 2) + o.anneau(1, 7),
     pions: apres.pions,
-    dessus: note(40, 154.4, ['Vert retourne', 'à sa base'].join(' '), { ancre: 'middle' }),
+    dessus: note(50, 174.4, ['Vert retourne', 'à sa base'].join(' '), { ancre: 'middle' }),
     alt: 'Après : les deux pions bleus ont avancé de 3 et de 4 cases. Le pion vert dépassé est retourné à sa base.',
   });
 }
@@ -407,7 +416,7 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant, apres } = EX.sept;
   const o = outils(4, 0);
-  const f = F(99.5, 174.5);
+  const f = F(109.5, 179.5);
   const inter = avant.pions.slice();
   inter[0] = a(3);
   inter[1] = a(2);
@@ -428,14 +437,14 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
     fenetre: f,
     dessous: o.anneau(3, a(0)),
     pions: inter,
-    dessus: o.chiffres(3, 58, a(0)) + o.prise(4, 60),
+    dessus: o.chiffres(3, E0 - 3, a(0)) + o.prise(4, E0 - 1),
     alt: "Après 1 + 1 + 1 : les trois pions de l'allée ont avancé d'une case, la première case est libre. Le dernier pion va avancer de 4 en dépassant le pion rouge.",
   });
   figures.sept3 = schema({
     fenetre: f,
-    dessous: o.anneau(3, 58, 'depart') + o.anneau(3, a(0)),
+    dessous: o.anneau(3, E0 - 3, 'depart') + o.anneau(3, a(0)),
     pions: apres.pions,
-    dessus: note(123, 139, ['Rouge', 'retourne', 'à sa base']),
+    dessus: note(133, 159, ['Rouge', 'retourne', 'à sa base']),
     alt: "Après : les 4 pions bleus remplissent l'allée. Le pion rouge dépassé est retourné à sa base.",
   });
   // Pour l'infographie : l'allée pleine, sans annotation.
@@ -446,7 +455,7 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant } = EX['sept-injouable'];
   const o = outils(4, 0);
-  const f = F(56, 156);
+  const f = F(66, 166);
   const libre = o.allee(0, 1);
   figures.septInjouable = schema({
     fenetre: f,
@@ -460,26 +469,26 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant } = EX.allee;
   const o = outils(4, 0);
-  const f = F(54, 148);
+  const f = F(64, 158);
   figures.allee3 = schema({
     fenetre: f,
     dessous: o.anneau(0, a(1)),
     pions: avant.pions,
-    dessus: o.chiffres(0, 60, a(1)),
+    dessus: o.chiffres(0, E0 - 1, a(1)),
     alt: "Avec un 3 : une case sur le circuit jusqu'à la case d'entrée, puis 2 cases d'allée. Le pion s'arrête au milieu de l'allée, sans aller jusqu'au fond.",
   });
   figures.allee5 = schema({
     fenetre: f,
     dessous: o.anneau(0, a(3)),
     pions: avant.pions,
-    dessus: o.chiffres(0, 60, a(3)),
+    dessus: o.chiffres(0, E0 - 1, a(3)),
     alt: "Avec un 5 : une case sur le circuit jusqu'à la case d'entrée, puis 4 cases d'allée. Le pion arrive au fond.",
   });
   figures.allee6 = schema({
     fenetre: f,
     dessous: o.anneau(0, 2),
     pions: avant.pions,
-    dessus: o.chiffres(0, 60, 2) + sensInterdit(o.allee(0, 0).x, o.allee(0, 0).y),
+    dessus: o.chiffres(0, E0 - 1, 2) + sensInterdit(o.allee(0, 0).x, o.allee(0, 0).y),
     alt: "Avec un 6 : la carte est trop grande d'une case pour l'allée. Le pion continue sur le circuit et dépasse sa case de sortie.",
   });
 }
@@ -488,12 +497,12 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
 {
   const { avant, apres } = EX.joker;
   const o = outils(3, 0);
-  const f = [34, 104, 92, 70];
+  const f = [44, 128, 92, 63.3];
   figures.jokerAvant = schema({
     nb: 3,
     fenetre: f,
     pions: avant.pions,
-    dessus: note(66.5, 161.6, 'ta base', { ancre: 'end', classe: 'hors' }),
+    dessus: note(76.5, 178.9, 'ta base', { ancre: 'end', classe: 'hors' }),
     alt: "Avant, sur le plateau triangulaire : les 4 pions bleus sont à la base, à l'extérieur du circuit.",
   });
   figures.jokerApres = schema({
@@ -922,7 +931,7 @@ const corps = `
         <li><span class="num">5</span><span><b>Les repères :</b> un anneau clair sur la 6e et la 12e case après chaque sortie, pour compter.</span></li>
       </ol>
     </figure>
-    <p class="note">64 cases, 16 par côté. On tourne dans le sens des aiguilles d'une montre. Dans les exemples, tu joues les bleus et ton partenaire les jaunes.</p>
+    <p class="note">72 cases, 18 d'une case de sortie à la suivante. On tourne dans le sens des aiguilles d'une montre. Dans les exemples, tu joues les bleus et ton partenaire les jaunes.</p>
   </div>
 </section>
 
@@ -1064,7 +1073,7 @@ const corps = `
     <figure class="plateau-fig">
       ${figures.triangle}
       <ul class="legende trois">
-        <li><span class="num">▲</span><span><b>Chacun pour soi</b> sur un triangle de 48 cases. Le premier qui rentre ses 4 pions gagne.</span></li>
+        <li><span class="num">▲</span><span><b>Chacun pour soi</b> sur un triangle de 54 cases. Le premier qui rentre ses 4 pions gagne.</span></li>
       </ul>
     </figure>
     <ul>
