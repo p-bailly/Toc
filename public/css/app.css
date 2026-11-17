@@ -1587,8 +1587,21 @@ details > .reglage:first-of-type {
 
 /* ─── Main : cartes à ranger en les faisant glisser ─────────────────────── */
 .main-joueur .carte-jeu {
-  /* Le glissement de côté déplace la carte ; la page défile toujours de haut en bas. */
-  touch-action: pan-y;
+  /* Une carte se fait glisser de côté (ranger la main) ou vers le haut (la poser sur le plateau). */
+  touch-action: none;
+}
+.main-joueur.vers-table {
+  overflow: visible;
+}
+.main-joueur.vers-table .carte-jeu.glisse {
+  z-index: 20;
+  opacity: 0.92;
+}
+/* Le plateau, quand une carte est tenue au-dessus : on peut la lâcher */
+.zone-plateau.depot-carte {
+  outline: 3px dashed var(--ring);
+  outline-offset: -3px;
+  border-radius: 10px;
 }
 .carte-jeu.glisse {
   z-index: 3;
