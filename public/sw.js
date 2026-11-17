@@ -1,10 +1,12 @@
 // Service worker du Toc : la coquille de l'appli s'ouvre hors ligne.
 // Stratégie « réseau d'abord » pour les fichiers de l'appli (HTML, JS, CSS…) : on sert toujours la version en
 // ligne quand le réseau répond, et le cache n'est qu'un secours hors ligne (jamais de code périmé servi
-// indéfiniment). Seules les requêtes GET de même origine passent ici : Firebase, Firestore, gstatic, googleapis
+// indéfiniment). Chaque fichier est redemandé au serveur (« no-cache » : une simple vérification s'il n'a pas
+// changé) plutôt que pris dans le cache du navigateur, que l'hébergeur laisse valable dix minutes : sinon, juste
+// après une mise à jour, des fichiers de l'ancienne version se mêlent à ceux de la nouvelle. Seules les requêtes GET de même origine passent ici : Firebase, Firestore, gstatic, googleapis
 // et les autres domaines ne sont jamais interceptés.
 // Incrémenter VERSION quand la liste de la coquille change.
-const VERSION = 'v13';
+const VERSION = 'v14';
 const COQUE = `toc-coque-${VERSION}`;
 
 const FICHIERS = [
@@ -86,8 +88,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // Firebase, Google… : jamais interceptés
   if (url.pathname.startsWith('/__/')) return; // réservé à Firebase Hosting
 
+  // (Une requête « only-if-cached » ne peut pas changer de mode de cache : on la laisse telle quelle.)
+  const fraiche = req.mode === 'navigate' || req.cache === 'only-if-cached' ? req : new Request(req, { cache: 'no-cache' });
   event.respondWith(
-    fetch(req)
+    fetch(fraiche)
       .then((res) => {
         if (res.ok && res.type === 'basic') {
           const copie = res.clone();

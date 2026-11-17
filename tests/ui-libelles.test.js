@@ -91,3 +91,14 @@ test('journal : les morceaux d’une ligne (qui, action, pions renvoyés)', asyn
   assert.match(prise.action, /^Avance de 9/);
   assert.match(prise.prises, /^Renvoie .*Max.* à la base$/);
 });
+
+test('erreurs : deux versions de l’appli mélangées donnent un message clair, pas le texte du navigateur', async () => {
+  const { messageErreur, APPLI_A_RECHARGER } = await import('../public/js/ui/dom.js');
+  assert.equal(messageErreur(new TypeError('client.choisirCouleur is not a function')), APPLI_A_RECHARGER);
+  assert.equal(messageErreur(new ReferenceError('nomNiveau is not defined')), APPLI_A_RECHARGER);
+  assert.equal(messageErreur(new SyntaxError("The requested module './client.js' does not provide an export named 'x'")), APPLI_A_RECHARGER);
+  // Les autres erreurs gardent leur message (moteur et réseau parlent déjà français).
+  assert.equal(messageErreur(new Error('Ce siège est déjà pris.')), 'Ce siège est déjà pris.');
+  assert.equal(messageErreur(new TypeError('Failed to fetch')), 'Failed to fetch');
+  assert.equal(messageErreur(null), 'Erreur inconnue.');
+});

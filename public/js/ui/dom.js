@@ -57,9 +57,22 @@ export function remplacer(el, ...enfants) {
   ajouter(el, enfants);
 }
 
+export const APPLI_A_RECHARGER = 'L’appli vient d’être mise à jour : recharge-la (ferme-la et rouvre-la) pour continuer.';
+
+/**
+ * Deux fichiers de l'appli qui ne vont pas ensemble : l'un vient d'une nouvelle version, l'autre de la précédente
+ * (appli mise à jour pendant qu'elle était ouverte, ou juste après une publication). Une fonction attendue manque
+ * alors, et le navigateur le dit en anglais (« client.choisirCouleur is not a function »).
+ */
+export function versionsMelangees(e) {
+  return (e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError)
+    && /is not a function|is not defined|is not a constructor|does not provide an export|n'est pas une fonction/i.test(e.message || '');
+}
+
 /** Message d'erreur affichable (les erreurs du moteur et du réseau sont déjà en français). */
 export function messageErreur(e) {
   if (!e) return 'Erreur inconnue.';
+  if (versionsMelangees(e)) return APPLI_A_RECHARGER;
   return e instanceof Error ? e.message : String(e);
 }
 
