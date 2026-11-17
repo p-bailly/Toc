@@ -124,6 +124,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let ordreMain = null;
   let glisse = null;
   let sansClicJusqua = 0;
+  // Carte tenue au-dessus du plateau : une copie posée sur la page, au-dessus de tout (la carte d'origine, restée
+  // dans la main, est masquée le temps du geste).
+  let carteFlottante = null;
   // Revue des coups précédents : { tours, histo, index } tant que le joueur les fait défiler sur le plateau.
   let revue = null;
   let minuterieRevue = null;
@@ -201,11 +204,13 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   main.addEventListener('pointerdown', (e) => {
     const el = e.target.closest?.('button.carte-jeu');
     if (!el || e.button > 0 || glisse || revue || !vue) return;
-    glisse = { el, id: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false, mode: null };
+    glisse = { el, id: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false, mode: null, ordre: cartesAffichees() };
   });
   main.addEventListener('pointermove', (e) => {
     if (!glisse || e.pointerId !== glisse.id) return;
     const { el } = glisse;
+    glisse.dernierX = e.clientX;
+    glisse.dernierY = e.clientY;
     if (!glisse.actif) {
       // Un toucher choisit la carte ; elle ne se déplace qu'après un vrai glissement : vers le haut, elle part vers le
       // plateau (pour la jouer) ; de côté, elle change de place dans la main.
@@ -228,8 +233,11 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       } catch {
         /* pointeur déjà relâché */
       }
-      el.classList.add('glisse');
-      main.classList.add(glisse.mode === 'table' ? 'vers-table' : 'rangement');
+      if (versTable) prendreCarte(el);
+      else {
+        el.classList.add('glisse');
+        main.classList.add('rangement');
+      }
     }
     e.preventDefault();
     // Rangement qui sort de la main (vers le plateau, qui est à côté sur un grand écran) : la carte part vers la table.
@@ -237,12 +245,26 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       const r = main.getBoundingClientRect();
       if (e.clientY < r.top - 12 || e.clientY > r.bottom + 12 || e.clientX < r.left - 12 || e.clientX > r.right + 12) {
         glisse.mode = 'table';
-        main.classList.replace('rangement', 'vers-table');
+        el.classList.remove('glisse');
+        main.classList.remove('rangement');
+        // La carte quitte la main : celle-ci reprend l'ordre d'avant le geste. On replace les autres cartes autour
+        // d'elle sans jamais la déplacer, elle (déplacée, elle perdrait le pointeur qu'elle tient).
+        const x = el.getBoundingClientRect().left;
+        const i = glisse.ordre.indexOf(el);
+        for (const c of glisse.ordre.slice(0, i)) if (c.isConnected) main.insertBefore(c, el);
+        let apres = el;
+        for (const c of glisse.ordre.slice(i + 1)) {
+          if (!c.isConnected) continue;
+          main.insertBefore(c, apres.nextSibling);
+          apres = c;
+        }
+        glisse.x0 += el.getBoundingClientRect().left - x;
+        prendreCarte(el);
       }
     }
     if (glisse.mode === 'table') {
-      // La carte suit le doigt ; le plateau s'éclaire quand elle est au-dessus.
-      el.style.transform = `translate(${e.clientX - glisse.x0}px, ${e.clientY - glisse.y0}px) scale(0.9)`;
+      // La carte suit le doigt, au-dessus de tout ; le plateau s'éclaire quand elle est au-dessus de lui.
+      if (carteFlottante) carteFlottante.style.transform = `translate(${e.clientX - glisse.x0}px, ${e.clientY - glisse.y0}px) scale(0.9)`;
       zonePlateau.classList.toggle('depot-carte', auDessusDuPlateau(e));
       return;
     }
@@ -268,11 +290,38 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (suivante && centre > milieu(suivante)) echanger(suivante, true);
     else if (precedente && centre < milieu(precedente)) echanger(precedente, false);
   });
+  /**
+   * La carte part vers le plateau : une copie flottante, à sa place exacte, la remplace sous le doigt (rien sur la
+   * page ne peut la masquer ni la rogner, pas même le plateau, qui a sa propre couche de dessin).
+   */
+  function prendreCarte(el) {
+    el.style.transform = '';
+    const r = el.getBoundingClientRect();
+    carteFlottante?.remove();
+    carteFlottante = el.cloneNode(true);
+    carteFlottante.classList.add('carte-flottante');
+    carteFlottante.removeAttribute('data-carte');
+    carteFlottante.setAttribute('aria-hidden', 'true');
+    Object.assign(carteFlottante.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    // Même place qu'à l'instant : le décalage du doigt depuis le début du geste est repris tel quel.
+    carteFlottante.style.transform = `translate(${glisse.dernierX - glisse.x0}px, ${glisse.dernierY - glisse.y0}px) scale(0.9)`;
+    document.body.append(carteFlottante);
+    el.classList.add('tenue');
+    main.classList.add('vers-table');
+  }
+
+  function lacherCarte(el) {
+    carteFlottante?.remove();
+    carteFlottante = null;
+    el.classList.remove('tenue');
+  }
+
   const finGlisse = (e) => {
     if (!glisse || e.pointerId !== glisse.id) return;
     const g = glisse;
     glisse = null;
     if (!g.actif) return;
+    lacherCarte(g.el);
     g.el.classList.remove('glisse');
     g.el.style.transform = '';
     main.classList.remove('rangement', 'vers-table');

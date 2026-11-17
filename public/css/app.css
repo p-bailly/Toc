@@ -1590,12 +1590,22 @@ details > .reglage:first-of-type {
   /* Une carte se fait glisser de côté (ranger la main) ou vers le haut (la poser sur le plateau). */
   touch-action: none;
 }
-.main-joueur.vers-table {
-  overflow: visible;
+/* La carte tenue au-dessus du plateau : une copie posée sur la page, au-dessus de tout ; l'originale, dans la main,
+   laisse sa place vide le temps du geste. */
+.carte-flottante {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  max-width: none;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  opacity: 0.95;
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 14px 24px rgb(0 0 0 / 0.4);
 }
-.main-joueur.vers-table .carte-jeu.glisse {
-  z-index: 20;
-  opacity: 0.92;
+.main-joueur .carte-jeu.tenue {
+  visibility: hidden;
 }
 /* Le plateau, quand une carte est tenue au-dessus : on peut la lâcher */
 .zone-plateau.depot-carte {
