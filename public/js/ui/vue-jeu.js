@@ -30,7 +30,7 @@ import {
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { ouvrirFeuille } from './composants.js';
-import { piRetour, piHistorique, piOk, piAnnuler, piConseil, piRevoir, piPrecedent, piSuivant, piLoupe } from './pictos.js';
+import { piRetour, piHistorique, piOk, piAnnuler, piConseil, piRevoir, piPrecedent, piSuivant, piLoupe, piDrapeau } from './pictos.js';
 import { activerZoom } from './zoom-plateau.js';
 import * as IA from '../ia/ia.js';
 import { trierMain, ordonnerMain, deplacer, detailJournal, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
@@ -49,9 +49,11 @@ const NOMS_FORMES = { rond: '●', carre: '■', triangle: '▲', losange: '◆'
  *                                  parties contre l'IA seulement, voir session-locale.js)
  * @param {string} o.retour         hash du bouton retour
  * @param {Function} [o.rejouer]    partie d'entraînement : relancer une partie
+ * @param {Object} [o.abandon]      partie en ligne : { bandeau, proposer } = l'élément où l'écran appelant affiche
+ *                                  la proposition d'abandon en cours, et ce que fait le bouton « Abandonner »
  * @returns {Function} destruction
  */
-export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null, essais = false }) {
+export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', rejouer = null, conseils = false, analyse = null, essais = false, abandon = null }) {
   const plateau = new Plateau({ surPion: (g) => toucherPion(g), surCible: (i) => toucherCible(i) });
 
   const titre = h('span', { class: 'texte' }, 'Toc');
@@ -71,12 +73,17 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     { type: 'button', class: 'bouton-icone', 'aria-label': 'Revoir les coups précédents', title: 'Revoir les coups', 'data-action': 'revoir', onclick: () => (revue ? quitterRevue() : ouvrirRevue()) },
     piRevoir(),
   );
+  // Partie en ligne : proposer aux autres joueurs d'abandonner la partie (elle l'est si tous acceptent).
+  const boutonAbandon = abandon
+    ? h('button', { type: 'button', class: 'bouton-icone', 'aria-label': 'Abandonner la partie', title: 'Abandonner la partie', 'data-action': 'abandonner', onclick: () => abandon.proposer() }, piDrapeau())
+    : null;
   const barre = h(
     'header',
     { class: 'barre-jeu' },
     h('a', { class: 'bouton-icone', href: retour, 'aria-label': libelleRetour }, piRetour()),
     h('div', { class: 'titre' }, titre, sousTitre),
     boutonConseilPlace(),
+    boutonAbandon,
     boutonRevoir,
     boutonJournal,
   );
@@ -97,7 +104,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   const actions = h('div', { class: 'actions choix-coup' });
   // Journal visible en permanence sur grand écran (masqué sur téléphone : il reste dans sa feuille).
   const journalPanneau = h('div', { class: 'journal-panneau' });
-  const colonne = h('div', { class: 'colonne-jeu' }, main, consigne, h('div', { class: 'panneau-bas' }, actions), journalPanneau);
+  const colonne = h('div', { class: 'colonne-jeu' }, abandon?.bandeau || null, main, consigne, h('div', { class: 'panneau-bas' }, actions), journalPanneau);
   const ecran = h('div', { class: 'ecran-jeu' }, barre, zonePlateau, colonne);
   remplacer(racine, ecran);
 
@@ -914,6 +921,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
     plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
     rendreJournalPanneau();
+    if (boutonAbandon) boutonAbandon.hidden = etat.phase === 'fini';
     boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
     boutonConseil.hidden = !conseilsDispo || !lireReglages().conseilsIA;
     zonePlateau.classList.toggle('a-moi', aMoi());

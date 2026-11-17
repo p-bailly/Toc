@@ -311,20 +311,20 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   // Rejoindre en prenant la place de l'hôte, ou sans s'ajouter à uids : refusé.
   await assertFails(updateDoc(ref(B), { joueurs: [pB, null, null, null], uids: [A, B], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, null, null], majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, null, ia], uids: [A, B], majLe: serverTimestamp() })); // IA par un non-hôte
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { uid: C, pseudo: 'Chloé', ia: false }, null], uids: [A, B, C], majLe: serverTimestamp() })); // asseoir quelqu'un d'autre
   await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, null, null], uids: [A, B], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(C), { joueurs: [base.joueurs[0], pB, pC, null], uids: [A, B, C], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(C), { joueurs: [base.joueurs[0], null, pC, null], uids: [A, C], majLe: serverTimestamp() })); // expulser B
-  await assertFails(updateDoc(ref(B), { invites: [X], pseudosInvites: { [X]: 'Intrus' }, majLe: serverTimestamp() })); // inviter sans être hôte
+  await assertSucceeds(updateDoc(ref(B), { invites: [X], pseudosInvites: { [X]: 'Intrus' }, majLe: serverTimestamp() })); // tout le monde invite
   await assertFails(updateDoc(ref(A), { invites: [B], pseudosInvites: { [B]: 'Bruno' }, majLe: serverTimestamp() })); // inviter un membre
   await assertSucceeds(updateDoc(ref(A), { invites: [X], pseudosInvites: { [X]: 'Intrus' }, majLe: serverTimestamp() }));
   await assertSucceeds(getDoc(ref(X))); // l'invité lit la partie
-  // Niveau des IA : inconnu refusé ; place sans niveau (parties d'avant) acceptée ; l'hôte seul le change.
+  // Niveau des IA : inconnu refusé ; place sans niveau (parties d'avant) acceptée ; tout le monde le change.
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'invincible' }], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 3 }], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'expert' }], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'expert' }], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'maitre' }], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   // Couleur des pions : chacun choisit la sienne dans la palette, jamais celle de la place d'un autre.
@@ -337,7 +337,7 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertSucceeds(updateDoc(ref(A), { joueurs: [hoteViolet, { ...pB, couleur: 'orange' }, pC, ia], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(B), { joueurs: [hoteViolet, pB, pC, ia], majLe: serverTimestamp() })); // y renoncer
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(B), { statut: 'encours', majLe: serverTimestamp() })); // lancer sans être hôte
+  await assertFails(updateDoc(ref(B), { statut: 'encours', majLe: serverTimestamp() })); // lancer sans distribuer
 
   // Salle d'attente ouverte à tous : elle se liste (50 au plus), la règle du 5 se change, la salle se supprime,
   // par n'importe quel joueur connecté, même ni membre ni invité.
@@ -350,13 +350,26 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(getDocs(query(collection(db(D), 'parties'), limit(50))));
   await assertSucceeds(updateDoc(ref(D), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(B), { reglages: { cinqAdverse: false }, majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, nbJoueurs: 3 }, majLe: serverTimestamp() })); // le mode reste figé
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, nbJoueurs: 3 }, majLe: serverTimestamp() })); // mode sans resserrer la table
   await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: 'oui' }, majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, triche: 1 }, majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true }, nom: 'Autre', majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(D), { reglages: { cinqAdverse: false }, nom: 'Autre', majLe: serverTimestamp() })); // nom : tout le monde
+  await assertFails(updateDoc(ref(D), { nom: '', majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { nom: 'x'.repeat(41), majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { nom: 'Autre', hote: D, majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true } })); // sans l'heure du serveur
   const annexe = 'ABCDEG';
   await assertSucceeds(setDoc(doc(db(A), 'parties', annexe), { ...base, code: annexe }));
+  // Mode de jeu : de 4 à 3 la table se resserre, de 3 à 4 une place s'ajoute ; personne n'est ajouté, retiré ni dédoublé.
+  const refAnnexe = (u) => doc(db(u), 'parties', annexe);
+  const a0 = base.joueurs[0];
+  const trois = { reglages: { cinqAdverse: false, nbJoueurs: 3 }, majLe: serverTimestamp() };
+  await assertFails(updateDoc(refAnnexe(D), { ...trois, joueurs: [null, null, null] })); // Alice disparaîtrait
+  await assertFails(updateDoc(refAnnexe(D), { ...trois, joueurs: [a0, a0, null] })); // Alice dédoublée
+  await assertFails(updateDoc(refAnnexe(D), { ...trois, joueurs: [a0, pB, null] })); // Bruno ajouté
+  await assertFails(updateDoc(refAnnexe(D), { ...trois, joueurs: [a0, null, null, null] })); // tableau de 4 pour 3 joueurs
+  await assertSucceeds(updateDoc(refAnnexe(D), { ...trois, joueurs: [null, a0, ia] }));
+  await assertSucceeds(updateDoc(refAnnexe(B), { reglages: { cinqAdverse: false }, joueurs: [a0, ia, null, null], majLe: serverTimestamp() }));
   await assertSucceeds(deleteDoc(doc(db(D), 'parties', annexe))); // supprimée par un joueur qui n'y est pas
 
   // Lancement par le vrai client logique serait trop long à rejouer ici : on écrit le lancement à la main.
@@ -370,6 +383,19 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(getDoc(ref(X))); // non-membre : partie en cours illisible
   await assertFails(updateDoc(ref(A), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() })); // règle du 5 figée après le lancement
   await assertFails(deleteDoc(ref(A))); // une partie lancée ne se supprime plus, même par l'hôte
+  await assertFails(updateDoc(ref(A), { nom: 'Trop tard', majLe: serverTimestamp() })); // nom figé après le lancement
+
+  // Abandon : chaque membre ajoute sa voix, ou fait tomber la proposition ; jamais avant l'accord de tous.
+  const vote = (u, abandon, statut = 'encours') => updateDoc(ref(u), { abandon, statut, majLe: serverTimestamp() });
+  await assertFails(vote(X, [X])); // pas membre
+  await assertFails(vote(B, [A])); // voter pour un autre
+  await assertFails(vote(B, [B], 'abandonnee')); // abandonnée sans l'accord de tous
+  await assertSucceeds(vote(B, [B]));
+  await assertFails(vote(B, [B, B]));
+  await assertSucceeds(vote(C, [B, C]));
+  await assertFails(vote(A, [B, C, A])); // tout le monde a accepté : elle doit être abandonnée
+  await assertFails(vote(A, [], 'abandonnee'));
+  await assertSucceeds(vote(A, [])); // refus : la proposition tombe
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() })); // figé après le lancement
   await assertFails(getDocs(query(collection(db(X), 'parties'), where('uids', 'array-contains', A))));
   await assertSucceeds(getDocs(query(collection(db(A), 'parties'), where('uids', 'array-contains', A))));
@@ -429,6 +455,19 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   // NB : la défausse est ici illégale selon le moteur (A a peut-être une carte jouable) ; les règles ne
   // peuvent pas le voir : c'est la limite assumée du modèle sans serveur.
   await assertSucceeds(updateDoc(ref(A), { etat: etatDef, historique: hist, enAttente: [B], majLe: serverTimestamp() }));
+
+  // Une partie abandonnée par tous : plus de coup, plus de vote, et elle ne se compte pas dans les statistiques.
+  const ab = 'ABANDN';
+  await e.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), 'parties', ab), { ...base, code: ab, statut: 'encours', joueurs: [base.joueurs[0], pB, ia, ia], uids: [A, B], etat: etat0, abandon: [] }),
+  );
+  const refAb = (u) => doc(db(u), 'parties', ab);
+  await assertSucceeds(updateDoc(refAb(A), { abandon: [A], statut: 'encours', majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(refAb(B), { abandon: [A, B], statut: 'abandonnee', majLe: serverTimestamp() }));
+  await assertFails(updateDoc(refAb(B), { abandon: [], statut: 'encours', majLe: serverTimestamp() }));
+  await assertFails(updateDoc(refAb(A), { etat: { ...etat0, numCoup: etat0.numCoup + 1 }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(doc(db(A), 'joueurs', A), { stats: { jouees: 1, gagnees: 0 }, comptees: [ab] }));
+  await assertFails(deleteDoc(refAb(A)));
 
   // Statistiques : une partie non terminée ne se compte pas.
   await assertFails(updateDoc(doc(db(A), 'joueurs', A), { stats: { jouees: 1, gagnees: 1 }, comptees: [id] }));

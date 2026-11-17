@@ -5,7 +5,7 @@
 // qu'elles peuvent sans exécuter le moteur ; c'est un modèle de confiance « entre amis ».
 //
 //   parties/{code} = {
-//     nom, code, hote, statut: 'attente'|'encours'|'finie', reglages: { cinqAdverse } (modifiable en salle d'attente),
+//     nom, code, hote (créateur), statut: 'attente'|'encours'|'finie'|'abandonnee', reglages: { cinqAdverse } (modifiable en salle d'attente),
 //     joueurs: [{ uid, pseudo, ia, couleur? } | null] × 4 (par siège ; couleur choisie par le joueur, voir
 //     ../palette.js), uids: [uid…] (humains membres),
 //     invites: [uid…], pseudosInvites: { uid: pseudo }, refus: [uid…],
@@ -66,10 +66,6 @@ async function lirePartie(tx, id) {
 
 function exigerAttente(p) {
   if (p.statut !== 'attente') throw new ErreurToc('La partie a déjà commencé.');
-}
-
-function exigerHote(ctx, p) {
-  if (p.hote !== ctx.uid) throw new ErreurToc("Seul le créateur de la partie peut le faire.");
 }
 
 function exigerSiege(siege, p) {
@@ -247,14 +243,9 @@ export async function choisirCouleur(ctx, id, couleur) {
   });
 }
 
-/** Salle d'attente : active ou désactive la règle du « 5 adverse ». Ouvert à tout joueur connecté. */
+/** Salle d'attente : active ou désactive la règle du « 5 adverse » (voir modifierSalle). */
 export async function reglerCinqAdverse(ctx, id, actif) {
-  await transactionSalle(ctx, id, async (tx, p) => {
-    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
-    exigerAttente(p);
-    if (!!p.reglages?.cinqAdverse === !!actif) return;
-    tx.maj(chemins.partie(id), { reglages: reglagesPartie(actif, nbJoueursDe(p.reglages)), majLe: ctx.magasin.horodatage() });
-  });
+  return modifierSalle(ctx, id, { cinqAdverse: !!actif });
 }
 
 /** Supprime une salle d'attente. Ouvert à tout joueur connecté ; une partie lancée ne se supprime plus. */
@@ -266,31 +257,32 @@ export async function supprimerPartie(ctx, id) {
   });
 }
 
-/** Hôte : place une IA sur un siège libre, avec son niveau de force (absent : champion). */
+/** Nom d'une IA d'après son siège (il change si elle change de siège quand le mode change). */
+const nomIA = (siege, nb) => (nb === 3 ? NOMS_IA_3 : NOMS_IA)[siege];
+
+/** Salle d'attente : place une IA sur un siège libre, avec son niveau de force (absent : champion). Ouvert à tous. */
 export async function ajouterIA(ctx, id, siege, niveau) {
   exigerSiege(siege);
   const n = verifierNiveau(niveau);
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerSiege(siege, p);
     exigerAttente(p);
-    exigerHote(ctx, p);
     if (p.joueurs[siege] !== null) throw new ErreurToc('Ce siège est déjà pris.');
     const joueurs = p.joueurs.slice();
-    joueurs[siege] = { uid: null, pseudo: (p.joueurs.length === 3 ? NOMS_IA_3 : NOMS_IA)[siege], ia: true, niveau: n };
+    joueurs[siege] = { uid: null, pseudo: nomIA(siege, p.joueurs.length), ia: true, niveau: n };
     tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
   });
 }
 
-/** Hôte : change le niveau d'une IA déjà placée (partie en attente). */
+/** Salle d'attente : change le niveau d'une IA déjà placée. Ouvert à tous. */
 export async function changerNiveauIA(ctx, id, siege, niveau) {
   exigerSiege(siege);
   const n = verifierNiveau(niveau);
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerSiege(siege, p);
     exigerAttente(p);
-    exigerHote(ctx, p);
     const place = p.joueurs[siege];
     if (!place?.ia) throw new ErreurToc("Ce siège n'est pas tenu par une IA.");
     if (place.niveau === n) return;
@@ -300,13 +292,13 @@ export async function changerNiveauIA(ctx, id, siege, niveau) {
   });
 }
 
+/** Salle d'attente : retire une IA. Ouvert à tous. */
 export async function retirerIA(ctx, id, siege) {
   exigerSiege(siege);
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerSiege(siege, p);
     exigerAttente(p);
-    exigerHote(ctx, p);
     if (!p.joueurs[siege]?.ia) throw new ErreurToc("Ce siège n'est pas tenu par une IA.");
     const joueurs = p.joueurs.slice();
     joueurs[siege] = null;
@@ -314,7 +306,39 @@ export async function retirerIA(ctx, id, siege) {
   });
 }
 
-/** Quitte une partie en attente ; si l'hôte quitte, la partie est supprimée (voir aussi supprimerPartie). */
+/**
+ * Salle d'attente : change le nom de la partie, le mode (nbJoueurs : 3 ou 4) ou la règle du « 5 adverse ».
+ * Ouvert à tout joueur connecté. Changer de mode garde tout le monde à table : de 4 à 3, les places occupées se
+ * resserrent sur trois sièges (il faut donc une place libre) ; de 3 à 4, une place libre s'ajoute.
+ */
+export async function modifierSalle(ctx, id, { nom, nbJoueurs, cinqAdverse } = {}) {
+  if (nbJoueurs !== undefined && nbJoueurs !== 3 && nbJoueurs !== 4) throw new ErreurToc('Une partie se joue à 3 ou à 4.');
+  const nomVoulu = nom === undefined ? undefined : String(nom ?? '').trim().slice(0, NOM_MAX);
+  if (nomVoulu === '') throw new ErreurToc('Donne un nom à la partie.');
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
+    exigerAttente(p);
+    const avant = nbJoueursDe(p.reglages);
+    const nb = nbJoueurs ?? avant;
+    const cinq = cinqAdverse === undefined ? !!p.reglages?.cinqAdverse : !!cinqAdverse;
+    const champs = {};
+    if (nomVoulu !== undefined && nomVoulu !== p.nom) champs.nom = nomVoulu;
+    if (nb !== avant || cinq !== !!p.reglages?.cinqAdverse) champs.reglages = reglagesPartie(cinq, nb);
+    if (nb !== avant) {
+      const occupees = p.joueurs.filter((x) => x !== null);
+      if (occupees.length > nb) throw new ErreurToc('La table est pleine : libère une place pour passer à 3 joueurs.');
+      // Les places occupées gardent leur ordre ; une IA prend le nom de son nouveau siège.
+      champs.joueurs = occupees.concat(Array(nb - occupees.length).fill(null)).map((x, s) => (x?.ia ? { ...x, pseudo: nomIA(s, nb) } : x));
+    }
+    if (!Object.keys(champs).length) return;
+    tx.maj(chemins.partie(id), { ...champs, majLe: ctx.magasin.horodatage() });
+  });
+}
+
+/**
+ * Quitte une salle d'attente (le créateur comme les autres : la salle reste à ceux qui y sont). Le dernier joueur
+ * à partir emporte la salle : elle est supprimée.
+ */
 export async function quitterPartie(ctx, id) {
   await transaction(ctx, async (tx) => {
     const p = await tx.lire(chemins.partie(id));
@@ -322,23 +346,23 @@ export async function quitterPartie(ctx, id) {
     const s = siegeDe(p, ctx.uid);
     if (s < 0) return;
     if (p.statut !== 'attente') throw new ErreurToc('La partie a commencé : on ne peut plus la quitter.');
-    if (p.hote === ctx.uid) {
+    const uids = p.uids.filter((u) => u !== ctx.uid);
+    if (!uids.length) {
       tx.supprimer(chemins.partie(id));
       return;
     }
     const joueurs = p.joueurs.slice();
     joueurs[s] = null;
-    tx.maj(chemins.partie(id), { joueurs, uids: p.uids.filter((u) => u !== ctx.uid), majLe: ctx.magasin.horodatage() });
+    tx.maj(chemins.partie(id), { joueurs, uids, majLe: ctx.magasin.horodatage() });
   });
 }
 
-/** Hôte : invite un joueur (il voit l'invitation dans l'appli). */
+/** Salle d'attente : invite un joueur (il voit l'invitation dans l'appli). Ouvert à tous. */
 export async function inviter(ctx, id, uid) {
   if (typeof uid !== 'string' || !uid) throw new ErreurToc('Joueur invalide.');
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerAttente(p);
-    exigerHote(ctx, p);
     if (p.uids.includes(uid)) throw new ErreurToc('Ce joueur est déjà dans la partie.');
     const invites = p.invites || [];
     if (invites.includes(uid)) return;
@@ -354,12 +378,11 @@ export async function inviter(ctx, id, uid) {
   });
 }
 
-/** Hôte : retire une invitation (ou efface un refus). */
+/** Salle d'attente : retire une invitation (ou efface un refus). Ouvert à tous. */
 export async function annulerInvitation(ctx, id, uid) {
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerAttente(p);
-    exigerHote(ctx, p);
     const pseudosInvites = { ...(p.pseudosInvites || {}) };
     delete pseudosInvites[uid];
     tx.maj(chemins.partie(id), {
@@ -384,12 +407,12 @@ export async function refuserInvitation(ctx, id) {
   });
 }
 
-/** Hôte : lance la partie (4 sièges occupés), distribue le premier cycle. */
+/** Lance la partie (tous les sièges occupés) et distribue le premier cycle. Ouvert à tout joueur assis à la table. */
 export async function lancerPartie(ctx, id) {
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerAttente(p);
-    exigerHote(ctx, p);
+    if (siegeDe(p, ctx.uid) < 0) throw new ErreurToc('Assieds-toi à la table pour lancer la partie.');
     const n = nbJoueursDe(p.reglages);
     if (p.joueurs.some((x) => x === null)) {
       throw new ErreurToc(`Il faut ${n === 3 ? 'trois' : 'quatre'} joueurs (ou IA) pour lancer la partie.`);
@@ -404,6 +427,34 @@ export async function lancerPartie(ctx, id) {
       invites: [],
       majLe: ctx.magasin.horodatage(),
     });
+  });
+}
+
+// ─── Abandon d'une partie en cours, d'un commun accord ─────────────────────
+
+/**
+ * Vote pour abandonner une partie en cours. `accepte` true : je propose l'abandon, ou j'accepte celui qu'un autre
+ * a proposé ; false : je refuse (ou je retire ma proposition), et la proposition tombe. Quand tous les joueurs
+ * humains de la partie ont accepté, elle est abandonnée : elle disparaît des listes et ne compte pas dans les
+ * statistiques (seules les parties terminées comptent).
+ * @returns {Promise<{ abandonnee: boolean }>}
+ */
+export async function voterAbandon(ctx, id, accepte) {
+  return transaction(ctx, async (tx) => {
+    const p = await lirePartie(tx, id);
+    if (siegeDe(p, ctx.uid) < 0) throw new ErreurToc('Tu ne joues pas dans cette partie.');
+    if (p.statut === 'abandonnee') return { abandonnee: true };
+    if (p.statut !== 'encours') throw new ErreurToc(p.statut === 'finie' ? 'La partie est terminée.' : "La partie n'a pas commencé.");
+    const votes = p.abandon || [];
+    if (!accepte) {
+      if (votes.length) tx.maj(chemins.partie(id), { abandon: [], majLe: ctx.magasin.horodatage() });
+      return { abandonnee: false };
+    }
+    if (votes.includes(ctx.uid)) return { abandonnee: false };
+    const abandon = votes.concat([ctx.uid]);
+    const abandonnee = p.uids.every((u) => abandon.includes(u));
+    tx.maj(chemins.partie(id), { abandon, statut: abandonnee ? 'abandonnee' : 'encours', majLe: ctx.magasin.horodatage() });
+    return { abandonnee };
   });
 }
 

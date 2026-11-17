@@ -955,6 +955,86 @@ details > .reglage:first-of-type {
   color: var(--lien);
 }
 
+/* Salle d'attente : la table, les réglages de la partie, les invitations, et en bas la barre qui lance la partie */
+.salle-attente.deja-vue {
+  animation: none; /* la salle se redessine à chaque changement : pas de fondu à chaque fois */
+}
+.salle-attente .titre-carte .note[data-etat='complete'] {
+  color: var(--ok);
+  font-weight: 700;
+}
+.carte-reglages-salle > .reglage:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+.carte-reglages-salle .nom-salle {
+  overflow-wrap: anywhere;
+}
+.reglage-mode {
+  flex-wrap: wrap;
+}
+.reglage-mode .texte {
+  flex: 1 1 100%;
+}
+.reglage-mode .segments {
+  flex: 1 1 100%;
+}
+.partage-salle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+.partage-salle .code-invitation {
+  flex: 1 1 170px;
+}
+.partage-salle .bouton {
+  flex: 1 1 170px;
+}
+.carte-inviter .liste:empty {
+  display: none;
+}
+.sorties-salle {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.barre-salle {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 -16px -16px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+
+/* Partie en cours : proposition d'abandon d'un commun accord (bandeau au-dessus de la main) */
+.bandeau-abandon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--rayon);
+  background: var(--surface);
+  border: 1.5px solid var(--err);
+  line-height: 1.4;
+}
+.bandeau-abandon[hidden] {
+  display: none;
+}
+.bandeau-abandon > span {
+  flex: 1 1 220px;
+}
+.bandeau-abandon .actions {
+  flex: 0 1 auto;
+  gap: 8px;
+}
+
 /* ─── Cartes à jouer ────────────────────────────────────────────────────── */
 .carte-jeu {
   position: relative;

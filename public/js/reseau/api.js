@@ -23,8 +23,9 @@
 //                 (NIVEAUX de js/ia/ia.js ; place d'une partie ancienne sans niveau : 'champion')
 //   ResumePartie = {
 //     id, nom, code,     id === code (le code d'invitation identifie la partie)
-//     statut,            'attente' | 'encours' | 'finie'
-//     hote,              uid du créateur
+//     statut,            'attente' | 'encours' | 'finie' | 'abandonnee' (abandonnée d'un commun accord : elle
+//                        n'est plus listée et ne compte pas dans les statistiques)
+//     hote,              uid du créateur (il n'a aucun droit de plus que les autres joueurs)
 //     reglages,          { cinqAdverse } à 4 joueurs, { cinqAdverse, nbJoueurs: 3 } à 3
 //                        (cinqAdverse se change en salle d'attente, voir reglerCinqAdverse)
 //     nbJoueurs,         3 ou 4
@@ -37,7 +38,9 @@
 //     gagnants,          sièges gagnants ([] tant que la partie n'est pas finie)
 //     majLe,             Date de la dernière action
 //     invites,           [{ uid, pseudo }] joueurs invités directement (partie en attente)
-//     refus,             [{ uid, pseudo }] invités qui ont refusé (information pour l'hôte)
+//     refus,             [{ uid, pseudo }] invités qui ont refusé
+//     abandon,           null, ou la proposition d'abandon d'une partie en cours :
+//                        { pour: [{ uid, pseudo }], attendus: [{ uid, pseudo }], jAiAccepte } (voir voterAbandon)
 //   }
 
 import { firebaseConfig } from '../firebase-config.js';
@@ -223,7 +226,7 @@ export async function choisirCouleur(id, couleur) {
 }
 
 /**
- * Hôte : place une IA sur un siège libre / la retire. niveau : un des id de NIVEAUX (js/ia/ia.js),
+ * Salle d'attente, tout joueur connecté : place une IA sur un siège libre / la retire. niveau : un des id de NIVEAUX (js/ia/ia.js),
  * facultatif (défaut 'champion') ; un niveau inconnu est refusé.
  */
 export async function ajouterIA(id, siege, niveau) {
@@ -231,7 +234,7 @@ export async function ajouterIA(id, siege, niveau) {
   return client.ajouterIA(id, siege, niveau);
 }
 
-/** Hôte, partie en attente : change le niveau de l'IA placée sur ce siège. */
+/** Salle d'attente, tout joueur connecté : change le niveau de l'IA placée sur ce siège. */
 export async function changerNiveauIA(id, siege, niveau) {
   if (!reseauDisponible()) return nonConfigure();
   return client.changerNiveauIA(id, siege, niveau);
@@ -247,19 +250,39 @@ export async function reglerCinqAdverse(id, actif) {
   return client.reglerCinqAdverse(id, actif);
 }
 
+/**
+ * Salle d'attente : change le nom de la partie, le mode ou la règle du 5. changements = { nom?, nbJoueurs?: 3 | 4,
+ * cinqAdverse? }. Ouvert à tout joueur connecté. De 4 à 3 joueurs, il faut une place libre (les places occupées se
+ * resserrent) ; de 3 à 4, une place libre s'ajoute.
+ */
+export async function modifierSalle(id, changements) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.modifierSalle(id, changements);
+}
+
+/**
+ * Partie en cours : vote pour l'abandonner d'un commun accord. accepte = true : proposer l'abandon, ou accepter
+ * celui qu'un autre joueur propose ; false : refuser (la proposition tombe). Quand tous les joueurs humains ont
+ * accepté, la partie est abandonnée : elle disparaît et ne compte pas dans les statistiques. → { abandonnee }
+ */
+export async function voterAbandon(id, accepte) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.voterAbandon(id, accepte);
+}
+
 /** Supprime une salle d'attente (partie pas encore lancée). Ouvert à tout joueur connecté. */
 export async function supprimerPartie(id) {
   if (!reseauDisponible()) return nonConfigure();
   return client.supprimerPartie(id);
 }
 
-/** Quitte une partie en attente (si l'hôte quitte, la partie est supprimée). */
+/** Quitte une salle d'attente (le dernier joueur à partir la supprime). */
 export async function quitterPartie(id) {
   if (!reseauDisponible()) return nonConfigure();
   return client.quitterPartie(id);
 }
 
-/** Hôte : lance la partie. Tous les sièges (3 ou 4) doivent être occupés (humains ou IA). Distribue les cartes. */
+/** Tout joueur assis à la table : lance la partie. Tous les sièges (3 ou 4) doivent être occupés (humains ou IA). Distribue les cartes. */
 export async function lancerPartie(id) {
   if (!reseauDisponible()) return nonConfigure();
   return client.lancerPartie(id);
@@ -267,13 +290,13 @@ export async function lancerPartie(id) {
 
 // ─── Invitations directes (partie en attente) ──────────────────────────────
 
-/** Hôte : invite un joueur (il voit l'invitation dans l'appli). */
+/** Salle d'attente, tout joueur connecté : invite un joueur (il voit l'invitation dans l'appli). */
 export async function inviter(id, uid) {
   if (!reseauDisponible()) return nonConfigure();
   return client.inviter(id, uid);
 }
 
-/** Hôte : retire une invitation. */
+/** Salle d'attente, tout joueur connecté : retire une invitation. */
 export async function annulerInvitation(id, uid) {
   if (!reseauDisponible()) return nonConfigure();
   return client.annulerInvitation(id, uid);

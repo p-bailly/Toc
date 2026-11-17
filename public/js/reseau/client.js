@@ -209,7 +209,8 @@ export function creerClient(options) {
               });
               resumes.sort((a, b) => b.majLe - a.majLe);
               let finies = 0;
-              cb(resumes.filter((r) => r.statut !== 'finie' || ++finies <= FINIES_GARDEES));
+              // Une partie abandonnée d'un commun accord disparaît des listes (et ne compte nulle part).
+              cb(resumes.filter((r) => r.statut !== 'abandonnee' && (r.statut !== 'finie' || ++finies <= FINIES_GARDEES)));
             },
             (e) => console.warn('Écoute de mes parties interrompue', e),
           ),
@@ -283,6 +284,8 @@ export function creerClient(options) {
     changerNiveauIA: action(async (id, siege, niveau) => P.changerNiveauIA(await ctx(), id, siege, niveau)),
     retirerIA: action(async (id, siege) => P.retirerIA(await ctx(), id, siege)),
     reglerCinqAdverse: action(async (id, actif) => P.reglerCinqAdverse(await ctx(), id, actif)),
+    modifierSalle: action(async (id, changements) => P.modifierSalle(await ctx(), id, changements)),
+    voterAbandon: action(async (id, accepte) => P.voterAbandon(await ctx(), id, accepte)),
     quitterPartie: action(async (id) => P.quitterPartie(await ctx(), id)),
     supprimerPartie: action(async (id) => P.supprimerPartie(await ctx(), id)),
     lancerPartie: action(async (id) => P.lancerPartie(await ctx(), id)),

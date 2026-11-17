@@ -223,6 +223,23 @@ export function resumePartie(id, d, uid) {
     majLe: date(d.majLe) || date(d.creeLe) || new Date(0),
     invites: (d.invites || []).map((u) => ({ uid: u, pseudo: pseudos[u] ?? '?' })),
     refus: (d.refus || []).map((u) => ({ uid: u, pseudo: pseudos[u] ?? '?' })),
+    abandon: abandonDe(d, uid),
+  };
+}
+
+/**
+ * Proposition d'abandon d'une partie en cours : qui a accepté, qui doit encore répondre (les joueurs humains), et
+ * où j'en suis. null s'il n'y a pas de proposition.
+ */
+export function abandonDe(d, uid) {
+  const votes = d.statut === 'encours' && Array.isArray(d.abandon) ? d.abandon : [];
+  if (!votes.length) return null;
+  const nomDe = (u) => (d.joueurs || []).find((p) => p && !p.ia && p.uid === u)?.pseudo ?? '?';
+  const humains = d.uids || [];
+  return {
+    pour: votes.map((u) => ({ uid: u, pseudo: nomDe(u) })),
+    attendus: humains.filter((u) => !votes.includes(u)).map((u) => ({ uid: u, pseudo: nomDe(u) })),
+    jAiAccepte: votes.includes(uid),
   };
 }
 

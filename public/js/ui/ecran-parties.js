@@ -337,7 +337,8 @@ function rappelNotifications(redessiner) {
 const nomPlace = (p) => (p ? (p.ia ? `${p.pseudo || 'IA'} (${nomNiveau(p.niveau)})` : p.pseudo || '?') : null);
 
 function ligneInvitation(p, app) {
-  const hote = p.joueurs?.find((j) => j && j.uid === p.hote);
+  // Celui qui a créé la salle, s'il y est encore ; sinon un joueur déjà assis (tout le monde peut inviter).
+  const hote = p.joueurs?.find((j) => j && j.uid === p.hote) || p.joueurs?.find((j) => j && !j.ia);
   const nomHote = hote?.pseudo || 'Un joueur';
   const erreur = h('div', { class: 'apercu erreur', hidden: true });
   const presents = (p.joueurs || []).filter(Boolean).map(nomPlace);
@@ -417,6 +418,9 @@ function lignePartie(p, app) {
   if (p.statut === 'finie') {
     const gagne = moi >= 0 && (a3 ? p.gagnant === moi : p.gagnant === moi % 2);
     badge = h('span', { class: 'badge ' + (gagne ? 'ok' : 'neutre') }, gagne ? 'Gagnée' : 'Perdue');
+  } else if (p.abandon && !p.abandon.jAiAccepte) {
+    // Un joueur propose d'abandonner la partie : ma réponse est attendue (dans la partie).
+    badge = h('span', { class: 'badge a-toi' }, 'Abandon proposé');
   } else if (p.aMoiDeJouer) {
     badge = h('span', { class: 'badge a-toi' }, 'À toi de jouer');
   } else if (p.statut === 'attente') {
