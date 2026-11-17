@@ -70,7 +70,8 @@ Communes aux deux modes :
   le renvoie.
 - **7** : fractionnable, toujours dépensé en entier (sinon injouable), capture tout pion dépassé, y compris
   les siens.
-- **Allée** : compte exact, pas de dépassement, entrée jamais obligatoire.
+- **Allée** : un pion s'y arrête sur la case où la carte le mène (pas forcément au fond), sans dépasser le fond
+  ni un autre pion ; une carte trop grande le laisse sur le circuit ; entrée jamais obligatoire.
 - **Obligation de jouer** ; défausse au choix si aucune carte n'est jouable.
 
 2 contre 2 (64 cases, 52 cartes, donnes de 5-4-4) :
@@ -86,6 +87,12 @@ Communes aux deux modes :
 - À chaque donne, une carte au voisin de gauche (donnes paires) ou de droite (donnes impaires).
 - **Joker** : copie une carte posée depuis le début de la donne (jouée ou défaussée, y compris un joker
   qui a copié) ; injouable s'il n'y a rien à copier.
+
+## Salles d'attente (en ligne)
+
+Une salle d'attente est ouverte à tous : elle apparaît dans « Mes parties » de chaque joueur connecté, qui peut s'y
+asseoir sans invitation, y activer ou désactiver l'option « 5 adverse », et la supprimer. L'hôte garde les IA, les
+invitations et le lancement. Les statistiques du compte (parties en ligne jouées et gagnées) sont dans l'onglet « Stats ».
 
 ## Limites connues
 

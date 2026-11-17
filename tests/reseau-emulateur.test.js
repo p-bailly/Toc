@@ -252,7 +252,26 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'maitre' }], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { statut: 'encours', majLe: serverTimestamp() })); // lancer sans être hôte
-  await assertFails(deleteDoc(ref(B)));
+
+  // Salle d'attente ouverte à tous : elle se liste (50 au plus), la règle du 5 se change, la salle se supprime,
+  // par n'importe quel joueur connecté, même ni membre ni invité.
+  const D = 'david';
+  const salles = (u, ...bornes) => getDocs(query(collection(db(u), 'parties'), where('statut', '==', 'attente'), ...bornes));
+  await assertSucceeds(salles(D, limit(50)));
+  await assertFails(salles(D)); // sans borne
+  await assertFails(salles(D, limit(51)));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), where('statut', '==', 'encours'), limit(50))));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), limit(50))));
+  await assertSucceeds(updateDoc(ref(D), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(B), { reglages: { cinqAdverse: false }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, nbJoueurs: 3 }, majLe: serverTimestamp() })); // le mode reste figé
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: 'oui' }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, triche: 1 }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true }, nom: 'Autre', majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true } })); // sans l'heure du serveur
+  const annexe = 'ABCDEG';
+  await assertSucceeds(setDoc(doc(db(A), 'parties', annexe), { ...base, code: annexe }));
+  await assertSucceeds(deleteDoc(doc(db(D), 'parties', annexe))); // supprimée par un joueur qui n'y est pas
 
   // Lancement par le vrai client logique serait trop long à rejouer ici : on écrit le lancement à la main.
   const { distribuerCycle } = await import('../public/js/moteur/index.js');
@@ -263,6 +282,8 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   lancer.update(ref(A), { statut: 'encours', etat: etat0, historique: [], enAttente: [A, B, C], invites: [], majLe: serverTimestamp() });
   await assertSucceeds(lancer.commit());
   await assertFails(getDoc(ref(X))); // non-membre : partie en cours illisible
+  await assertFails(updateDoc(ref(A), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() })); // règle du 5 figée après le lancement
+  await assertFails(deleteDoc(ref(A))); // une partie lancée ne se supprime plus, même par l'hôte
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() })); // figé après le lancement
   await assertFails(getDocs(query(collection(db(X), 'parties'), where('uids', 'array-contains', A))));
   await assertSucceeds(getDocs(query(collection(db(A), 'parties'), where('uids', 'array-contains', A))));

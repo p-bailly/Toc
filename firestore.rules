@@ -156,12 +156,15 @@ service cloud.firestore {
       }
 
       // ── Lecture ──
-      // Une partie se lit par ses membres et ses invités ; en attente, par qui a le code (le lien
-      // d'invitation). Un document absent se « lit » (pour savoir qu'un code est libre ou inconnu).
+      // Une partie se lit par ses membres et ses invités ; en attente, par tout joueur connecté (une salle
+      // d'attente est ouverte à tous). Un document absent se « lit » (pour savoir qu'un code est libre ou inconnu).
       allow get: if connecte()
         && (resource == null || membre(resource.data) || invite(resource.data) || resource.data.statut == 'attente');
-      // Listes : seulement ses parties (uids array-contains) et ses invitations (invites array-contains).
-      allow list: if connecte() && (membre(resource.data) || invite(resource.data));
+      // Listes : ses parties (uids array-contains), ses invitations (invites array-contains), et les salles
+      // d'attente ouvertes (statut == 'attente', 50 au plus par requête).
+      allow list: if connecte()
+        && (membre(resource.data) || invite(resource.data)
+          || (resource.data.statut == 'attente' && request.query.limit <= 50));
 
       // ── Création : par l'hôte, seul joueur, au siège 0 ──
       allow create: if connecte() && creationValide(request.resource.data);
@@ -182,7 +185,7 @@ service cloud.firestore {
           && d.creeLe == request.time && d.majLe == request.time;
       }
 
-      // ── Salle d'attente : se placer, changer de siège, partir ; l'hôte place ou retire des IA ──
+      // ── Salle d'attente : se placer (invité ou non), changer de siège, partir ; l'hôte place ou retire des IA ──
       function majPlaces(av, ap) {
         let hote = av.hote == moi();
         let j = ap.joueurs;
@@ -193,10 +196,22 @@ service cloud.firestore {
           && siegeOk(av.joueurs[0], j[0], hote) && siegeOk(av.joueurs[1], j[1], hote)
           && siegeOk(av.joueurs[2], j[2], hote) && (j.size() == 3 || siegeOk(av.joueurs[3], j[3], hote))
           && n <= 1
-          && (!hote || n == 1) // l'hôte ne part qu'en supprimant la partie
+          && (!hote || n == 1) // l'hôte ne quitte pas son siège : il supprime la partie
           && ap.uids == (n == 1 ? (membre(av) ? av.uids : av.uids.concat([moi()])) : av.uids.removeAll([moi()]))
           // En entrant, l'invité sort de la liste des invités.
           && (ap.get('invites', []) == av.get('invites', []) || ap.invites == av.invites.removeAll([moi()]))
+          && ap.majLe == request.time;
+      }
+
+      // ── Règle du « 5 adverse » : tout joueur connecté l'active ou la désactive tant que la partie attend.
+      // Rien d'autre ne bouge dans les réglages (le nombre de joueurs reste figé). ──
+      function majReglages(av, ap) {
+        return av.statut == 'attente'
+          && affecte().hasOnly(['reglages', 'majLe'])
+          && ap.reglages is map && ap.reglages.cinqAdverse is bool
+          && ap.reglages == (nbJ(av) == 3
+            ? { 'cinqAdverse': ap.reglages.cinqAdverse, 'nbJoueurs': 3 }
+            : { 'cinqAdverse': ap.reglages.cinqAdverse })
           && ap.majLe == request.time;
       }
 
@@ -322,10 +337,12 @@ service cloud.firestore {
         || refus(resource.data, request.resource.data)
         || lancement(resource.data, request.resource.data)
         || majJeu(resource.data, request.resource.data)
+        // En dernier : un coup accepté ne paie pas cette vérification (limite de 1000 expressions).
+        || majReglages(resource.data, request.resource.data)
       );
 
-      // Supprimer : l'hôte, tant que la partie n'a pas commencé.
-      allow delete: if connecte() && resource.data.statut == 'attente' && resource.data.hote == moi();
+      // Supprimer : tout joueur connecté, tant que la partie n'a pas commencé (une partie lancée ne se supprime plus).
+      allow delete: if connecte() && resource.data.statut == 'attente';
 
       // ── Mains privées, immuables : parties/{id}/donnes/{donne}_{siege} ──
       // Lisible par le titulaire du siège (ou par tout membre si le siège est une IA, puisque ce sont

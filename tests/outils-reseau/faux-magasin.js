@@ -3,7 +3,7 @@
 // Il imite ce dont la logique dépend :
 //  - transactions optimistes (relance si un document lu a changé avant la validation ; toutes les
 //    lectures avant les écritures ; échec « aborted » après 5 essais) ;
-//  - écoutes de documents et de requêtes array-contains, notifiées de façon asynchrone ;
+//  - écoutes de documents et de requêtes (array-contains, ou égalité bornée), notifiées de façon asynchrone ;
 //  - heure du serveur et suppression de champ (valeurs sentinelles) ;
 //  - refus des valeurs `undefined` et des tableaux directement imbriqués (comme Firestore) ;
 //  - une partie des règles de sécurité (firestore.rules) : lecture des parties, des mains (donnes)
@@ -189,11 +189,13 @@ export class FauxServeur {
         return () => serveur.ecouteurs.delete(e);
       },
 
-      resultats(collection, champ, valeur) {
+      /** `egal` : requête champ == valeur ; sinon champ array-contains valeur. */
+      resultats(collection, champ, valeur, egal = false) {
         const r = [];
         for (const [chemin, { donnees }] of serveur.docs) {
           const m = chemin.split('/');
-          if (m.length === 2 && m[0] === collection && (donnees[champ] || []).includes(valeur)) {
+          const retenu = egal ? donnees[champ] === valeur : (donnees[champ] || []).includes(valeur);
+          if (m.length === 2 && m[0] === collection && retenu) {
             if (!serveur.peutLire(c.uid, chemin, donnees)) throw erreur('permission-denied');
             r.push({ id: m[1], donnees: cloner(donnees) });
           }
@@ -201,14 +203,18 @@ export class FauxServeur {
         return r;
       },
 
-      ecouterRequete(collection, champ, valeur, cb, surErreur) {
+      ecouterEgal(collection, champ, valeur, limite, cb, surErreur) {
+        return c.ecouterRequete(collection, champ, valeur, cb, surErreur, { egal: true, limite });
+      },
+
+      ecouterRequete(collection, champ, valeur, cb, surErreur, { egal = false, limite = Infinity } = {}) {
         let derniere = null;
         const e = {
           rafraichir() {
             if (c.horsLigne) return;
             let r;
             try {
-              r = c.resultats(collection, champ, valeur);
+              r = c.resultats(collection, champ, valeur, egal).slice(0, limite);
             } catch (err) {
               serveur.ecouteurs.delete(e);
               surErreur?.(err);

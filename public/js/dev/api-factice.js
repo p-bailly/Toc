@@ -61,6 +61,7 @@ function sauver() {
 const ecoutesAuth = new Set();
 const ecoutesListe = new Set();
 const ecoutesInvitations = new Set();
+const ecoutesSalles = new Set();
 const ecoutesPartie = new Map(); // id → Set<cb>
 const sessions = new Set();
 
@@ -76,6 +77,7 @@ function diffuser() {
   for (const cb of ecoutesAuth) cb(j);
   for (const cb of ecoutesListe) cb(mesParties());
   for (const cb of ecoutesInvitations) cb(mesInvitations());
+  for (const cb of ecoutesSalles) cb(sallesAttente());
   for (const [id, cbs] of ecoutesPartie) for (const cb of cbs) cb(resumeDe(db.parties[id]));
   for (const s of sessions) s.notifier();
 }
@@ -146,6 +148,15 @@ function mesInvitations() {
   if (!db.moi) return [];
   return Object.values(db.parties)
     .filter((p) => p.statut === 'attente' && (p.invites || []).some((i) => i.uid === db.moi) && siegeDe(p, db.moi) < 0)
+    .sort((a, b) => b.majLe - a.majLe)
+    .map(resumeDe);
+}
+
+/** Toutes les salles d'attente ouvertes (les miennes comprises), de la plus récente à la plus ancienne. */
+function sallesAttente() {
+  if (!db.moi) return [];
+  return Object.values(db.parties)
+    .filter((p) => p.statut === 'attente')
     .sort((a, b) => b.majLe - a.majLe)
     .map(resumeDe);
 }
@@ -244,6 +255,12 @@ export function surInvitations(cb) {
   return () => ecoutesInvitations.delete(cb);
 }
 
+export function surSallesAttente(cb) {
+  ecoutesSalles.add(cb);
+  cb(sallesAttente());
+  return () => ecoutesSalles.delete(cb);
+}
+
 export function surPartie(id, cb) {
   if (!ecoutesPartie.has(id)) ecoutesPartie.set(id, new Set());
   ecoutesPartie.get(id).add(cb);
@@ -324,11 +341,40 @@ export async function choisirSiege(id, siege) {
   const p = exigerPartie(id);
   if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
   const actuel = siegeDe(p, c.uid);
-  if (actuel < 0) throw new Error('Tu n’es pas dans cette partie.');
+  if (actuel === siege) return;
   if (p.joueurs[siege]) throw new Error('Cette place est déjà prise.');
-  p.joueurs[siege] = p.joueurs[actuel];
-  p.joueurs[actuel] = null;
+  if (actuel >= 0) {
+    p.joueurs[siege] = p.joueurs[actuel];
+    p.joueurs[actuel] = null;
+  } else {
+    // Pas encore dans la partie : on y entre, invité ou non.
+    p.joueurs[siege] = placeDe(c.uid);
+    p.invites = (p.invites || []).filter((i) => i.uid !== c.uid);
+    reactionHote(p);
+  }
   p.majLe = Date.now();
+  changer();
+}
+
+/** Salle d'attente : active ou désactive le « 5 adverse » (tout joueur connecté). */
+export async function reglerCinqAdverse(id, actif) {
+  await attendre();
+  exigerConnexion();
+  const p = exigerPartie(id);
+  if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
+  p.reglages = { ...p.reglages, cinqAdverse: !!actif };
+  p.majLe = Date.now();
+  changer();
+}
+
+/** Supprime une salle d'attente (tout joueur connecté). */
+export async function supprimerPartie(id) {
+  await attendre();
+  exigerConnexion();
+  const p = db.parties[id];
+  if (!p) return;
+  if (p.statut !== 'attente') throw new Error('La partie a commencé : on ne peut plus la supprimer.');
+  delete db.parties[id];
   changer();
 }
 

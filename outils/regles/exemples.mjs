@@ -216,8 +216,8 @@ export function exemples() {
     return { avant, carte: '7K' };
   });
 
-  // 8. Compte exact dans l'allée.
-  ajouter('allee', 'Compte exact pour l\'allée', (ok) => {
+  // 8. L'allée : on s'y arrête où la carte mène (pas forcément au fond), sans jamais dépasser le fond.
+  ajouter('allee', 'Entrer dans l\'allée', (ok) => {
     const avant = etat4({ 0: 60 });
     const coup5 = { t: 'avance', carte: '5P', pion: 0, pas: 5, allee: true };
     ok('5 vers l\'allée : légal', legal(avant, 0, coup5));

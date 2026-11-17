@@ -885,33 +885,6 @@ details > .reglage:first-of-type {
   color: var(--lien);
 }
 
-/* ─── Règles ────────────────────────────────────────────────────────────── */
-.intro {
-  margin: 0;
-  line-height: 1.5;
-}
-.regles ul {
-  margin: 0;
-  padding-left: 1.2em;
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.valeurs {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-}
-.valeur-carte {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  line-height: 1.4;
-  font-size: calc(14px * var(--texte));
-}
-
 /* ─── Cartes à jouer ────────────────────────────────────────────────────── */
 .carte-jeu {
   position: relative;
@@ -2439,14 +2412,9 @@ details > .reglage:first-of-type {
   }
 }
 
-/* Page Règles : l'infographie occupe toute la largeur (pas de colonnes de texte), les règles détaillées sont repliées dessous */
+/* Page Règles : l'infographie occupe toute la largeur (pas de colonnes de texte) */
 .contenu.pleine > .regles-info {
   min-width: 0;
-}
-.regles-detail .regles-texte {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 @media (min-width: 900px) {
   .appli:not(.en-jeu) .contenu.pleine {

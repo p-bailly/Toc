@@ -24,6 +24,7 @@
 //     statut,            'attente' | 'encours' | 'finie'
 //     hote,              uid du créateur
 //     reglages,          { cinqAdverse } à 4 joueurs, { cinqAdverse, nbJoueurs: 3 } à 3
+//                        (cinqAdverse se change en salle d'attente, voir reglerCinqAdverse)
 //     nbJoueurs,         3 ou 4
 //     joueurs,           Place[nbJoueurs], indexé par siège (à 4 : 0 et 2 contre 1 et 3 ;
 //                        à 3 : chacun pour soi)
@@ -143,7 +144,23 @@ export function surPartie(id, cb) {
   return client.surPartie(id, cb);
 }
 
-/** Change de siège dans la salle d'attente (le siège doit être libre). */
+/**
+ * Écoute les salles d'attente ouvertes (toutes les parties pas encore lancées, les miennes comprises ; 50 au
+ * plus), de la plus récente à la plus ancienne : une salle d'attente est ouverte à tous, invité ou non.
+ * cb(ResumePartie[]). Renvoie le désabonnement.
+ */
+export function surSallesAttente(cb) {
+  if (!reseauDisponible()) {
+    cb([]);
+    return () => {};
+  }
+  return client.surSallesAttente(cb);
+}
+
+/**
+ * Salle d'attente : s'assoit sur ce siège (qui doit être libre). Qui n'est pas encore dans la partie y entre,
+ * invité ou non ; qui y est déjà change de siège.
+ */
 export async function choisirSiege(id, siege) {
   if (!reseauDisponible()) return nonConfigure();
   return client.choisirSiege(id, siege);
@@ -166,6 +183,18 @@ export async function changerNiveauIA(id, siege, niveau) {
 export async function retirerIA(id, siege) {
   if (!reseauDisponible()) return nonConfigure();
   return client.retirerIA(id, siege);
+}
+
+/** Salle d'attente : active ou désactive la règle du « 5 adverse ». Ouvert à tout joueur connecté. */
+export async function reglerCinqAdverse(id, actif) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.reglerCinqAdverse(id, actif);
+}
+
+/** Supprime une salle d'attente (partie pas encore lancée). Ouvert à tout joueur connecté. */
+export async function supprimerPartie(id) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.supprimerPartie(id);
 }
 
 /** Quitte une partie en attente (si l'hôte quitte, la partie est supprimée). */
