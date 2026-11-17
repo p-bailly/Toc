@@ -9,6 +9,7 @@ import { choisirCoup3, choisirDon3 } from '../public/js/ia/ia3.js';
 import { coupsCarte, masqueCopiables } from '../public/js/ia/simulation.js';
 import { aleatoire } from '../outils/joueurs.js';
 import { jouerPartie } from '../outils/tournoi.js';
+import { chronometrer } from './duree-calcul.js';
 
 /** État à 3 joueurs en phase de jeu avec des pions placés : { numéroDePion: position }. */
 function etat3(positions = {}, extra = {}) {
@@ -81,11 +82,10 @@ test('à 3 : respect du budget de temps (5 ms et 60 ms)', () => {
     }
     const s = p.etat.tour;
     const budget = k % 4 === 0 ? 60 : 5;
-    const t0 = performance.now();
-    const coup = choisirCoup(p.etat, s, p.mains[s], {
+    // durée hors attentes dues à la charge de la machine (voir duree-calcul.js)
+    const { resultat: coup, duree } = chronometrer(() => choisirCoup(p.etat, s, p.mains[s], {
       rng, budgetMs: budget, carteDonnee: p.dons[s], carteRecue: p.dons[donneurDon(p.etat.donne, s, 3)],
-    });
-    const duree = performance.now() - t0;
+    }));
     assert.ok(duree < budget + 50, `coup en ${duree.toFixed(1)} ms pour ${budget} ms`);
     (budget === 5 ? petits : grands).push(duree);
     p = jouerCoup(p, s, coup, rng);

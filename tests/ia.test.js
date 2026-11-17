@@ -8,6 +8,7 @@ import { choisirCoup, choisirDon, conseillerCoup, conseillerDon, creerAnalyse, c
 import { coupsCarte } from '../public/js/ia/simulation.js';
 import { aleatoire } from '../outils/joueurs.js';
 import { jouerPartie } from '../outils/tournoi.js';
+import { chronometrer } from './duree-calcul.js';
 
 /** État en phase de jeu avec des pions placés : { numéroDePion: position }. */
 function etat(positions = {}, extra = {}) {
@@ -77,10 +78,10 @@ test('respect du budget de temps (5 ms et 60 ms)', () => {
     }
     const s = p.etat.tour;
     const budget = mesures % 4 === 0 ? 60 : 5;
-    const t0 = performance.now();
-    const coup = choisirCoup(p.etat, s, p.mains[s], { rng, budgetMs: budget, carteDonnee: p.dons[s], carteRecue: p.dons[partenaire(s)] });
-    const duree = performance.now() - t0;
-    // marge large par coup : npm test exécute les fichiers en parallèle (machine chargée)
+    // durée hors attentes dues à la charge de la machine (voir duree-calcul.js)
+    const { resultat: coup, duree } = chronometrer(() =>
+      choisirCoup(p.etat, s, p.mains[s], { rng, budgetMs: budget, carteDonnee: p.dons[s], carteRecue: p.dons[partenaire(s)] }));
+    // marge large par coup : les premiers coups sont plus lents (code pas encore compilé)
     assert.ok(duree < budget + 50, `coup en ${duree.toFixed(1)} ms pour un budget de ${budget} ms`);
     (budget === 5 ? petits : grands).push(duree);
     p = jouerCoup(p, s, coup, rng);
