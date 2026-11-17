@@ -243,7 +243,6 @@ export function afficher(racine, app, { reste }) {
           complet ? 'Lancer la partie' : `Lancer la partie (encore ${pluriel(libres.length, 'place')} à remplir)`,
         ),
       );
-      if (!complet) blocs.push(h('p', { class: 'note centre' }, 'Invite des joueurs, ou touche « IA » sur une place libre pour la compléter.'));
     } else if (assis) {
       // (Pas encore assis : les boutons « M'asseoir ici » des places libres suffisent, sans consigne en plus.)
       blocs.push(h('div', { class: 'apercu' }, h('span', {}, complet ? 'Tout le monde est là : l’hôte va lancer la partie.' : `En attente de ${pluriel(libres.length, 'joueur')}… L’hôte lancera la partie.`)));
