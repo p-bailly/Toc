@@ -21,14 +21,17 @@ service cloud.firestore {
     }
 
     // ─── Fiches des joueurs ───────────────────────────────────────────────
-    // { pseudo, recherche?, visible, icone?, verrouille?, stats: { jouees, gagnees }, comptees: [id…], creeLe }
+    // { pseudo, recherche?, visible, icone?, verrouille?, stats: { jouees, gagnees }, comptees: [id…], creeLe,
+    //   enCoursIA?: { '3'?: date, '4'?: date } }
     match /joueurs/{uid} {
       // Pseudo imposé par l'administrateur (champ `verrouille: true` posé dans la console).
       function verrouille(d) {
         return d.get('verrouille', false) == true;
       }
       function ficheValide(d) {
-        return d.keys().hasOnly(['pseudo', 'visible', 'recherche', 'verrouille', 'icone', 'stats', 'comptees', 'creeLe'])
+        return d.keys().hasOnly(['pseudo', 'visible', 'recherche', 'verrouille', 'icone', 'stats', 'comptees', 'creeLe', 'enCoursIA'])
+          // Dates des parties contre l'IA en cours gardées par le compte (une par mode).
+          && (!('enCoursIA' in d) || (d.enCoursIA is map && d.enCoursIA.keys().hasOnly(['3', '4'])))
           && d.pseudo is string && d.pseudo.size() > 0 && d.pseudo.size() <= 20
           // La clé de recherche (pseudo simplifié) n'existe que si le joueur accepte d'être trouvé.
           && (!('recherche' in d) || (d.recherche is string && d.recherche.size() <= 20 && d.get('visible', true) == true))
@@ -80,6 +83,38 @@ service cloud.firestore {
         && ((request.resource.data.stats == resource.data.stats && request.resource.data.comptees == resource.data.comptees)
           || partieComptee(resource.data, request.resource.data));
       allow delete: if false;
+
+      // ── Données privées du joueur : ses parties contre l'IA (jouées hors ligne), gardées par le compte pour
+      // qu'elles suivent d'un appareil à l'autre. Lui seul les lit et les écrit.
+      //   prive/partiesIA   : l'historique (résumés, parties retirées, parties gardées en entier) ;
+      //   prive/finie_{id}  : une partie terminée entière (pour l'analyse) ;
+      //   prive/encours3, prive/encours4 : la partie en cours de chaque mode. ──
+      match /prive/{nom} {
+        function historiqueValide(d) {
+          return d.keys().hasOnly(['parties', 'retirees', 'completes', 'majLe'])
+            && d.parties is list && d.parties.size() <= 300
+            && d.retirees is list && d.retirees.size() <= 500
+            && (!('completes' in d) || (d.completes is list && d.completes.size() <= 12))
+            && d.majLe == request.time;
+        }
+        // Une sauvegarde entière, en texte JSON (un document tient 1 Mo).
+        function sauvegardeValide(d) {
+          return d.keys().hasOnly(['json', 'date', 'majLe'])
+            && d.json is string && d.json.size() <= 1000000
+            && d.date is number
+            && d.majLe == request.time;
+        }
+        function estFinie() {
+          return nom.matches('^finie_[A-Za-z0-9]{1,24}$');
+        }
+        allow get: if connecte() && moi() == uid;
+        allow create, update: if connecte() && moi() == uid
+          && (nom == 'partiesIA'
+            ? historiqueValide(request.resource.data)
+            : (estFinie() || nom == 'encours3' || nom == 'encours4') && sauvegardeValide(request.resource.data));
+        allow delete: if connecte() && moi() == uid && estFinie();
+        allow list: if false;
+      }
     }
 
     // ─── Parties ──────────────────────────────────────────────────────────
@@ -156,12 +191,15 @@ service cloud.firestore {
       }
 
       // ── Lecture ──
-      // Une partie se lit par ses membres et ses invités ; en attente, par qui a le code (le lien
-      // d'invitation). Un document absent se « lit » (pour savoir qu'un code est libre ou inconnu).
+      // Une partie se lit par ses membres et ses invités ; en attente, par tout joueur connecté (une salle
+      // d'attente est ouverte à tous). Un document absent se « lit » (pour savoir qu'un code est libre ou inconnu).
       allow get: if connecte()
         && (resource == null || membre(resource.data) || invite(resource.data) || resource.data.statut == 'attente');
-      // Listes : seulement ses parties (uids array-contains) et ses invitations (invites array-contains).
-      allow list: if connecte() && (membre(resource.data) || invite(resource.data));
+      // Listes : ses parties (uids array-contains), ses invitations (invites array-contains), et les salles
+      // d'attente ouvertes (statut == 'attente', 50 au plus par requête).
+      allow list: if connecte()
+        && (membre(resource.data) || invite(resource.data)
+          || (resource.data.statut == 'attente' && request.query.limit <= 50));
 
       // ── Création : par l'hôte, seul joueur, au siège 0 ──
       allow create: if connecte() && creationValide(request.resource.data);
@@ -182,7 +220,7 @@ service cloud.firestore {
           && d.creeLe == request.time && d.majLe == request.time;
       }
 
-      // ── Salle d'attente : se placer, changer de siège, partir ; l'hôte place ou retire des IA ──
+      // ── Salle d'attente : se placer (invité ou non), changer de siège, partir ; l'hôte place ou retire des IA ──
       function majPlaces(av, ap) {
         let hote = av.hote == moi();
         let j = ap.joueurs;
@@ -193,10 +231,22 @@ service cloud.firestore {
           && siegeOk(av.joueurs[0], j[0], hote) && siegeOk(av.joueurs[1], j[1], hote)
           && siegeOk(av.joueurs[2], j[2], hote) && (j.size() == 3 || siegeOk(av.joueurs[3], j[3], hote))
           && n <= 1
-          && (!hote || n == 1) // l'hôte ne part qu'en supprimant la partie
+          && (!hote || n == 1) // l'hôte ne quitte pas son siège : il supprime la partie
           && ap.uids == (n == 1 ? (membre(av) ? av.uids : av.uids.concat([moi()])) : av.uids.removeAll([moi()]))
           // En entrant, l'invité sort de la liste des invités.
           && (ap.get('invites', []) == av.get('invites', []) || ap.invites == av.invites.removeAll([moi()]))
+          && ap.majLe == request.time;
+      }
+
+      // ── Règle du « 5 adverse » : tout joueur connecté l'active ou la désactive tant que la partie attend.
+      // Rien d'autre ne bouge dans les réglages (le nombre de joueurs reste figé). ──
+      function majReglages(av, ap) {
+        return av.statut == 'attente'
+          && affecte().hasOnly(['reglages', 'majLe'])
+          && ap.reglages is map && ap.reglages.cinqAdverse is bool
+          && ap.reglages == (nbJ(av) == 3
+            ? { 'cinqAdverse': ap.reglages.cinqAdverse, 'nbJoueurs': 3 }
+            : { 'cinqAdverse': ap.reglages.cinqAdverse })
           && ap.majLe == request.time;
       }
 
@@ -322,10 +372,12 @@ service cloud.firestore {
         || refus(resource.data, request.resource.data)
         || lancement(resource.data, request.resource.data)
         || majJeu(resource.data, request.resource.data)
+        // En dernier : un coup accepté ne paie pas cette vérification (limite de 1000 expressions).
+        || majReglages(resource.data, request.resource.data)
       );
 
-      // Supprimer : l'hôte, tant que la partie n'a pas commencé.
-      allow delete: if connecte() && resource.data.statut == 'attente' && resource.data.hote == moi();
+      // Supprimer : tout joueur connecté, tant que la partie n'a pas commencé (une partie lancée ne se supprime plus).
+      allow delete: if connecte() && resource.data.statut == 'attente';
 
       // ── Mains privées, immuables : parties/{id}/donnes/{donne}_{siege} ──
       // Lisible par le titulaire du siège (ou par tout membre si le siège est une IA, puisque ce sont

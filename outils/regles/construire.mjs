@@ -456,11 +456,18 @@ const libelleSortie = (l1, l2) => note(69.4, 151.6, [l1, l2], { ancre: 'end', ve
   });
 }
 
-// 8. Compte exact dans l'allée.
+// 8. L'allée : le pion s'arrête où la carte le mène (pas forcément au fond), sans jamais dépasser le fond.
 {
   const { avant } = EX.allee;
   const o = outils(4, 0);
   const f = F(54, 148);
+  figures.allee3 = schema({
+    fenetre: f,
+    dessous: o.anneau(0, a(1)),
+    pions: avant.pions,
+    dessus: o.chiffres(0, 60, a(1)),
+    alt: "Avec un 3 : une case sur le circuit jusqu'à la case d'entrée, puis 2 cases d'allée. Le pion s'arrête au milieu de l'allée, sans aller jusqu'au fond.",
+  });
   figures.allee5 = schema({
     fenetre: f,
     dessous: o.anneau(0, a(3)),
@@ -1021,7 +1028,7 @@ const corps = `
   <h2 id="t-allee">L'allée</h2>
   <div class="bloc">
     <ul>
-      <li><strong>Compte exact :</strong> la carte doit amener ton pion sur une case libre de l'allée. Trop grande, il continue sur le circuit.</li>
+      <li><strong>Entrer dans l'allée :</strong> ton pion s'arrête sur la case de l'allée où la carte le mène, pas forcément au fond. Il ne dépasse jamais le fond : avec une carte trop grande, il continue sur le circuit.</li>
       <li>Dans l'allée, on ne dépasse pas et on ne recule pas. Un pion y est à l'abri.</li>
       <li>Entrer n'est jamais obligatoire.</li>
     </ul>
@@ -1251,7 +1258,7 @@ const OR = `<div class="or">
   <div><b>Jouer est obligatoire</b><span>Aucune carte jouable ? Tu en défausses une.</span></div>
   <div><b>Capturer</b><span>T'arrêter sur un pion le renvoie à sa base.</span></div>
   <div><b>Pion protégé</b><span>Sur sa case de sortie, il ne se dépasse pas et ne se capture pas.</span></div>
-  <div><b>Compte exact</b><span>Il faut tomber juste pour entrer dans l'allée.</span></div>
+  <div><b>Allée</b><span>Ton pion peut s'arrêter avant le fond, jamais le dépasser.</span></div>
   <div><b>Échange</b><span>À chaque donne, une carte à ton partenaire.</span></div>
 </div>`;
 
@@ -1306,7 +1313,7 @@ const infoA = `
     <div class="tuiles">
       ${tuile({ titre: 'Échanger', texte: "Le valet échange un de tes pions avec un autre pion du circuit. Ton pion peut partir de ta case de sortie.", figure: figures.valetSortieAvant })}
       ${tuile({ titre: 'Pion protégé', texte: "Sur sa case de sortie, un pion ne se dépasse pas et ne se capture pas. Seul son propriétaire peut l'échanger.", figure: figures.protegeNon })}
-      ${tuile({ titre: 'Compte exact', texte: "Il faut tomber juste pour entrer dans ton allée. Entrer n'est jamais obligatoire.", figure: figures.allee5 })}
+      ${tuile({ titre: "Rentrer dans l'allée", texte: "Ton pion s'arrête là où la carte le mène, pas forcément au fond. Carte trop grande : il continue sur le circuit. Entrer n'est jamais obligatoire.", figure: figures.allee3 })}
     </div>
 
     <div class="trois">
@@ -1334,7 +1341,7 @@ const infoB = `
     </div>
     <div class="or">
       <div><b>Jouer est obligatoire</b><span>Aucune carte jouable ? Tu en défausses une.</span></div>
-      <div><b>Compte exact</b><span>Il faut tomber juste pour entrer dans l'allée.</span></div>
+      <div><b>Allée</b><span>Ton pion peut s'arrêter avant le fond, jamais le dépasser.</span></div>
       <div><b>Échange</b><span>À chaque donne, une carte à ton partenaire.</span></div>
     </div>
     ${TROIS}
@@ -1350,7 +1357,7 @@ const infoC = `
       ${tuile({ etape: 1, titre: 'Sortir', texte: 'Un as ou un roi pose un pion sur ta case de sortie. Il y est protégé.', figure: figures.sortieApres })}
       ${tuile({ etape: 2, titre: 'Avancer', texte: "Chaque carte avance un pion de sa valeur. T'arrêter sur un pion le renvoie à sa base.", figure: figures.captureAvant })}
       ${tuile({ etape: 3, titre: 'Se méfier', texte: 'Un pion sur sa case de sortie bloque le passage : on ne le dépasse pas.', figure: figures.protegeNon })}
-      ${tuile({ etape: 4, titre: 'Rentrer', texte: "Il faut tomber juste pour entrer dans ton allée. Entrer n'est jamais obligatoire.", figure: figures.allee5 })}
+      ${tuile({ etape: 4, titre: 'Rentrer', texte: "Ton pion s'arrête dans l'allée là où la carte le mène, pas forcément au fond. Entrer n'est jamais obligatoire.", figure: figures.allee5 })}
       ${tuile({ etape: 5, titre: 'Gagner', texte: 'Tes 4 pions rentrés, tu joues pour ton partenaire. À 8 pions rentrés, votre équipe gagne.', figure: figures.alleePleine })}
       ${tuile({ titre: 'À savoir', texte: "Jouer est obligatoire : sans carte jouable, tu en défausses une. À chaque donne, tu donnes une carte à ton partenaire." })}
     </div>

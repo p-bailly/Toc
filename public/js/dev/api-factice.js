@@ -61,6 +61,7 @@ function sauver() {
 const ecoutesAuth = new Set();
 const ecoutesListe = new Set();
 const ecoutesInvitations = new Set();
+const ecoutesSalles = new Set();
 const ecoutesPartie = new Map(); // id → Set<cb>
 const sessions = new Set();
 
@@ -76,15 +77,31 @@ function diffuser() {
   for (const cb of ecoutesAuth) cb(j);
   for (const cb of ecoutesListe) cb(mesParties());
   for (const cb of ecoutesInvitations) cb(mesInvitations());
+  for (const cb of ecoutesSalles) cb(sallesAttente());
   for (const [id, cbs] of ecoutesPartie) for (const cb of cbs) cb(resumeDe(db.parties[id]));
   for (const s of sessions) s.notifier();
 }
 
 const copie = (x) => JSON.parse(JSON.stringify(x));
 
+// Parties contre l'IA gardées en entier par les comptes (en cours et terminées) : en mémoire seulement, elles
+// sont trop grosses pour sessionStorage. uid → { encours: { 3, 4 }, finies: Map }
+const sauvegardesIA = new Map();
+const sauvegardesDe = (uid) => sauvegardesIA.get(uid) || sauvegardesIA.set(uid, { encours: {}, finies: new Map() }).get(uid);
+
 function joueurCourant() {
   const c = db.comptes[db.moi];
-  return c ? { uid: c.uid, pseudo: c.pseudo, icone: c.icone || null, visible: c.visible, verrouille: c.verrouille, stats: { ...c.stats } } : null;
+  if (!c) return null;
+  const enCours = sauvegardesDe(c.uid).encours;
+  return {
+    uid: c.uid,
+    pseudo: c.pseudo,
+    icone: c.icone || null,
+    visible: c.visible,
+    verrouille: c.verrouille,
+    stats: { ...c.stats },
+    enCoursIA: { 3: enCours[3]?.date || 0, 4: enCours[4]?.date || 0 },
+  };
 }
 
 function exigerConnexion() {
@@ -146,6 +163,15 @@ function mesInvitations() {
   if (!db.moi) return [];
   return Object.values(db.parties)
     .filter((p) => p.statut === 'attente' && (p.invites || []).some((i) => i.uid === db.moi) && siegeDe(p, db.moi) < 0)
+    .sort((a, b) => b.majLe - a.majLe)
+    .map(resumeDe);
+}
+
+/** Toutes les salles d'attente ouvertes (les miennes comprises), de la plus récente à la plus ancienne. */
+function sallesAttente() {
+  if (!db.moi) return [];
+  return Object.values(db.parties)
+    .filter((p) => p.statut === 'attente')
     .sort((a, b) => b.majLe - a.majLe)
     .map(resumeDe);
 }
@@ -213,6 +239,56 @@ export async function modifierProfil({ pseudo, icone, visible } = {}) {
   return joueurCourant();
 }
 
+/** Historique des parties contre l'IA gardé par le compte (voir reseau/api.js) : fusion avec celui de l'appareil. */
+export async function synchroniserPartiesIA({ parties = [], retirees = [] } = {}) {
+  await attendre(60);
+  const c = exigerConnexion();
+  const retire = [...new Set([...(c.retireesIA || []), ...retirees])];
+  const parId = new Map();
+  for (const p of [...(c.partiesIA || []), ...parties]) if (p?.id && !retire.includes(p.id) && !parId.has(p.id)) parId.set(p.id, copie(p));
+  c.partiesIA = [...parId.values()].sort((a, b) => b.date - a.date).slice(0, 300);
+  c.retireesIA = retire;
+  const finies = sauvegardesDe(c.uid).finies;
+  for (const id of [...finies.keys()]) if (!parId.has(id)) finies.delete(id);
+  sauver();
+  return { parties: copie(c.partiesIA), retirees: retire.slice(), completes: completesDemo(c) };
+}
+
+/** Parties gardées en entier, dans l'ordre de l'historique (les 12 plus récentes). */
+function completesDemo(c) {
+  const finies = sauvegardesDe(c.uid).finies;
+  const gardees = (c.partiesIA || []).map((p) => p.id).filter((id) => finies.has(id));
+  for (const id of gardees.slice(12)) finies.delete(id);
+  return gardees.slice(0, 12);
+}
+
+export async function ecrirePartieIAFinie(id, json) {
+  await attendre(60);
+  const c = exigerConnexion();
+  if ((c.partiesIA || []).some((p) => p.id === id)) sauvegardesDe(c.uid).finies.set(id, String(json));
+  return { completes: completesDemo(c) };
+}
+
+export async function lirePartieIAFinie(id) {
+  await attendre(60);
+  return sauvegardesDe(exigerConnexion().uid).finies.get(id) ?? null;
+}
+
+export async function ecrirePartieIAEnCours(nb, json, date) {
+  await attendre(60);
+  const enCours = sauvegardesDe(exigerConnexion().uid).encours;
+  if ((enCours[nb]?.date || 0) >= date) return { ecrit: false };
+  enCours[nb] = { json: String(json), date };
+  changer(); // la fiche du joueur porte la date : les écrans la reçoivent
+  return { ecrit: true };
+}
+
+export async function lirePartieIAEnCours(nb) {
+  await attendre(60);
+  const s = sauvegardesDe(exigerConnexion().uid).encours[nb];
+  return s ? { ...s } : null;
+}
+
 export async function lireJoueur(uid) {
   await attendre(60);
   const c = db.comptes[uid];
@@ -242,6 +318,12 @@ export function surInvitations(cb) {
   ecoutesInvitations.add(cb);
   cb(mesInvitations());
   return () => ecoutesInvitations.delete(cb);
+}
+
+export function surSallesAttente(cb) {
+  ecoutesSalles.add(cb);
+  cb(sallesAttente());
+  return () => ecoutesSalles.delete(cb);
 }
 
 export function surPartie(id, cb) {
@@ -324,11 +406,40 @@ export async function choisirSiege(id, siege) {
   const p = exigerPartie(id);
   if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
   const actuel = siegeDe(p, c.uid);
-  if (actuel < 0) throw new Error('Tu n’es pas dans cette partie.');
+  if (actuel === siege) return;
   if (p.joueurs[siege]) throw new Error('Cette place est déjà prise.');
-  p.joueurs[siege] = p.joueurs[actuel];
-  p.joueurs[actuel] = null;
+  if (actuel >= 0) {
+    p.joueurs[siege] = p.joueurs[actuel];
+    p.joueurs[actuel] = null;
+  } else {
+    // Pas encore dans la partie : on y entre, invité ou non.
+    p.joueurs[siege] = placeDe(c.uid);
+    p.invites = (p.invites || []).filter((i) => i.uid !== c.uid);
+    reactionHote(p);
+  }
   p.majLe = Date.now();
+  changer();
+}
+
+/** Salle d'attente : active ou désactive le « 5 adverse » (tout joueur connecté). */
+export async function reglerCinqAdverse(id, actif) {
+  await attendre();
+  exigerConnexion();
+  const p = exigerPartie(id);
+  if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
+  p.reglages = { ...p.reglages, cinqAdverse: !!actif };
+  p.majLe = Date.now();
+  changer();
+}
+
+/** Supprime une salle d'attente (tout joueur connecté). */
+export async function supprimerPartie(id) {
+  await attendre();
+  exigerConnexion();
+  const p = db.parties[id];
+  if (!p) return;
+  if (p.statut !== 'attente') throw new Error('La partie a commencé : on ne peut plus la supprimer.');
+  delete db.parties[id];
   changer();
 }
 

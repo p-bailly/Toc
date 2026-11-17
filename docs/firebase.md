@@ -74,9 +74,18 @@ pseudos recopiés dans ses parties (`joueurs[i].pseudo`) ne changent pas. Le nom
 
 - `joueurs/{uid}` : `pseudo`, `visible`, `recherche` (pseudo simplifié, présent seulement si
   visible), `icone`, `verrouille`, `stats { jouees, gagnees }`, `comptees` (parties déjà comptées),
-  `creeLe`.
+  `creeLe`, `enCoursIA` (dates des parties contre l'IA en cours gardées par le compte, voir plus bas).
+- `joueurs/{uid}/prive/…` : les parties contre l'IA du joueur. Elles se jouent hors ligne, sur l'appareil ; ces
+  documents les font suivre d'un appareil à l'autre. Lisibles et modifiables par lui seul.
+  - `partiesIA` : l'historique (`parties` : 300 résumés au plus, `retirees` : parties retirées, `completes` :
+    parties gardées en entier, `majLe`) ;
+  - `finie_{id}` : une partie terminée entière (`json` : sa sauvegarde en texte, `date`, `majLe`), pour l'analyser
+    depuis un autre appareil ; les 12 plus récentes seulement ;
+  - `encours3`, `encours4` : la partie en cours de chaque mode (même forme), une seule par mode : la plus
+    récemment jouée. Sa date est recopiée dans la fiche (`enCoursIA`), que chaque appareil écoute déjà : il sait
+    sans autre lecture qu'un autre appareil a joué.
 - `parties/{code}` : le code d'invitation (6 caractères sans 0/O/1/I/L) est l'identifiant. Nom,
-  hôte, statut, réglages, places (4, ou 3 ; une IA a son `niveau` de force : `debutant`, `amateur`,
+  hôte, statut, réglages (`cinqAdverse` se change en salle d'attente), places (4, ou 3 ; une IA a son `niveau` de force : `debutant`, `amateur`,
   `confirme`, `expert` ou `champion`, absent = champion), `uids`, invitations, état public du moteur, historique
   des coups (rejouable par `rejouerPartie`), `enAttente` (qui doit jouer).
 - `parties/{code}/donnes/{donne}_{siège}` et `…/dons/{donne}_{siège}` : cartes distribuées et carte
@@ -96,11 +105,16 @@ Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le mot
 - tout accès exige d'être connecté ; une fiche n'est modifiable que par son titulaire, qui ne peut ni
   poser ni lever le verrou de pseudo ; les statistiques ne bougent que d'une partie terminée à la fois,
   avec le bon résultat (son équipe à 4, son siège à 3), une seule fois ;
-- une partie en cours n'est lisible que par ses membres (et ses invités) ; seules ses parties et ses
-  invitations se listent ;
-- en salle d'attente, chacun ne déplace que sa propre place ; seul l'hôte place des IA, invite, lance
-  ou supprime, et choisit le niveau des IA (un des cinq niveaux) ; joueurs (niveaux compris), hôte,
-  code et réglages sont figés après le lancement ;
+- les parties contre l'IA gardées par le compte (`joueurs/{uid}/prive/…` : historique, parties entières, partie
+  en cours) ne sont lues et écrites que par leur titulaire, dans une forme bornée (taille, noms des documents) ;
+  leur contenu n'est pas vérifié (ces parties se jouent hors ligne, et ne regardent que lui) ;
+- une partie en cours n'est lisible que par ses membres (et ses invités) ; seules se listent ses parties,
+  ses invitations et les salles d'attente (parties pas encore lancées, 50 au plus par requête) ;
+- une **salle d'attente est ouverte à tous** : tout joueur connecté la lit, s'y assoit sur une place libre
+  (invité ou non), active ou désactive la règle du « 5 adverse » (rien d'autre dans les réglages : le nombre
+  de joueurs reste figé) et peut la supprimer. Chacun ne déplace que sa propre place ; seul l'hôte place
+  des IA, choisit leur niveau (un des cinq niveaux), invite et lance. Joueurs (niveaux compris), hôte,
+  code et réglages sont figés après le lancement, et une partie lancée ne se supprime plus ;
 - un coup n'est écrit que par le joueur dont c'est le tour (ou par un membre pour une IA), avec un
   numéro de coup qui augmente exactement de 1, un historique qui ne fait que s'allonger, et une
   structure d'état cohérente (tour suivant, donne, pile, échange…) ;
@@ -119,6 +133,8 @@ Limites connues (modèle de confiance « entre amis ») :
   modifié pourrait les connaître ou les choisir ;
 - les mains des **IA** sont lisibles par tous les membres (ce sont les clients qui font jouer l'IA),
   donc le partenaire humain d'une IA peut voir le jeu de celle-ci ;
+- n'importe quel joueur connecté peut **supprimer une salle d'attente** ou y changer la règle du 5, même sans
+  y être assis : c'est voulu (chacun peut faire le ménage), et sans conséquence une fois la partie lancée ;
 - quiconque connaît un nom peut ouvrir ce compte (voir plus haut).
 
 ## Tester avec les émulateurs (développeurs)

@@ -156,3 +156,34 @@ test('listerJoueurs et lireJoueur : visibles seulement, récents en tête, moi e
   assert.deepEqual(f, { uid: uids[7], pseudo: 'Joueur 07', icone: 'lapin' });
   assert.equal(await moi.client.lireJoueur('inconnu'), null);
 });
+
+test("historique contre l'IA : gardé par le compte, partagé entre ses appareils, privé", async () => {
+  const serveur = new FauxServeur();
+  const telephone = nouveauClient(serveur, { graine: 1 });
+  const ordinateur = nouveauClient(serveur, { graine: 2 });
+  const autre = nouveauClient(serveur, { graine: 3 });
+  const marie = await telephone.client.connecter('Marie');
+  assert.equal((await ordinateur.client.connecter('marie')).uid, marie.uid); // même prénom : même compte
+  await autre.client.connecter('Paul');
+  const p = (id, date) => ({ id, date, nb: 4, gagne: true, gagnants: [0, 2], joueurs: [{ pseudo: 'Marie', ia: false }, { pseudo: 'Léo', ia: true, niveau: 'expert' }], donnes: 4, coups: 80, cinqAdverse: false });
+
+  let r = await telephone.client.synchroniserPartiesIA({ parties: [p('a', 10)], retirees: [] });
+  assert.deepEqual(r.parties.map((x) => x.id), ['a']);
+  r = await ordinateur.client.synchroniserPartiesIA({ parties: [p('b', 20)], retirees: [] });
+  assert.deepEqual(r.parties.map((x) => x.id), ['b', 'a'], "l'ordinateur reçoit la partie du téléphone");
+  const chemin = `joueurs/${marie.uid}/prive/partiesIA`;
+  assert.deepEqual(serveur.get(chemin).parties.map((x) => x.id), ['b', 'a']);
+  // Rien de neuf : pas d'écriture.
+  const ecritures = serveur.journal.length;
+  r = await telephone.client.synchroniserPartiesIA({ parties: [p('a', 10)], retirees: [] });
+  assert.deepEqual(r.parties.map((x) => x.id), ['b', 'a']);
+  assert.equal(serveur.journal.length, ecritures);
+  // Retirée d'un appareil : retirée du compte, et elle n'y revient pas.
+  r = await ordinateur.client.synchroniserPartiesIA({ parties: [p('b', 20)], retirees: ['a'] });
+  assert.deepEqual([r.parties.map((x) => x.id), r.retirees], [['b'], ['a']]);
+  r = await telephone.client.synchroniserPartiesIA({ parties: [p('a', 10)], retirees: [] });
+  assert.deepEqual(r.parties.map((x) => x.id), ['b']);
+  // Chaque compte a le sien, et personne d'autre ne le lit.
+  assert.deepEqual((await autre.client.synchroniserPartiesIA({ parties: [], retirees: [] })).parties, []);
+  await assert.rejects(autre.magasin.lire(chemin), { code: 'permission-denied' });
+});

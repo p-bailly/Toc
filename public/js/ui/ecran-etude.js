@@ -14,7 +14,7 @@ import { piRetour } from './pictos.js';
 import { carteCourte, decrireAction, trierMain, rangAvecArticle, leCarte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
 import { SessionLocale } from '../session-locale.js';
-import { partieFinie } from './parties-finies.js';
+import { partieFinieEntiere } from './synchro-ia.js';
 import { appliquerCoup } from '../moteur/regles.js';
 import { lancerAnalyse } from './etude-pilote.js';
 import { lireReglages, modifierReglages, rythme } from './reglages.js';
@@ -27,7 +27,7 @@ import {
 const memoire = new Map();
 
 export function afficher(racine, app, { reste }) {
-  // #/analyse/finie/ID : partie contre l'IA gardée dans l'historique de l'appareil (écran Statistiques).
+  // #/analyse/finie/ID : partie contre l'IA de l'historique (écran Statistiques), gardée par l'appareil ou le compte.
   const archive = reste[0] === 'finie' ? reste[1] || '' : null;
   const id = archive !== null ? 'finie-' + archive : reste[0] || 'locale';
   // #/analyse/locale (2 contre 2) ou #/analyse/locale3 (3 joueurs) : parties d'entraînement.
@@ -48,7 +48,7 @@ export function afficher(racine, app, { reste }) {
     // 1. Les données de la partie (mains distribuées, cartes données, historique).
     let donnees;
     try {
-      donnees = archive !== null ? await donneesArchive(archive) : locale ? await donneesLocales(id === 'locale3' ? 3 : 4) : await donneesEnLigne(app, id);
+      donnees = archive !== null ? await donneesArchive(app, archive) : locale ? await donneesLocales(id === 'locale3' ? 3 : 4) : await donneesEnLigne(app, id);
     } catch (e) {
       message(messageErreur(e));
       return;
@@ -112,13 +112,22 @@ async function donneesLocales(nbJoueurs) {
   }
 }
 
-/** Partie contre l'IA de l'historique : même lecture qu'une sauvegarde, depuis un stockage en mémoire. */
-async function donneesArchive(idPartie) {
-  const entree = partieFinie(idPartie);
-  if (!entree) return 'Cette partie n’est plus dans l’historique de cet appareil.';
-  if (!entree.sauvegarde) return 'Seul le résultat de cette partie a été gardé : ses coups ne sont plus disponibles pour l’analyse.';
-  const stockage = { getItem: () => JSON.stringify(entree.sauvegarde), setItem() {}, removeItem() {} };
-  const session = new SessionLocale({ stockage, cle: 'partie', reprendre: true, delaiIA: 1e9, nbJoueurs: entree.nb });
+/**
+ * Partie contre l'IA de l'historique : même lecture qu'une sauvegarde, depuis un stockage en mémoire. La
+ * sauvegarde vient de l'appareil ou, pour une partie jouée ailleurs, du compte (qui garde les plus récentes).
+ */
+async function donneesArchive(app, idPartie) {
+  const { entree, sauvegarde } = await partieFinieEntiere(app, idPartie);
+  if (!sauvegarde) {
+    if (!entree) return 'Cette partie n’est plus dans l’historique de cet appareil.';
+    if (entree.auCompte) return 'Les coups de cette partie sont gardés par ton compte : connecte-toi (avec du réseau) pour l’analyser.';
+    return entree.ailleurs
+      ? 'Cette partie a été jouée sur un autre appareil, et ton compte n’en garde plus que le résultat : seules les parties les plus récentes restent analysables partout.'
+      : 'Seul le résultat de cette partie a été gardé : ses coups ne sont plus disponibles pour l’analyse.';
+  }
+  const stockage = { getItem: () => JSON.stringify(sauvegarde), setItem() {}, removeItem() {} };
+  const nb = sauvegarde.partie.etat.pions?.length === 12 ? 3 : 4;
+  const session = new SessionLocale({ stockage, cle: 'partie', reprendre: true, delaiIA: 1e9, nbJoueurs: entree?.nb || nb });
   try {
     return await session.donneesAnalyse();
   } finally {

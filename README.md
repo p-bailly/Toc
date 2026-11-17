@@ -47,7 +47,7 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 |---|---|
 | `public/js/moteur/` | Règles du jeu en JavaScript pur (plateau, cartes, coups légaux, partie locale, rejeu). Aucune dépendance, testé hors ligne. |
 | `public/js/ia/` | IA : moteur rapide, évaluation, recherche par simulations, conseils, analyse qui s'affine. |
-| `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu. `api.js` est le seul point d'entrée de l'interface. |
+| `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu, historique contre l'IA du compte. `api.js` est le seul point d'entrée de l'interface. |
 | `public/js/ui/` | Écrans, plateau en SVG, saisie des coups, réglages, analyse de fin de partie. |
 | `public/js/dev/` | API factice du mode `?demo`. |
 | `public/js/session-locale.js` | Partie hors ligne contre l'IA ; définit l'interface « Session » que la session réseau reprend. |
@@ -70,7 +70,8 @@ Communes aux deux modes :
   le renvoie.
 - **7** : fractionnable, toujours dépensé en entier (sinon injouable), capture tout pion dépassé, y compris
   les siens.
-- **Allée** : compte exact, pas de dépassement, entrée jamais obligatoire.
+- **Allée** : un pion s'y arrête sur la case où la carte le mène (pas forcément au fond), sans dépasser le fond
+  ni un autre pion ; une carte trop grande le laisse sur le circuit ; entrée jamais obligatoire.
 - **Obligation de jouer** ; défausse au choix si aucune carte n'est jouable.
 
 2 contre 2 (64 cases, 52 cartes, donnes de 5-4-4) :
@@ -86,6 +87,27 @@ Communes aux deux modes :
 - À chaque donne, une carte au voisin de gauche (donnes paires) ou de droite (donnes impaires).
 - **Joker** : copie une carte posée depuis le début de la donne (jouée ou défaussée, y compris un joker
   qui a copié) ; injouable s'il n'y a rien à copier.
+
+## Salles d'attente (en ligne)
+
+Une salle d'attente est ouverte à tous : elle apparaît dans « Mes parties » de chaque joueur connecté, qui peut s'y
+asseoir sans invitation, y activer ou désactiver l'option « 5 adverse », et la supprimer. L'hôte garde les IA, les
+invitations et le lancement. Les statistiques du compte (parties en ligne jouées et gagnées) sont dans l'onglet « Stats ».
+
+## Un compte sur plusieurs appareils
+
+Le même prénom ouvre le même compte partout. Les parties en ligne et leurs statistiques sont dans le compte. Les
+parties contre l'IA se jouent hors ligne, sur l'appareil, mais rejoignent le compte dès qu'on est connecté
+(`public/js/ui/synchro-ia.js`) :
+
+- l'historique et les statistiques contre l'IA sont les mêmes sur tous ses appareils ;
+- les 12 parties terminées les plus récentes sont gardées en entier : on les analyse depuis n'importe quel appareil ;
+- la partie en cours de chaque mode est envoyée au compte pendant qu'on joue (quelques secondes après chaque coup,
+  et en quittant l'écran) et reprise sur un autre appareil. Le compte n'en garde qu'une par mode : la plus récemment
+  jouée l'emporte, et une nouvelle partie remplace l'ancienne partout.
+
+Sans compte ou sans réseau, tout reste sur l'appareil et partira à la prochaine connexion. Sur un appareil partagé,
+chacun ne voit que les parties de son compte.
 
 ## Limites connues
 

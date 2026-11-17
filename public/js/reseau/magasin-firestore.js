@@ -10,6 +10,8 @@
 //   ecouterRequete(collection, champ, valeur, cb, erreur)
 //                                             → désabonnement ; cb([{ id, donnees }]) ; champ array-contains valeur
 //   requete(collection, champ, valeur)        → Promise<[{ id, donnees }]> (même requête, une fois)
+//   ecouterEgal(collection, champ, valeur, limite, cb, erreur)
+//                                             → désabonnement ; cb([{ id, donnees }]) ; champ == valeur, `limite` au plus
 //   listerFiches(suite)                       → Promise<{ docs: [{ id, donnees }], suite, depuisCache }>
 //                                               fiches `joueurs` visibles (recherche >= ''), par pages de 10
 //   transaction(async (tx) => …)              → Promise ; tx.lire(chemin), tx.creer(chemin, données),
@@ -50,6 +52,11 @@ export function creerMagasinFirestore(fs, db) {
 
     ecouterRequete(collection, champ, valeur, cb, erreur) {
       const q = fs.query(fs.collection(db, collection), fs.where(champ, 'array-contains', valeur));
+      return fs.onSnapshot(q, (s) => cb(liste(s)), erreur);
+    },
+
+    ecouterEgal(collection, champ, valeur, limite, cb, erreur) {
+      const q = fs.query(fs.collection(db, collection), fs.where(champ, '==', valeur), fs.limit(limite));
       return fs.onSnapshot(q, (s) => cb(liste(s)), erreur);
     },
 

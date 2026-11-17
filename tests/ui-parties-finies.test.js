@@ -5,7 +5,9 @@ import { etatInitial, ALLEE } from '../public/js/moteur/index.js';
 import {
   enregistrerPartieFinie, lirePartiesFinies, partieFinie, supprimerPartieFinie, bilanContreIA, bilanEnLigne,
   idPartie, MAX_COMPLETES, CLE_PARTIES_FINIES,
+  partiesDuCompte, historiqueAEnvoyer, integrerHistoriqueCompte, lireRetirees,
 } from '../public/js/ui/parties-finies.js';
+import { fusionnerPartiesIA } from '../public/js/reseau/comptes.js';
 
 /** Stockage en mémoire, avec une taille maximale facultative (pour simuler un stockage plein). */
 function memoire(max = Infinity) {
@@ -124,4 +126,70 @@ test('bilan en ligne : avec et contre chaque joueur humain, IA et parties en cou
   assert.deepEqual([j.c.avec, j.c.avecGagnees, j.c.contre, j.c.contreGagnees], [1, 0, 2, 2]);
   assert.deepEqual([j.d.avec, j.d.contre, j.d.contreGagnees], [0, 1, 0]);
   assert.equal(b.joueurs[0].uid, 'b', 'le joueur le plus souvent croisé en premier');
+});
+
+test('historique rattaché au compte : il suit d’un appareil à l’autre, les parties retirées ne reviennent pas', () => {
+  // Le « compte » : ce que garde le serveur, fusionné comme le fait reseau/comptes.js.
+  let compte = { parties: [], retirees: [] };
+  const synchroniser = (uid, appareil) => {
+    compte = fusionnerPartiesIA(compte, historiqueAEnvoyer(uid, appareil));
+    return integrerHistoriqueCompte(compte, uid, appareil);
+  };
+  const telephone = memoire();
+  const ordinateur = memoire();
+  // Deux parties sur le téléphone (la première avant d'avoir un compte), une sur l'ordinateur.
+  const a = enregistrerPartieFinie(sauvegarde({ graine: 1 }), 4, { stockage: telephone, date: 1000 });
+  const b = enregistrerPartieFinie(sauvegarde({ graine: 2, gagnant: 1 }), 4, { stockage: telephone, date: 2000, uid: 'marie' });
+  const c = enregistrerPartieFinie(sauvegarde({ nb: 3, graine: 3 }), 3, { stockage: ordinateur, date: 3000, uid: 'marie' });
+
+  assert.equal(synchroniser('marie', telephone), true, 'la partie sans compte est rattachée');
+  assert.equal(synchroniser('marie', ordinateur), true);
+  assert.equal(synchroniser('marie', telephone), true);
+  assert.equal(synchroniser('marie', telephone), false, 'rien de neuf : rien ne change');
+  for (const appareil of [telephone, ordinateur]) {
+    const liste = lirePartiesFinies(appareil);
+    assert.deepEqual(liste.map((p) => p.id), [c, b, a], 'les trois parties, la plus récente en premier');
+    assert.ok(liste.every((p) => p.uid === 'marie'));
+    const bilan = bilanContreIA(liste);
+    assert.deepEqual([bilan.parties, bilan.victoires], [3, 2], 'mêmes statistiques sur les deux appareils');
+  }
+  // L'analyse reste là où la partie a été jouée ; ailleurs, seul le résultat arrive.
+  assert.ok(partieFinie(a, telephone).sauvegarde && !partieFinie(a, telephone).ailleurs);
+  assert.ok(!partieFinie(a, ordinateur).sauvegarde && partieFinie(a, ordinateur).ailleurs);
+  assert.ok(partieFinie(c, ordinateur).sauvegarde);
+  // Le compte ne reçoit que des résumés.
+  assert.ok(compte.parties.every((p) => !('sauvegarde' in p) && !('uid' in p) && !('ailleurs' in p)));
+
+  // Retirée sur l'ordinateur : elle disparaît aussi du téléphone, et n'y revient pas.
+  supprimerPartieFinie(a, ordinateur);
+  synchroniser('marie', ordinateur);
+  assert.equal(synchroniser('marie', telephone), true);
+  assert.deepEqual(lirePartiesFinies(telephone).map((p) => p.id), [c, b]);
+  assert.deepEqual(lireRetirees(telephone), [a]);
+  assert.equal(enregistrerPartieFinie(sauvegarde({ graine: 1 }), 4, { stockage: telephone, date: 9000 }), a);
+  assert.deepEqual(lirePartiesFinies(telephone).map((p) => p.id), [c, b], 'une partie retirée ne se réenregistre pas');
+  synchroniser('marie', ordinateur);
+  assert.deepEqual(compte.parties.map((p) => p.id), [c, b]);
+
+  // Appareil partagé : Paul ne voit ni ne verse les parties de Marie ; sans compte, on voit tout l'appareil.
+  const d = enregistrerPartieFinie(sauvegarde({ graine: 4 }), 4, { stockage: telephone, date: 4000, uid: 'paul' });
+  assert.deepEqual(partiesDuCompte(lirePartiesFinies(telephone), 'paul').map((p) => p.id), [d]);
+  assert.deepEqual(partiesDuCompte(lirePartiesFinies(telephone), 'marie').map((p) => p.id), [c, b]);
+  assert.equal(partiesDuCompte(lirePartiesFinies(telephone), null).length, 3);
+  assert.deepEqual(historiqueAEnvoyer('paul', telephone).parties.map((p) => p.id), [d]);
+});
+
+test('fusion des historiques : une fois chaque partie, forme contrôlée, retirées écartées', () => {
+  const p = (id, date, plus = {}) => ({ id, date, nb: 4, gagne: true, gagnants: [0, 2], joueurs: [{ pseudo: 'Toi', ia: false }, { pseudo: 'Léo', ia: true, niveau: 'expert' }], donnes: 4, coups: 80, cinqAdverse: false, ...plus });
+  const f = fusionnerPartiesIA(
+    { parties: [p('a', 10), p('b', 30)], retirees: ['z'] },
+    { parties: [p('a', 10, { gagne: false }), p('c', 20, { triche: 1, joueurs: [{ pseudo: 'x'.repeat(50), ia: 1, niveau: 'dieu' }] }), p('z', 40), { id: '', date: 5 }, null], retirees: ['y', 7] },
+  );
+  assert.deepEqual(f.parties.map((x) => x.id), ['b', 'c', 'a']);
+  assert.equal(f.parties[2].gagne, true, 'déjà connue : la version du compte reste');
+  assert.deepEqual(f.retirees, ['z', 'y']);
+  const c = f.parties[1];
+  assert.ok(!('triche' in c));
+  assert.deepEqual(c.joueurs, [{ pseudo: 'x'.repeat(20), ia: true, niveau: null }]);
+  assert.deepEqual(fusionnerPartiesIA(f, {}), f, 'stable');
 });
