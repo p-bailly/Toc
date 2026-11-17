@@ -50,9 +50,31 @@ couche réseau contre l'émulateur Firebase avec les vraies règles.
 `npx firebase-tools login` et `npx firebase-tools deploy --only firestore:rules,hosting` ; le site est
 alors servi à `https://<projet>.web.app`.
 
-**Republier les règles à chaque modification de `firestore.rules`**
-(`npx firebase-tools deploy --only firestore:rules`), sinon les actions sont refusées
-(« Refusé par le serveur… »). Aucun index composite n'est nécessaire (pas de `firestore.indexes.json`).
+**Les règles doivent être republiées à chaque modification de `firestore.rules`**, sinon les actions sont
+refusées (« Refusé par le serveur… »). C'est automatique une fois la publication automatique mise en place
+(ci-dessous) ; sinon, à la main comme plus haut. Aucun index composite n'est nécessaire (pas de
+`firestore.indexes.json`).
+
+### Publication automatique des règles
+
+`.github/workflows/regles.yml` publie `firestore.rules` à chaque push sur la branche par défaut qui les modifie
+(une pull request fusionnée), avec `outils/publier-regles.mjs` (l'API Firebase Rules, sans dépendance). Il lui
+faut, une fois, une clé de compte de service :
+
+1. [Console Google Cloud](https://console.cloud.google.com) → choisir le projet Firebase → **IAM et administration
+   → Comptes de service → Créer un compte de service**. Nom : `publication-regles`.
+2. Rôle : **Administrateur des règles Firebase** (*Firebase Rules Admin*), et rien d'autre : ce compte ne peut que
+   publier des règles, ni lire ni modifier les données.
+3. Ouvrir le compte créé → onglet **Clés → Ajouter une clé → Créer une clé → JSON** : un fichier se télécharge.
+4. Dépôt GitHub → *Settings → Secrets and variables → Actions → New repository secret* : nom
+   `FIREBASE_SERVICE_ACCOUNT`, valeur : tout le contenu du fichier JSON. Supprimer ensuite le fichier de
+   l'ordinateur.
+5. Onglet **Actions** du dépôt → « Règles Firestore » → **Run workflow** : les règles actuelles sont publiées
+   tout de suite (le journal du job dit « Règles Firestore publiées sur le projet … »).
+
+Sans le secret, le job ne publie rien et l'indique, sans échouer. Des règles invalides sont refusées par le
+serveur (le job échoue, avec la ligne fautive) et celles en place restent actives. Elles ont de toute façon été
+vérifiées sur la pull request, contre l'émulateur.
 
 ## Comptes : un nom, sans mot de passe
 
