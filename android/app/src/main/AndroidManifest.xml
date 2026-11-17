@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Parties en ligne (Firebase). Le jeu contre l'IA marche sans réseau. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- « À toi de jouer » : demandée seulement quand le joueur veut être prévenu. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/nom"
+        android:theme="@style/Toc">
+
+        <!-- singleTask : toucher une notification ramène l'appli ouverte au lieu d'en lancer une seconde.
+             configChanges : la page n'est pas rechargée quand le clavier ou la taille de l'écran changent. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|fontScale|locale|layoutDirection"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

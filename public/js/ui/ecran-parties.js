@@ -5,7 +5,7 @@
 import { h, remplacer, messageErreur, ilYa, lire, ecrire, pluriel } from './dom.js';
 import { entete, avatar, interrupteur, segments, toast } from './composants.js';
 import { surVeille } from './veille.js';
-import { demanderPermission, notificationsAutorisees } from './notifications.js';
+import { demanderPermission, notificationsAutorisees, notificationsRefusees } from './notifications.js';
 import { notificationVoulue, lireReglages } from './reglages.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
@@ -312,7 +312,7 @@ function stat(etiquette, valeur) {
 /** Rappel tant que les notifications sont voulues mais pas encore autorisées par le système. */
 function rappelNotifications(redessiner) {
   if (lire('toc.rappelNotifications', false) || notificationsAutorisees() !== false || !lireReglages().notifications) return null;
-  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') return null;
+  if (notificationsRefusees()) return null;
   return h(
     'div',
     { class: 'carte carte-accent' },

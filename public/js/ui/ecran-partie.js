@@ -10,6 +10,7 @@ import { monterJeu } from './vue-jeu.js';
 import { definirPartieOuverte } from './veille.js';
 import { piPartager, piPlus } from './pictos.js';
 import { couleurSiege } from './couleurs.js';
+import { android } from './android.js';
 
 export function afficher(racine, app, { reste }) {
   const id = reste[0];
@@ -310,7 +311,9 @@ export function afficher(racine, app, { reste }) {
   }
 
   function carteLien(p) {
-    const lien = `${location.origin}${location.pathname}${app.demo ? '?demo' : ''}#/rejoindre/${p.code}`;
+    // Dans l'appli Android, la page n'a pas d'adresse à donner : le lien mène à la version web.
+    const adresse = android ? android.adresseWeb() : location.origin + location.pathname;
+    const lien = `${adresse}${app.demo ? '?demo' : ''}#/rejoindre/${p.code}`;
     const message = `Viens jouer au Toc avec moi ! Touche ce lien : ${lien} (code ${p.code})`;
     const bouton = h(
       'button',
@@ -319,6 +322,7 @@ export function afficher(racine, app, { reste }) {
         class: 'bouton principal large',
         'data-action': 'partager',
         onclick: async () => {
+          if (android) return android.partager(message);
           if (navigator.share) {
             try {
               await navigator.share({ title: 'Partie de Toc', text: message });

@@ -20,7 +20,26 @@ npm test             # tous les tests (Node 22, aucune dépendance à installer)
 - `http://localhost:5173/?demo` remplace le réseau par une API factice en mémoire : tous les écrans
   en ligne (connexion, Mes parties, invitations, salle d'attente, jeu, analyse) se parcourent sans Firebase.
 - Mise en place de Firebase et déploiement : `docs/firebase.md`. Le site est publié par GitHub Pages à chaque
-  push sur la branche par défaut ; chaque pull request est vérifiée (tests, puis émulateur Firebase).
+  push sur la branche par défaut ; chaque pull request est vérifiée (tests, émulateur Firebase, construction de l'APK).
+
+## Appli Android
+
+`android/` est une coquille Android : l'APK embarque `public/` tel quel et l'affiche dans une WebView (aucune copie,
+aucune étape de build pour le web). À chaque push sur la branche par défaut, `.github/workflows/android.yml` publie
+`toc.apk` dans la release « apk » du dépôt ; l'appli « Mes applis » (p-bailly/Managing-Apps) l'installe et le met à jour
+depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/download/toc.apk>.
+
+- En local : Android SDK (plateforme 35) + Java 17 ou plus, `cd android && ./gradlew assembleRelease` →
+  `android/app/build/outputs/apk/release/app-release.apk`.
+- Identifiant `fr.perso.toc`. L'APK est signé par une clé **volontairement versionnée** (`android/app/toc.keystore`, mot
+  de passe dans `android/app/build.gradle`) : même signature partout, chaque APK s'installe sur le précédent. Ne pas
+  changer l'identifiant, le nom `toc.apk` ni la clé : « Mes applis » les connaît (`TrackedApps.kt`, empreinte du certificat).
+- Version : `majeur.mineur` de `package.json`, puis le numéro de build de la CI (`1.0.57`) ; affichée dans les Réglages.
+- Ce que la WebView n'a pas (notifications, partage, couleur des barres du système) passe par `window.TocAndroid`
+  (`public/js/ui/android.js` côté web, `MainActivity.java` côté Android). Pas de service worker dans l'APK
+  (`?sanssw`) : les fichiers sont déjà sur le téléphone, et les mises à jour passent par « Mes applis ».
+- Un lien d'invitation envoyé depuis l'appli mène à la version web (`ADRESSE_WEB` dans `android/app/build.gradle`) ;
+  il n'ouvre pas l'appli Android, où l'on saisit le code de la partie.
 
 ## Organisation
 
@@ -33,6 +52,7 @@ npm test             # tous les tests (Node 22, aucune dépendance à installer)
 | `public/js/dev/` | API factice du mode `?demo`. |
 | `public/js/session-locale.js` | Partie hors ligne contre l'IA ; définit l'interface « Session » que la session réseau reprend. |
 | `firestore.rules` | Règles de sécurité Firestore. |
+| `android/` | Coquille Android (WebView) et sa clé de signature ; voir « Appli Android ». |
 | `tests/` | Tests `node:test` : règles (dont deux oracles indépendants), IA, réseau (faux magasin en mémoire, et émulateur s'il est disponible), interface (géométrie, libellés, analyse). |
 | `outils/` | Tournois entre IA et calibrage (`node outils/tournoi.js --a=ia --b=glouton --parties=100 --budget=600`). |
 | `outils/regles/` | Générateur de la page Règles (« Le Toc en une page ») : `SORTIE_APPLI=public node outils/regles/construire.mjs` réécrit `public/js/ui/regles-page.js` et `public/css/regles.css`. Les exemples illustrés y sont vérifiés par le moteur. |

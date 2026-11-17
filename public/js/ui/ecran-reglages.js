@@ -4,7 +4,8 @@
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
 import { entete, rangee, interrupteur, segments, toast, retenirIcone } from './composants.js';
 import { TAILLES, THEMES, VITESSES, lireReglages, modifierReglages } from './reglages.js';
-import { demanderPermission, notificationsAutorisees, notifier } from './notifications.js';
+import { demanderPermission, notificationsAutorisees, notificationsRefusees, notifier } from './notifications.js';
+import { android } from './android.js';
 import { ICONES } from './icones.js';
 import { SessionLocale } from '../session-locale.js';
 
@@ -154,17 +155,17 @@ export function afficher(racine, app) {
     );
 
     // ─── À propos ───
-    const majTexte = h('span', {}, 'Vérifiée au lancement ; tu peux aussi la demander.');
+    const majTexte = h('span', {}, android ? 'Avec l’appli « Mes applis ».' : 'Vérifiée au lancement ; tu peux aussi la demander.');
     blocs.push(
       h('h2', {}, 'À propos'),
       h(
         'div',
         { class: 'carte' },
-        rangee({ titre: 'Version', texte: `Toc ${VERSION}${app.demo ? ' · mode démonstration' : ''}` }),
+        rangee({ titre: 'Version', texte: `Toc ${android ? android.version() : VERSION}${app.demo ? ' · mode démonstration' : ''}` }),
         rangee({
           titre: 'Mise à jour',
           texte: majTexte,
-          droite: h(
+          droite: android ? null : h(
             'button',
             {
               type: 'button',
@@ -196,7 +197,7 @@ export function afficher(racine, app) {
     if (r.notifications && autorisees === false)
       enfants.push(
         h('div', {}, h('button', { type: 'button', class: 'bouton', onclick: async () => (await demanderPermission(), dessiner()) }, 'Autoriser les alertes')),
-        typeof Notification !== 'undefined' && Notification.permission === 'denied'
+        notificationsRefusees()
           ? h('span', { class: 'note' }, 'Le système les refuse : réglages du téléphone (ou du navigateur), Notifications, Toc.')
           : null,
       );

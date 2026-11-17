@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Le plateau, réduit pour tenir entier dans la zone toujours visible d'une icône Android (ronde ou carrée).
+     @drawable/icone est copiée de public/icons au moment de la construction (app/build.gradle). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/icone"
+    android:inset="12%" />
