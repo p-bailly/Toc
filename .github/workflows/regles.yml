@@ -1,0 +1,44 @@
+# Publie firestore.rules sur le projet Firebase à chaque push sur la branche par défaut qui touche aux règles (une
+# pull request fusionnée, le plus souvent) : plus besoin de les coller à la main dans la console.
+# Les règles ont déjà été vérifiées sur la pull request (verification.yml : émulateur Firebase avec les vraies règles).
+#
+# À faire une fois (voir docs/firebase.md, « Publication automatique des règles ») : un compte de service Google
+# Cloud avec le rôle « Administrateur des règles Firebase », dont la clé JSON va dans le secret de dépôt
+# FIREBASE_SERVICE_ACCOUNT. Sans ce secret, rien n'est publié et le job le dit, sans échouer.
+name: Règles Firestore
+
+on:
+  push:
+    paths:
+      - firestore.rules
+      - outils/publier-regles.mjs
+      - .github/workflows/regles.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Une publication à la fois ; la plus récente gagne.
+concurrency:
+  group: regles-firestore
+  cancel-in-progress: true
+
+jobs:
+  publier:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publication des règles
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::notice title=Règles non publiées::Secret FIREBASE_SERVICE_ACCOUNT absent : publie firestore.rules à la main, ou ajoute le secret (docs/firebase.md)."
+            exit 0
+          fi
+          node outils/publier-regles.mjs
