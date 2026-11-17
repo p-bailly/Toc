@@ -9,6 +9,7 @@
 import { nouvellePartie, donnerCarte, jouerCoup, coupsLegauxMain, donneurDon, nombreJoueurs, coteDeEtat } from '../moteur/index.js';
 import { choisirCoup, choisirDon } from '../ia/ia.js';
 import { choisirCoup3, choisirDon3 } from '../ia/ia3.js';
+import { couleurValide, couleursIndisponibles } from '../palette.js';
 
 const CLE = 'toc.demo3';
 let vitesse = 1;
@@ -141,7 +142,7 @@ function resumeDe(p) {
     hote: p.hote,
     reglages: { ...p.reglages },
     nbJoueurs: p.joueurs.length,
-    joueurs: p.joueurs.map((j) => (j ? { uid: j.uid, pseudo: j.pseudo, ia: !!j.ia, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) } : null)),
+    joueurs: p.joueurs.map((j) => (j ? { uid: j.uid, pseudo: j.pseudo, ia: !!j.ia, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}), ...(couleurValide(j.couleur) ? { couleur: j.couleur } : {}) } : null)),
     invites: (p.invites || []).map((i) => ({ ...i })),
     refus: (p.refus || []).map((i) => ({ ...i })),
     monSiege,
@@ -417,6 +418,21 @@ export async function choisirSiege(id, siege) {
     p.invites = (p.invites || []).filter((i) => i.uid !== c.uid);
     reactionHote(p);
   }
+  p.majLe = Date.now();
+  changer();
+}
+
+/** Salle d'attente : choisit la couleur de ses pions (refusée si un autre joueur l'a choisie). */
+export async function choisirCouleur(id, couleur) {
+  await attendre();
+  const c = exigerConnexion();
+  const p = exigerPartie(id);
+  if (!couleurValide(couleur)) throw new Error('Couleur inconnue.');
+  if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
+  const siege = siegeDe(p, c.uid);
+  if (siege < 0) throw new Error('Assieds-toi d’abord à une place.');
+  if (couleursIndisponibles(p.joueurs, siege).includes(couleur)) throw new Error('Cette couleur est déjà prise.');
+  p.joueurs[siege] = { ...p.joueurs[siege], couleur };
   p.majLe = Date.now();
   changer();
 }
@@ -749,7 +765,7 @@ export async function ouvrirSession(id) {
       statut: q.statut,
       nom: q.nom,
       siege,
-      joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) })),
+      joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}), ...(couleurValide(j.couleur) ? { couleur: j.couleur } : {}) })),
       etat: copie(etat),
       main: mains[siege].slice(),
       don: dons[siege],
@@ -794,7 +810,7 @@ export async function ouvrirSession(id) {
       const q = exigerPartie(id);
       return {
         reglages: { ...q.reglages, plateau: coteDeEtat(q.partie.etat) },
-        joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}) })),
+        joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}), ...(couleurValide(j.couleur) ? { couleur: j.couleur } : {}) })),
         siege,
         historique: copie(q.partie.historique),
         donnes: (q.donnes || []).map((d, k) => ({ distribuees: d.mains[siege].slice(), donnee: d.dons[siege], recue: d.dons[donneurDon(k, siege, q.joueurs.length)] })),

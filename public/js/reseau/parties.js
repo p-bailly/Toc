@@ -6,7 +6,8 @@
 //
 //   parties/{code} = {
 //     nom, code, hote, statut: 'attente'|'encours'|'finie', reglages: { cinqAdverse } (modifiable en salle d'attente),
-//     joueurs: [{ uid, pseudo, ia } | null] × 4 (par siège), uids: [uid…] (humains membres),
+//     joueurs: [{ uid, pseudo, ia, couleur? } | null] × 4 (par siège ; couleur choisie par le joueur, voir
+//     ../palette.js), uids: [uid…] (humains membres),
 //     invites: [uid…], pseudosInvites: { uid: pseudo }, refus: [uid…],
 //     etat (état public du moteur, dès le lancement), historique: [{ n, siege, coup, captures }],
 //     enAttente: [uid…] (humains dont une action est attendue), creeLe, majLe }
@@ -30,6 +31,7 @@ import {
   ConflitIA,
   ErreurToc,
   calculerEnAttente,
+  couleurChoisie,
   nbJoueursDe,
   reglagesPartie,
   verifierNiveau,
@@ -40,6 +42,7 @@ import {
   siegeDe,
 } from './commun.js';
 import { transaction } from './outils.js';
+import { couleurValide, couleursIndisponibles } from '../palette.js';
 
 export const NOM_MAX = 40;
 export const MAX_INVITES = 8;
@@ -216,8 +219,29 @@ export async function choisirSiege(ctx, id, siege) {
       champs.uids = p.uids.concat([ctx.uid]);
       if ((p.invites || []).includes(ctx.uid)) champs.invites = p.invites.filter((u) => u !== ctx.uid);
     }
-    joueurs[siege] = { uid: ctx.uid, pseudo, ia: false };
+    // Qui change de siège garde la couleur qu'il avait choisie.
+    joueurs[siege] = { uid: ctx.uid, pseudo, ia: false, ...(actuel >= 0 ? couleurChoisie(p.joueurs[actuel]) : {}) };
     tx.maj(chemins.partie(id), champs);
+  });
+}
+
+/**
+ * Salle d'attente : choisit la couleur de ses pions dans la palette. Une couleur choisie par un autre joueur est
+ * prise ; celle qu'une place a reçue d'office (une IA, par exemple) se choisit : cette place en recevra une autre.
+ */
+export async function choisirCouleur(ctx, id, couleur) {
+  if (!couleurValide(couleur)) throw new ErreurToc('Couleur inconnue.');
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
+    exigerAttente(p);
+    const siege = siegeDe(p, ctx.uid);
+    if (siege < 0) throw new ErreurToc('Assieds-toi d’abord à une place.');
+    if (p.joueurs[siege].couleur === couleur) return;
+    if (couleursIndisponibles(p.joueurs, siege).includes(couleur)) throw new ErreurToc('Cette couleur est déjà prise.');
+    const pseudo = await lirePseudo(tx, ctx.uid);
+    const joueurs = p.joueurs.slice();
+    joueurs[siege] = { uid: ctx.uid, pseudo, ia: false, couleur };
+    tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
   });
 }
 

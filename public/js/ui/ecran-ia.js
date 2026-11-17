@@ -4,7 +4,8 @@
 // d'un appareil à l'autre : celle que le compte garde remplace ici celle de l'appareil si elle est plus récente.
 
 import { h, remplacer, ecrire, lire } from './dom.js';
-import { entete, interrupteur, rangee, segments } from './composants.js';
+import { entete, interrupteur, rangee, segments, choixCouleur } from './composants.js';
+import { couleurPreferee, retenirCouleur } from './couleurs.js';
 import { nouvellePartieLocale, sauvegardeLocale, MODES_LOCAUX } from './ecran-jeu.js';
 import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
@@ -21,6 +22,8 @@ export function afficher(racine, app) {
   // Force des IA : la dernière choisie est retenue sur l'appareil ; partenaire null = comme les adversaires.
   let niveaux = niveauxLocaux();
   let ouvert = null; // 'adversaires' | 'partenaire' : liste des niveaux dépliée
+  // Couleur de ses pions : la dernière choisie est retenue sur l'appareil ; les IA prennent des couleurs libres.
+  let couleur = couleurPreferee() || 'bleu';
 
   const ligneEnCours = (sauvegarde, n) => {
     const etat = sauvegarde.partie.etat;
@@ -106,6 +109,18 @@ export function afficher(racine, app) {
         rangee({
           titre: nbJoueurs === 3 ? 'Toi contre deux IA, chacun pour soi' : 'Toi et une IA contre deux IA',
         }),
+        h(
+          'div',
+          { class: 'champ', style: { marginBottom: '10px' } },
+          'Couleur de tes pions',
+          choixCouleur({
+            actuelle: couleur,
+            surChoix: (id) => {
+              couleur = id;
+              retenirCouleur(id);
+            },
+          }),
+        ),
         interrupteur({
           titre: 'Option « 5 adverse »',
           texte: 'Le 5 peut aussi faire avancer un pion adverse de 5 cases.',
@@ -155,7 +170,7 @@ export function afficher(racine, app) {
                 const adv = niveaux.adversaires;
                 // Un niveau par siège : partenaire en face (siège 2) à 4 joueurs ; le siège 0 est le tien.
                 const parSiege = nbJoueurs === 3 ? [null, adv, adv] : [null, adv, niveaux.partenaire || adv, adv];
-                nouvellePartieLocale({ cinqAdverse }, nbJoueurs, parSiege, app.joueur);
+                nouvellePartieLocale({ cinqAdverse }, nbJoueurs, parSiege, app.joueur, couleur);
                 app.naviguer(MODES_LOCAUX[nbJoueurs].route);
               },
             },

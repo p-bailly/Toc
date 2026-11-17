@@ -278,6 +278,7 @@ export function creerClient(options) {
     creerPartie: action(async (reglages) => P.creerPartie(await ctx(), reglages)),
     rejoindrePartie: action(async (code) => P.rejoindrePartie(await ctx(), code)),
     choisirSiege: action(async (id, siege) => P.choisirSiege(await ctx(), id, siege)),
+    choisirCouleur: action(async (id, couleur) => P.choisirCouleur(await ctx(), id, couleur)),
     ajouterIA: action(async (id, siege, niveau) => P.ajouterIA(await ctx(), id, siege, niveau)),
     changerNiveauIA: action(async (id, siege, niveau) => P.changerNiveauIA(await ctx(), id, siege, niveau)),
     retirerIA: action(async (id, siege) => P.retirerIA(await ctx(), id, siege)),

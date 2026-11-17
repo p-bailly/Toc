@@ -50,14 +50,32 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 | `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu, historique contre l'IA du compte. `api.js` est le seul point d'entrée de l'interface. |
 | `public/js/ui/` | Écrans, plateau en SVG, saisie des coups, réglages, analyse de fin de partie. |
 | `public/js/dev/` | API factice du mode `?demo`. |
+| `public/js/palette.js` | Les dix couleurs de pions et l'attribution d'une couleur à chaque siège (logique pure, partagée par l'interface, la partie locale et le réseau). |
 | `public/js/session-locale.js` | Partie hors ligne contre l'IA ; définit l'interface « Session » que la session réseau reprend. |
 | `firestore.rules` | Règles de sécurité Firestore. |
 | `android/` | Coquille Android (WebView) et sa clé de signature ; voir « Appli Android ». |
 | `tests/` | Tests `node:test` : règles (dont deux oracles indépendants), IA, réseau (faux magasin en mémoire, et émulateur s'il est disponible), interface (géométrie, libellés, analyse). |
 | `outils/` | Tournois entre IA et calibrage (`node outils/tournoi.js --a=ia --b=glouton --parties=100 --budget=600`). |
 | `outils/regles/` | Générateur de la page Règles (« Le Toc en une page ») : `SORTIE_APPLI=public node outils/regles/construire.mjs` réécrit `public/js/ui/regles-page.js` et `public/css/regles.css`. Les exemples illustrés y sont vérifiés par le moteur. |
-| `outils/coloriages/` | Dessins au crayon des quatre coins du plateau carré, un par joueur, coloriés de la couleur de ses pions : `node outils/coloriages/generer.mjs` réécrit `public/js/ui/coloriages.js`. |
+| `outils/coloriages/` | Dessins au crayon des quatre coins du plateau carré : un par couleur de la palette (voilier pour le bleu, renard pour l'orange…), colorié de la couleur des pions du joueur et tourné vers lui. `node outils/coloriages/generer.mjs` réécrit `public/js/ui/coloriages.js` ; `SORTIE=/un/dossier` écrit aussi une planche de relecture. |
 | `outils/logo/` | Logo au crayon (repris de Nimbus) : `node outils/logo/generer.mjs` réécrit `public/icons/icon.svg` et, avec Playwright, les icônes PNG. Changer une icône demande d'incrémenter `VERSION` dans `public/sw.js`. |
+
+## Couleurs des pions
+
+Chaque joueur choisit la couleur de ses pions parmi dix (`public/js/palette.js`) : en créant une partie contre l'IA,
+dans « Nom et options » d'une partie en ligne, puis à tout moment dans la salle d'attente. La dernière couleur choisie
+est retenue sur l'appareil et proposée à la partie suivante.
+
+- Tout le monde voit les mêmes couleurs : le choix est gardé dans la place du joueur (`joueurs[s].couleur`). Une
+  couleur choisie par un autre joueur est prise ; une place sans choix (IA, partie d'avant les couleurs) reçoit une
+  couleur libre, d'abord celle d'origine de son siège (bleu, rouge, jaune, vert), en évitant les couleurs voisines
+  de celles déjà prises (`couleursDesSieges`).
+- L'affichage passe par les variables CSS `--pion-0` … `--pion-3` : la feuille de style porte les couleurs d'origine,
+  l'écran d'une partie y pose les siennes (`appliquerCouleurs` dans `public/js/ui/couleurs.js`).
+- Chaque couleur a son dessin au crayon dans le coin du plateau carré, tourné vers son joueur.
+- En ligne, le choix demande les règles Firestore de ce dépôt (`firestore.rules`, à republier, voir
+  `docs/firebase.md`). Tant qu'elles ne sont pas publiées, les parties se créent et se jouent comme avant, aux
+  couleurs d'origine : seul le choix d'une couleur est refusé.
 
 ## Règles : décisions
 

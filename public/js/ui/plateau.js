@@ -7,8 +7,8 @@
 import { s } from './dom.js';
 import { BASE, viser, viserPlateau } from '../moteur/plateau.js';
 import { CELLULE, geometrie, chemin } from './geometrie.js';
-import { COLORIAGES, COTE_COLORIAGE } from './coloriages.js';
-import { PIONS, couleurSiege, couleurFonceeSiege } from './couleurs.js';
+import { coloriageDe, COTE_COLORIAGE } from './coloriages.js';
+import { PIONS, couleurSiege, couleurFonceeSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
 import { estJoker } from '../moteur/cartes.js';
@@ -18,6 +18,8 @@ import { estHabille, contenuFigure, CADRE_FIGURE } from './figures.js';
 /** Rayon d'un trou percé (case du circuit, de l'allée, emplacement de base) et d'une bille. */
 /** Côté (0 bas, 1 gauche, 2 haut, 3 droite) du joueur dont l'allée longe chaque coin de geo.coins. */
 const COTE_DU_COIN = [2, 3, 1, 0];
+/** Quart de tour (en degrés) qui tourne un dessin vers le joueur assis de chaque côté : chacun voit le sien à l'endroit. */
+const ANGLE_VERS_COTE = [0, 90, 180, -90];
 const RAYON_TROU = 3.4;
 const RAYON_PION = 3.15;
 
@@ -152,13 +154,20 @@ export class Plateau {
     else if (cible.dataset.action === 'cible') this.rappels.surCible?.(n);
   }
 
-  /** Change de forme (carré à 4, triangle à 3) ou de taille (cases par côté) : cadre, nombre de pions. */
-  preparer(nbJoueurs, siegeVue, cote) {
+  /**
+   * Change de forme (carré à 4, triangle à 3), de taille (cases par côté) ou de couleurs : cadre, nombre de pions,
+   * couleur de chaque siège (identifiants de la palette ; par défaut celles d'origine).
+   */
+  preparer(nbJoueurs, siegeVue, cote, couleurs = couleursPartie(null, nbJoueurs)) {
     const geo = geometrie(nbJoueurs, cote);
-    if (this.geo === geo && this.siegeVue === siegeVue) return;
+    const cleCouleurs = couleurs.join(' ');
+    if (this.geo === geo && this.siegeVue === siegeVue && this.cleCouleurs === cleCouleurs) return;
     const changeForme = this.geo !== geo;
     this.geo = geo;
     this.siegeVue = siegeVue;
+    this.couleurs = couleurs;
+    this.cleCouleurs = cleCouleurs;
+    appliquerCouleurs(this.svg, couleurs);
     if (changeForme) {
       const c = geo.cadre;
       this.svg.setAttribute('viewBox', `${c.x} ${c.y} ${c.l} ${c.h}`);
@@ -205,12 +214,15 @@ export class Plateau {
         s('rect', { class: 'veinage', x: -0.75, y: -0.75, width: COTE + 1.5, height: COTE + 1.5, rx: 3.5, style: { fill: motif } }),
         s('rect', { class: 'filet', x: CELLULE * 1.24, y: CELLULE * 1.24, width: COTE - CELLULE * 2.48, height: COTE - CELLULE * 2.48, rx: 2.5 }),
       );
-      // Un dessin au crayon dans chaque coin libre du tapis, toujours à l'endroit : celui du joueur dont l'allée longe
-      // ce coin (le coin en bas à droite pour le joueur du bas), colorié de la couleur de ses pions.
+      // Un dessin au crayon dans chaque coin libre du tapis : celui de la couleur du joueur dont l'allée longe ce coin
+      // (le coin en bas à droite pour le joueur du bas), colorié de cette couleur et tourné vers lui, comme sur un
+      // plateau posé entre les joueurs : chacun voit le sien à l'endroit.
       geo.coins.forEach((coin, i) => {
-        const o = (siegeVue + COTE_DU_COIN[i]) % n;
-        const dessin = COLORIAGES[o % COLORIAGES.length];
+        const cote = COTE_DU_COIN[i];
+        const o = (siegeVue + cote) % n;
+        const dessin = coloriageDe(this.couleurs[o]);
         const zone = (classe, d, attrs = {}) => (d ? [s('path', { class: classe, d, ...attrs })] : []);
+        const milieu = COTE_COLORIAGE / 2;
         f.append(
           s(
             'g',
@@ -218,7 +230,8 @@ export class Plateau {
               class: 'coloriage',
               'data-coloriage': dessin.nom,
               'data-siege': o,
-              transform: `translate(${coin.x} ${coin.y}) scale(${coin.cote / COTE_COLORIAGE})`,
+              'data-angle': ANGLE_VERS_COTE[cote],
+              transform: `translate(${coin.x} ${coin.y}) scale(${coin.cote / COTE_COLORIAGE}) rotate(${ANGLE_VERS_COTE[cote]} ${milieu} ${milieu})`,
               style: { '--couleur': couleurSiege(o) },
               'aria-hidden': 'true',
             },
@@ -287,7 +300,8 @@ export class Plateau {
    */
   maj({ siegeVue, etat, joueurs, pions, choix = null, sousTitres = [], siegeLocal = siegeVue }) {
     const n = etat.pions.length >> 2;
-    this.preparer(n, siegeVue, viser(etat)); // le plateau de la partie montrée : 18 cases par côté, 16 pour les premières
+    // Le plateau de la partie montrée : 18 cases par côté (16 pour les premières), aux couleurs de ses joueurs.
+    this.preparer(n, siegeVue, viser(etat), couleursPartie(joueurs, n));
     this.etat = etat;
     const positions = pions || etat.pions;
     this.positions = positions;
@@ -301,7 +315,7 @@ export class Plateau {
       el.classList.toggle('candidat', !!choix?.candidats?.has(g));
       el.classList.toggle('choisi', choix?.choisi === g);
       el.classList.toggle('capture-prevue', !!choix?.captures?.includes(g));
-      el.setAttribute('aria-label', `Pion ${PIONS[g >> 2].nom}`);
+      el.setAttribute('aria-label', `Pion ${nomCouleurPartie(this.couleurs, g >> 2)}`);
     }
     this.dessinerDernier(etat, siegeVue, !!pions && pions !== etat.pions);
     this.dessinerEtiquettes(etat, joueurs, siegeVue, sousTitres, siegeLocal);
@@ -534,7 +548,7 @@ export class Plateau {
     for (const g of choix.candidats || []) {
       if ((choix.cibles || []).length && g !== choix.choisi && !choix.garderCandidats) continue;
       const p = pos(g, positions[g]);
-      c.append(s('circle', { class: 'zone-touche', cx: p.x, cy: p.y, r: 7.5, role: 'button', tabindex: 0, 'data-action': 'pion', 'data-valeur': g, 'aria-label': `Pion ${PIONS[g >> 2].nom}` }));
+      c.append(s('circle', { class: 'zone-touche', cx: p.x, cy: p.y, r: 7.5, role: 'button', tabindex: 0, 'data-action': 'pion', 'data-valeur': g, 'aria-label': `Pion ${nomCouleurPartie(this.couleurs, g >> 2)}` }));
     }
   }
 

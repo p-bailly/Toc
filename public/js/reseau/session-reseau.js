@@ -9,10 +9,10 @@
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
 
 import { donneurDon, nombreJoueurs, coteDeEtat } from '../moteur/index.js';
-import { ConflitIA, ErreurToc, chemins, enErreurToc, nbJoueursDe, niveauDe, reglagesPartie, siegeDe } from './commun.js';
+import { ConflitIA, ErreurToc, chemins, couleurChoisie, enErreurToc, nbJoueursDe, niveauDe, reglagesPartie, siegeDe } from './commun.js';
 
-/** Joueur tel que la vue le montre : { pseudo, ia } et, pour une IA, son niveau. */
-const vueJoueur = (j) => (j?.ia ? { pseudo: j.pseudo ?? '?', ia: true, niveau: niveauDe(j) } : { pseudo: j?.pseudo ?? '?', ia: false });
+/** Joueur tel que la vue le montre : { pseudo, ia }, la couleur qu'il a choisie et, pour une IA, son niveau. */
+const vueJoueur = (j) => (j?.ia ? { pseudo: j.pseudo ?? '?', ia: true, niveau: niveauDe(j) } : { pseudo: j?.pseudo ?? '?', ia: false, ...couleurChoisie(j) });
 import { comptabiliserPartie } from './comptes.js';
 import { chargerMain, creerLecteurMains, donnerCarte, jouerCoup } from './parties.js';
 

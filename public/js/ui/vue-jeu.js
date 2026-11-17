@@ -33,7 +33,7 @@ import { ouvrirFeuille } from './composants.js';
 import { piRetour, piHistorique, piOk, piAnnuler, piConseil } from './pictos.js';
 import * as IA from '../ia/ia.js';
 import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
-import { couleurSiege, nomCouleur, PIONS } from './couleurs.js';
+import { couleurSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie, PIONS } from './couleurs.js';
 import { lireReglages, rythme, VITESSE_ESSAIS } from './reglages.js';
 import { nomNiveau } from './niveaux.js';
 import { majMonTour, notifier } from './notifications.js';
@@ -591,9 +591,18 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   // ─── Affichage ────────────────────────────────────────────────────────────
 
+  /** Une feuille (journal, conseil, fin de partie) aux couleurs de la partie : elle s'ouvre hors de l'écran de jeu. */
+  function ouvrirFeuilleJeu(...args) {
+    const feuille = ouvrirFeuille(...args);
+    if (vue) appliquerCouleurs(feuille.el, couleursPartie(vue.joueurs, vue.joueurs.length));
+    return feuille;
+  }
+
   function rendre() {
     if (!vue) return;
     const { etat, siege, joueurs } = vue;
+    // Les couleurs choisies par les joueurs, sur le plateau comme sur les puces du journal et de la consigne.
+    appliquerCouleurs(ecran, couleursPartie(joueurs, joueurs.length));
     const jeu = etat.phase === 'jeu';
     const monTour = jeu && etat.tour === siege && !enPresentation;
     ecran.toggleAttribute('data-presentation', enPresentation);
@@ -871,7 +880,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       boutons.push(h('button', { type: 'button', class: 'bouton discret', onclick: () => (reinitialiser(), rendre()), 'data-action': 'annuler' }, 'Annuler'));
     }
     if (monTour && actifCouleur !== siege && etat.phase === 'jeu') {
-      lignes.push(h('span', { class: 'note joue-pour' }, puceCouleur(actifCouleur), ` Tes pions sont rentrés : tu joues les pions ${nomCouleur(actifCouleur)}s de ${nomP}.`));
+      lignes.push(h('span', { class: 'note joue-pour' }, puceCouleur(actifCouleur), ` Tes pions sont rentrés : tu joues les pions ${nomCouleurPartie(couleursPartie(vue.joueurs, vue.joueurs.length), actifCouleur, true)} de ${nomP}.`));
     }
     remplacer(consigne, h('div', { class: 'mots' }, lignes));
     remplacer(actions, boutons);
@@ -941,7 +950,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (!conseilsDispo || !vue || !aMoi() || vue.enLigne || !lireReglages().conseilsIA) return;
     const echange = vue.etat.phase === 'echange';
     const liste = h('div', { class: 'liste' }, h('div', { class: 'vide-etat' }, 'Réflexion…'));
-    feuilleConseil = ouvrirFeuille(
+    feuilleConseil = ouvrirFeuilleJeu(
       [
         h('h3', {}, echange ? 'Quelle carte donner ?' : 'Quel coup jouer ?'),
         h('p', { class: 'note' }, 'Les meilleures options selon l’IA, avec ses raisons.'),
@@ -1032,7 +1041,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
           h('span', {}, ligneJournal(e, vue.joueurs, vue.siege)),
         ),
       );
-    feuilleJournal = ouvrirFeuille(
+    feuilleJournal = ouvrirFeuilleJeu(
       [
         h('h3', {}, 'Journal des coups'),
         h('p', { class: 'note' }, `Donne ${vue.etat.donne + 1} · ${pluriel(vue.historique?.length || 0, 'coup joué', 'coups joués')}`),
@@ -1088,7 +1097,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         ),
       );
     }
-    feuilleFin = ouvrirFeuille(
+    feuilleFin = ouvrirFeuilleJeu(
       [
         h('div', { class: 'fin-titre' + (gagne ? ' gagne' : '') }, h('span', { class: 'fin-embleme', 'aria-hidden': 'true' }, gagne ? '🏆' : '🎲'), h('h3', {}, gagne ? 'Victoire !' : 'Défaite')),
         explication,

@@ -4,7 +4,8 @@
 // autres joueurs. Les statistiques sont dans l'onglet « Stats ». Gère aussi la route #/rejoindre/CODE.
 
 import { h, remplacer, messageErreur, ilYa, lire, ecrire, pluriel } from './dom.js';
-import { entete, avatar, interrupteur, segments, toast } from './composants.js';
+import { entete, avatar, interrupteur, segments, toast, choixCouleur } from './composants.js';
+import { couleurPreferee, retenirCouleur } from './couleurs.js';
 import { surVeille } from './veille.js';
 import { demanderPermission, notificationsAutorisees, notificationsRefusees } from './notifications.js';
 import { notificationVoulue, lireReglages } from './reglages.js';
@@ -215,6 +216,13 @@ function afficherListe(racine, app) {
             if (resume) resume.textContent = `Nom et options${v === 3 ? ' · 3 joueurs' : ''}`;
           },
         ),
+      ),
+      // La couleur est retenue sur l'appareil : la salle d'attente la donne au joueur dès qu'il s'assoit.
+      h(
+        'div',
+        { class: 'champ' },
+        'Couleur de tes pions',
+        choixCouleur({ actuelle: couleurPreferee() || 'bleu', surChoix: retenirCouleur }),
       ),
       h(
         'label',
