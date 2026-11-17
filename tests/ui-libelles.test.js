@@ -53,3 +53,41 @@ test('libellés : le joueur local est tutoyé dans le journal', () => {
   assert.equal(ligneJournal({ siege: 0, coup: { t: 'sortie', carte: 'RP', pion: 0 }, captures: [] }, joueurs, 0), 'Tu joues le Roi ♠ : sort un pion.');
   assert.equal(ligneJournal({ siege: 0, coup: { t: 'defausse', carte: '9P' }, captures: [] }, joueurs, 0), 'Tu défausses le 9 ♠ (aucune carte jouable).');
 });
+
+test('main rangée : l’ordre choisi est gardé, les cartes jouées s’en vont, les nouvelles arrivent triées', async () => {
+  const { ordonnerMain, deplacer } = await import('../public/js/ui/libelles.js');
+  const main = ['RT', '2C', '9P', '5T', '7K'];
+  // Sans ordre choisi : la main triée.
+  assert.deepEqual(ordonnerMain(main, null), trierMain(main));
+  assert.deepEqual(ordonnerMain(main, []), trierMain(main));
+  // L'ordre choisi tel quel.
+  assert.deepEqual(ordonnerMain(main, ['9P', 'RT', '2C', '7K', '5T']), ['9P', 'RT', '2C', '7K', '5T']);
+  // Une carte jouée disparaît ; la carte reçue vient après les cartes rangées.
+  assert.deepEqual(ordonnerMain(['RT', '9P', '5T', 'AK'], ['9P', 'RT', '2C', '7K', '5T']), ['9P', 'RT', '5T', 'AK']);
+  // Nouvelle donne (plus aucune carte rangée en main) : de nouveau triée.
+  assert.deepEqual(ordonnerMain(['3C', 'AK'], ['9P', 'RT']), trierMain(['3C', 'AK']));
+  // Deux cartes identiques (jokers à 3 joueurs) : chacune compte une fois, la main n'est jamais abîmée.
+  assert.deepEqual(ordonnerMain(['J1', '4C', 'J1'], ['J1', 'J1', '4C']).sort(), ['4C', 'J1', 'J1']);
+  assert.deepEqual(ordonnerMain(['J1', '4C'], ['J1', 'J1', '4C']), ['J1', '4C']);
+  // Déplacer une carte d'une place à une autre, sans sortir de la main.
+  assert.deepEqual(deplacer(['a', 'b', 'c', 'd'], 0, 2), ['b', 'c', 'a', 'd']);
+  assert.deepEqual(deplacer(['a', 'b', 'c', 'd'], 3, 0), ['d', 'a', 'b', 'c']);
+  assert.deepEqual(deplacer(['a', 'b', 'c'], 0, -1), ['a', 'b', 'c']);
+  assert.deepEqual(deplacer(['a', 'b', 'c'], 2, 9), ['a', 'b', 'c']);
+  assert.deepEqual(deplacer(['a', 'b'], 5, 0), ['a', 'b']);
+});
+
+test('journal : les morceaux d’une ligne (qui, action, pions renvoyés)', async () => {
+  const { detailJournal } = await import('../public/js/ui/libelles.js');
+  const joueurs = [{ pseudo: 'Léa' }, { pseudo: 'Max' }, { pseudo: 'Zoé' }, { pseudo: 'Tom' }];
+  assert.deepEqual(detailJournal({ siege: 1, coup: { t: 'defausse', carte: '9P' } }, joueurs, 0), { qui: 'Max', action: 'Défausse (aucune carte jouable)', prises: '', defausse: true });
+  const sortie = detailJournal({ siege: 0, coup: { t: 'sortie', carte: 'RP', pion: 0 } }, joueurs, 0);
+  assert.equal(sortie.qui, 'Toi');
+  assert.match(sortie.action, /^Sort un pion/);
+  assert.equal(sortie.prises, '');
+  assert.equal(sortie.defausse, false);
+  const prise = detailJournal({ siege: 2, coup: { t: 'avance', carte: '9C', pion: 8, pas: 9, allee: false }, captures: [4] }, joueurs, 0);
+  assert.equal(prise.qui, 'Zoé');
+  assert.match(prise.action, /^Avance de 9/);
+  assert.match(prise.prises, /^Renvoie .*Max.* à la base$/);
+});

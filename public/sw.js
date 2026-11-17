@@ -38,6 +38,7 @@ const FICHIERS = [
   './js/ui/composants.js',
   './js/ui/installation.js',
   './js/ui/geometrie.js',
+  './js/ui/zoom-plateau.js',
   './js/ui/coloriages.js',
   './js/ui/couleurs.js',
   './js/ui/libelles.js',

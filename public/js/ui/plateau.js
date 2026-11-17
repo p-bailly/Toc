@@ -459,10 +459,8 @@ export class Plateau {
     c.replaceChildren();
     const { x: cx, y: cy } = this.geo.centre;
     const triangle = this.geo.forme === 'triangle';
-    // Dans le triangle, la donne est écrite sous la carte (au-dessus, il n'y a pas la place).
-    const yDonne = triangle ? cy + 23 : cy - 24;
+    // Le numéro de la donne n'est plus écrit au centre : il est dans la barre du haut de l'écran de jeu.
     const yQui = triangle ? cy + 28.5 : cy + 28;
-    c.append(s('text', { class: 'texte-donne', x: cx, y: yDonne }, `Donne ${etat.donne + 1}`));
     const pile = etat.pile || [];
     const x0 = cx - 11;
     const y0 = cy - 15.5 - (triangle ? 2 : 0);

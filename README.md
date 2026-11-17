@@ -60,6 +60,26 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 | `outils/coloriages/` | Dessins au crayon des quatre coins du plateau carré : un par couleur de la palette (voilier pour le bleu, renard pour l'orange…), colorié de la couleur des pions du joueur et tourné vers lui. `node outils/coloriages/generer.mjs` réécrit `public/js/ui/coloriages.js` ; `SORTIE=/un/dossier` écrit aussi une planche de relecture. |
 | `outils/logo/` | Logo au crayon (repris de Nimbus) : `node outils/logo/generer.mjs` réécrit `public/icons/icon.svg` et, avec Playwright, les icônes PNG. Changer une icône demande d'incrémenter `VERSION` dans `public/sw.js`. |
 
+## Écran de jeu : main, journal, revue des coups, vitesse, zoom
+
+- **Ranger sa main** : on fait glisser une carte pour la mettre où l'on veut (au clavier : Maj + flèche gauche ou
+  droite). L'ordre vaut pour la donne en cours et il est retenu sur l'appareil ; la carte reçue et la donne suivante
+  arrivent triées (`ordonnerMain` dans `public/js/ui/libelles.js`).
+- **Carte reçue à l'échange** : un liseré et une pastille « cadeau » à la couleur du joueur qui l'a donnée, et une
+  entrée animée la première fois.
+- **Journal des coups** : une ligne par coup avec la carte jouée, rangées par donne, filtrables par joueur et sans les
+  défausses. Toucher un coup le rejoue sur le plateau.
+- **Revue des coups** (bouton « ⟪ » de la barre, ou un coup du journal) : les coups déjà joués défilent sur le plateau,
+  un par un (Précédent, Suivant, flèches du clavier). La partie continue pendant ce temps ; « Reprendre la partie »
+  montre les coups joués entre-temps.
+- **Vitesse du jeu** : un curseur dans les Réglages, de « très lente » à « rapide » (`rythme` dans
+  `public/js/ui/reglages.js`) ; il règle les animations, le temps de lecture après chaque coup et le délai des IA.
+- **Zoom du plateau** (`public/js/ui/zoom-plateau.js`) : on écarte deux doigts, on touche deux fois un endroit libre
+  du plateau, ou on se sert du bouton loupe (Ctrl + molette sur ordinateur). Agrandi, le plateau se déplace d'un doigt.
+- Le numéro de la donne n'est plus écrit au centre du plateau : il est dans la barre du haut.
+- Deux coups qui porteraient le même libellé (« Avancer de 12 » pour deux pions) n'ont plus de bouton : on touche le
+  pion sur le plateau.
+
 ## Couleurs des pions
 
 Chaque joueur choisit la couleur de ses pions parmi dix (`public/js/palette.js`) : en créant une partie contre l'IA,
