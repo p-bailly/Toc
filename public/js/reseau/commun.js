@@ -74,6 +74,12 @@ export const codeValide = (c) => c.length === LONGUEUR_CODE && [...c].every((x) 
 
 export const chemins = {
   joueur: (uid) => `joueurs/${uid}`,
+  /** Historique des parties contre l'IA du joueur (document privé, lisible par lui seul). */
+  partiesIA: (uid) => `joueurs/${uid}/prive/partiesIA`,
+  /** Partie contre l'IA en cours du joueur, une par mode (nb = 3 ou 4) : sa sauvegarde entière. */
+  partieIAEnCours: (uid, nb) => `joueurs/${uid}/prive/encours${nb}`,
+  /** Partie contre l'IA terminée gardée en entier (pour l'analyse depuis un autre appareil). */
+  partieIAFinie: (uid, id) => `joueurs/${uid}/prive/finie_${id}`,
   partie: (id) => `parties/${id}`,
   donne: (id, donne, siege) => `parties/${id}/donnes/${donne}_${siege}`,
   don: (id, donne, siege) => `parties/${id}/dons/${donne}_${siege}`,

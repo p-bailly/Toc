@@ -1,9 +1,11 @@
+import './plateau-16.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { geometrie, TRIANGLE, chemin } from '../public/js/ui/geometrie.js';
+import { geometrie, chemin } from '../public/js/ui/geometrie.js';
 import { caseDepart, caseEntree, BASE, ALLEE } from '../public/js/moteur/plateau.js';
 
 const G = geometrie(3);
+const TRIANGLE = G.triangle;
 const proche = (a, b, e = 1e-6) => Math.abs(a.x - b.x) < e && Math.abs(a.y - b.y) < e;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 

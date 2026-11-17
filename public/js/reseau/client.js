@@ -8,7 +8,12 @@ import {
   connecterNom,
   creerAnnuaire,
   ficheVersJoueur,
+  ecrirePartieIAEnCours,
+  ecrirePartieIAFinie,
+  lirePartieIAEnCours,
+  lirePartieIAFinie,
   modifierProfil as modifierFiche,
+  synchroniserPartiesIA,
 } from './comptes.js';
 import * as P from './parties.js';
 import { avecReseau } from './outils.js';
@@ -16,6 +21,8 @@ import { SessionReseau } from './session-reseau.js';
 
 /** Parties terminées gardées dans « Mes parties » (les plus récentes). */
 export const FINIES_GARDEES = 20;
+/** Salles d'attente listées au plus (borne exigée par les règles Firestore : request.query.limit <= 50). */
+export const SALLES_LISTEES = 50;
 
 /**
  * @param {Object} options
@@ -178,6 +185,12 @@ export function creerClient(options) {
       return j;
     }),
 
+    synchroniserPartiesIA: action(async (local) => synchroniserPartiesIA(await ctx(), local)),
+    ecrirePartieIAFinie: action(async (id, json) => ecrirePartieIAFinie(await ctx(), id, json)),
+    lirePartieIAFinie: action(async (id) => lirePartieIAFinie(await ctx(), id)),
+    ecrirePartieIAEnCours: action(async (nb, json, date) => ecrirePartieIAEnCours(await ctx(), nb, json, date)),
+    lirePartieIAEnCours: action(async (nb) => lirePartieIAEnCours(await ctx(), nb)),
+
     lireJoueur: action(async (uid) => (await annuaireCourant()).lireJoueur(uid)),
 
     listerJoueurs: action(async () => (await annuaireCourant()).listerJoueurs()),
@@ -224,6 +237,29 @@ export function creerClient(options) {
       );
     },
 
+    surSallesAttente(cb) {
+      return ecoute(
+        (c) =>
+          c.magasin.ecouterEgal(
+            'parties',
+            'statut',
+            'attente',
+            SALLES_LISTEES,
+            (docs) => {
+              const r = docs.filter(({ donnees }) => donnees.statut === 'attente').map(({ id, donnees }) => resumePartie(id, donnees, c.uid));
+              r.sort((a, b) => b.majLe - a.majLe);
+              cb(r);
+            },
+            (e) => {
+              // Règles Firestore pas encore republiées, par exemple : « Mes parties » marche sans cette liste.
+              console.warn('Écoute des salles d’attente interrompue', e);
+              cb([]);
+            },
+          ),
+        () => cb([]),
+      );
+    },
+
     surPartie(id, cb) {
       return ecoute(
         (c) =>
@@ -245,7 +281,9 @@ export function creerClient(options) {
     ajouterIA: action(async (id, siege, niveau) => P.ajouterIA(await ctx(), id, siege, niveau)),
     changerNiveauIA: action(async (id, siege, niveau) => P.changerNiveauIA(await ctx(), id, siege, niveau)),
     retirerIA: action(async (id, siege) => P.retirerIA(await ctx(), id, siege)),
+    reglerCinqAdverse: action(async (id, actif) => P.reglerCinqAdverse(await ctx(), id, actif)),
     quitterPartie: action(async (id) => P.quitterPartie(await ctx(), id)),
+    supprimerPartie: action(async (id) => P.supprimerPartie(await ctx(), id)),
     lancerPartie: action(async (id) => P.lancerPartie(await ctx(), id)),
     inviter: action(async (id, uid) => P.inviter(await ctx(), id, uid)),
     annulerInvitation: action(async (id, uid) => P.annulerInvitation(await ctx(), id, uid)),

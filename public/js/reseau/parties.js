@@ -5,7 +5,7 @@
 // qu'elles peuvent sans exécuter le moteur ; c'est un modèle de confiance « entre amis ».
 //
 //   parties/{code} = {
-//     nom, code, hote, statut: 'attente'|'encours'|'finie', reglages: { cinqAdverse },
+//     nom, code, hote, statut: 'attente'|'encours'|'finie', reglages: { cinqAdverse } (modifiable en salle d'attente),
 //     joueurs: [{ uid, pseudo, ia } | null] × 4 (par siège), uids: [uid…] (humains membres),
 //     invites: [uid…], pseudosInvites: { uid: pseudo }, refus: [uid…],
 //     etat (état public du moteur, dès le lancement), historique: [{ n, siege, coup, captures }],
@@ -173,21 +173,70 @@ export async function accepterInvitation(ctx, id) {
   await entrer(ctx, id);
 }
 
+/**
+ * Transaction sur une salle d'attente ouverte à tous : `fn(tx, partie | null)`. Si la lecture même est
+ * refusée, c'est que la partie a commencé sans nous (les règles ne la montrent plus qu'à ses membres) ;
+ * un refus de l'écriture, lui, reste un refus (règles Firestore pas à jour, par exemple).
+ */
+async function transactionSalle(ctx, id, fn) {
+  let lue = false;
+  try {
+    return await transaction(ctx, async (tx) => {
+      lue = false;
+      const p = await tx.lire(chemins.partie(id));
+      lue = true;
+      return fn(tx, p);
+    });
+  } catch (e) {
+    if (!lue && e.cause?.code === 'permission-denied') throw new ErreurToc('La partie a déjà commencé.');
+    throw e;
+  }
+}
+
+const PARTIE_ABSENTE = "Cette partie n'existe plus.";
+
+/**
+ * Salle d'attente : s'assoit sur un siège libre. Qui n'est pas encore dans la partie y entre (invité ou
+ * non : une salle d'attente est ouverte à tous) ; qui y est déjà change de siège.
+ */
 export async function choisirSiege(ctx, id, siege) {
   exigerSiege(siege);
-  await transaction(ctx, async (tx) => {
-    const p = await lirePartie(tx, id);
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerSiege(siege, p);
     exigerAttente(p);
     const actuel = siegeDe(p, ctx.uid);
-    if (actuel < 0) throw new ErreurToc('Tu ne participes pas à cette partie.');
     if (actuel === siege) return;
     if (p.joueurs[siege] !== null) throw new ErreurToc('Ce siège est déjà pris.');
     const pseudo = await lirePseudo(tx, ctx.uid);
     const joueurs = p.joueurs.slice();
-    joueurs[actuel] = null;
+    const champs = { joueurs, majLe: ctx.magasin.horodatage() };
+    if (actuel >= 0) joueurs[actuel] = null;
+    else {
+      champs.uids = p.uids.concat([ctx.uid]);
+      if ((p.invites || []).includes(ctx.uid)) champs.invites = p.invites.filter((u) => u !== ctx.uid);
+    }
     joueurs[siege] = { uid: ctx.uid, pseudo, ia: false };
-    tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
+    tx.maj(chemins.partie(id), champs);
+  });
+}
+
+/** Salle d'attente : active ou désactive la règle du « 5 adverse ». Ouvert à tout joueur connecté. */
+export async function reglerCinqAdverse(ctx, id, actif) {
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
+    exigerAttente(p);
+    if (!!p.reglages?.cinqAdverse === !!actif) return;
+    tx.maj(chemins.partie(id), { reglages: reglagesPartie(actif, nbJoueursDe(p.reglages)), majLe: ctx.magasin.horodatage() });
+  });
+}
+
+/** Supprime une salle d'attente. Ouvert à tout joueur connecté ; une partie lancée ne se supprime plus. */
+export async function supprimerPartie(ctx, id) {
+  await transactionSalle(ctx, id, async (tx, p) => {
+    if (!p) return;
+    if (p.statut !== 'attente') throw new ErreurToc('La partie a commencé : on ne peut plus la supprimer.');
+    tx.supprimer(chemins.partie(id));
   });
 }
 
@@ -239,7 +288,7 @@ export async function retirerIA(ctx, id, siege) {
   });
 }
 
-/** Quitte une partie en attente ; si l'hôte quitte, la partie est supprimée. */
+/** Quitte une partie en attente ; si l'hôte quitte, la partie est supprimée (voir aussi supprimerPartie). */
 export async function quitterPartie(ctx, id) {
   await transaction(ctx, async (tx) => {
     const p = await tx.lire(chemins.partie(id));

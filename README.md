@@ -47,7 +47,7 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 |---|---|
 | `public/js/moteur/` | Règles du jeu en JavaScript pur (plateau, cartes, coups légaux, partie locale, rejeu). Aucune dépendance, testé hors ligne. |
 | `public/js/ia/` | IA : moteur rapide, évaluation, recherche par simulations, conseils, analyse qui s'affine. |
-| `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu. `api.js` est le seul point d'entrée de l'interface. |
+| `public/js/reseau/` | Firebase : comptes, parties, invitations, mains privées, session de jeu, historique contre l'IA du compte. `api.js` est le seul point d'entrée de l'interface. |
 | `public/js/ui/` | Écrans, plateau en SVG, saisie des coups, réglages, analyse de fin de partie. |
 | `public/js/dev/` | API factice du mode `?demo`. |
 | `public/js/session-locale.js` | Partie hors ligne contre l'IA ; définit l'interface « Session » que la session réseau reprend. |
@@ -56,36 +56,64 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 | `tests/` | Tests `node:test` : règles (dont deux oracles indépendants), IA, réseau (faux magasin en mémoire, et émulateur s'il est disponible), interface (géométrie, libellés, analyse). |
 | `outils/` | Tournois entre IA et calibrage (`node outils/tournoi.js --a=ia --b=glouton --parties=100 --budget=600`). |
 | `outils/regles/` | Générateur de la page Règles (« Le Toc en une page ») : `SORTIE_APPLI=public node outils/regles/construire.mjs` réécrit `public/js/ui/regles-page.js` et `public/css/regles.css`. Les exemples illustrés y sont vérifiés par le moteur. |
+| `outils/coloriages/` | Dessins au crayon des quatre coins du plateau carré, un par joueur, coloriés de la couleur de ses pions : `node outils/coloriages/generer.mjs` réécrit `public/js/ui/coloriages.js`. |
+| `outils/logo/` | Logo au crayon (repris de Nimbus) : `node outils/logo/generer.mjs` réécrit `public/icons/icon.svg` et, avec Playwright, les icônes PNG. Changer une icône demande d'incrémenter `VERSION` dans `public/sw.js`. |
 
 ## Règles : décisions
 
 Communes aux deux modes :
 
-- **Plateau** : 16 cases par côté. La case de sortie (as ou roi) est au milieu du côté. L'allée d'arrivée
+- **Plateau** : 18 cases d'une case de sortie à la suivante (18 par côté). La case de sortie (as ou roi) est au milieu du côté. L'allée d'arrivée
   (4 cases) s'ouvre sur la case située **3 cases avant la sortie**, à droite vu du joueur : un pion sur sa
   sortie qui recule de 4 puis joue un 5 arrive au fond de l'allée. La base est derrière la case de sortie.
   Repères de comptage sur la 6e et la 12e case après chaque sortie.
+  Les premières parties se sont jouées avec 16 cases par côté (64 cases à 4, 48 à 3, comme l'écrivait le cahier
+  des charges d'origine) : celles qui étaient commencées se terminent, se rejouent et s'analysent sur ce
+  plateau-là. Le plateau d'une partie se lit dans son état (`etat.v` : 1 pour 16 cases, 2 pour 18 ; voir
+  `public/js/moteur/plateau.js`), et les tests écrits pour l'ancien plateau importent `tests/plateau-16.js`.
 - **Pion protégé** sur sa case de sortie : ni dépassé, ni capturé, ni échangé par un autre joueur, ni poussé par
   un « 5 adverse ». Son propriétaire peut l'échanger avec son valet, et la sortie d'un pion de la même couleur
   le renvoie.
 - **7** : fractionnable, toujours dépensé en entier (sinon injouable), capture tout pion dépassé, y compris
   les siens.
-- **Allée** : compte exact, pas de dépassement, entrée jamais obligatoire.
+- **Allée** : un pion s'y arrête sur la case où la carte le mène (pas forcément au fond), sans dépasser le fond
+  ni un autre pion ; une carte trop grande le laisse sur le circuit ; entrée jamais obligatoire.
 - **Obligation de jouer** ; défausse au choix si aucune carte n'est jouable.
 
-2 contre 2 (64 cases, 52 cartes, donnes de 5-4-4) :
+2 contre 2 (72 cases, 52 cartes, donnes de 5-4-4) :
 
 - Échange d'une carte avec le partenaire à chaque donne.
 - Un joueur qui a rentré ses 4 pions joue pour son partenaire. Le reste d'un 7 ne va aux pions du
   partenaire qu'après avoir rentré son propre 4e pion pendant ce 7.
 - N'importe quelle répartition humains / IA sur les 4 sièges.
 
-3 joueurs, chacun pour soi (triangle de 48 cases, 54 cartes dont 2 jokers, donnes de 5-4-4-5) :
+3 joueurs, chacun pour soi (triangle de 54 cases, 54 cartes dont 2 jokers, donnes de 5-4-4-5) :
 
 - Le premier qui rentre ses 4 pions gagne.
 - À chaque donne, une carte au voisin de gauche (donnes paires) ou de droite (donnes impaires).
 - **Joker** : copie une carte posée depuis le début de la donne (jouée ou défaussée, y compris un joker
   qui a copié) ; injouable s'il n'y a rien à copier.
+
+## Salles d'attente (en ligne)
+
+Une salle d'attente est ouverte à tous : elle apparaît dans « Mes parties » de chaque joueur connecté, qui peut s'y
+asseoir sans invitation, y activer ou désactiver l'option « 5 adverse », et la supprimer. L'hôte garde les IA, les
+invitations et le lancement. Les statistiques du compte (parties en ligne jouées et gagnées) sont dans l'onglet « Stats ».
+
+## Un compte sur plusieurs appareils
+
+Le même prénom ouvre le même compte partout. Les parties en ligne et leurs statistiques sont dans le compte. Les
+parties contre l'IA se jouent hors ligne, sur l'appareil, mais rejoignent le compte dès qu'on est connecté
+(`public/js/ui/synchro-ia.js`) :
+
+- l'historique et les statistiques contre l'IA sont les mêmes sur tous ses appareils ;
+- les 12 parties terminées les plus récentes sont gardées en entier : on les analyse depuis n'importe quel appareil ;
+- la partie en cours de chaque mode est envoyée au compte pendant qu'on joue (quelques secondes après chaque coup,
+  et en quittant l'écran) et reprise sur un autre appareil. Le compte n'en garde qu'une par mode : la plus récemment
+  jouée l'emporte, et une nouvelle partie remplace l'ancienne partout.
+
+Sans compte ou sans réseau, tout reste sur l'appareil et partira à la prochaine connexion. Sur un appareil partagé,
+chacun ne voit que les parties de son compte.
 
 ## Limites connues
 

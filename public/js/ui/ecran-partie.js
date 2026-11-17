@@ -2,9 +2,12 @@
 // Salle d'attente sur le modèle de l'appli Scrabble : on touche le nom d'un joueur pour l'inviter, ou on envoie
 // le lien ; le code reste affiché (le cahier des charges le demande). Le Toc se joue à 4 : jusqu'à 3 invités,
 // et l'hôte peut compléter avec des IA.
+// Une salle d'attente est ouverte à tous : tout joueur connecté peut l'ouvrir, s'asseoir sur une place libre (invité
+// ou non), activer ou désactiver la règle du « 5 adverse », et supprimer la salle. L'hôte garde les IA, les
+// invitations et le lancement.
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
-import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille } from './composants.js';
+import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille, interrupteur } from './composants.js';
 import { nomNiveau, niveauValide, niveauEnLigne, ecrireNiveauEnLigne, listeNiveaux } from './niveaux.js';
 import { monterJeu } from './vue-jeu.js';
 import { definirPartieOuverte } from './veille.js';
@@ -28,11 +31,19 @@ export function afficher(racine, app, { reste }) {
   let joueursConnus = null; // liste des joueurs qu'on peut inviter
   let erreurAttente = '';
   let occupe = false;
+  // Règle du 5 : valeur que je viens de demander, affichée en attendant que la salle la confirme.
+  let cinqVoulu = null;
+  let cinqEnvoye = false;
 
   const arretPartie = api.surPartie(id, (p) => {
     resume = p;
     if (fermee) return;
-    if (p === null) {
+    if (cinqVoulu !== null && (cinqEnvoye || !p || !!p.reglages?.cinqAdverse === cinqVoulu)) {
+      cinqVoulu = null;
+      cinqEnvoye = false;
+    }
+    // Salle supprimée (par n'importe quel joueur), ou partie lancée sans moi : il n'y a plus rien à voir ici.
+    if (p === null || (p.statut !== 'attente' && p.monSiege < 0)) {
       if (!modeJeu) {
         remplacer(
           racine,
@@ -40,7 +51,7 @@ export function afficher(racine, app, { reste }) {
             'div',
             { class: 'contenu' },
             enteteRetour('Partie', '#/parties'),
-            h('div', { class: 'vide-etat' }, 'Cette partie n’existe plus (l’hôte l’a peut-être supprimée).'),
+            h('div', { class: 'vide-etat' }, p === null ? 'Cette salle d’attente n’est plus disponible : elle a été supprimée, ou la partie a commencé sans toi.' : 'Cette partie a commencé sans toi.'),
             h('a', { class: 'bouton', href: '#/parties' }, 'Mes parties'),
           ),
         );
@@ -131,10 +142,12 @@ export function afficher(racine, app, { reste }) {
 
     const siege = (si) => {
       const place = places[si];
-      const equipe = n === 3 ? rangJeu(si) : si % 2 === vue % 2 ? 'Mon équipe' : 'Adversaires';
+      // Pas encore assis : pas de « mon équipe » ; on nomme les deux équipes (partenaires face à face).
+      const equipe = n === 3 ? rangJeu(si) : monSiege < 0 ? (si % 2 === 0 ? 'Équipe A' : 'Équipe B') : si % 2 === vue % 2 ? 'Mon équipe' : 'Adversaires';
       const actions = [];
       if (!place) {
-        if (monSiege >= 0) actions.push(h('button', { type: 'button', class: 'bouton petit', disabled: occupe, onclick: () => agir(() => api.choisirSiege(p.id, si)) }, 'M’asseoir ici'));
+        // Ouvert à tous : qui n'est pas encore dans la partie y entre en s'asseyant, invité ou non.
+        actions.push(h('button', { type: 'button', class: 'bouton petit' + (monSiege < 0 ? ' principal' : ''), disabled: occupe, 'data-action': 'asseoir', onclick: () => agir(() => api.choisirSiege(p.id, si)) }, 'M’asseoir ici'));
         // L'IA arrive au dernier niveau choisi ; l'hôte peut le changer d'un toucher sur sa place.
         if (hote) actions.push(h('button', { type: 'button', class: 'bouton petit', disabled: occupe, 'data-action': 'ajouter-ia', onclick: () => agir(() => api.ajouterIA(p.id, si, niveauEnLigne())) }, piPlus(14), 'IA'));
       } else if (place.ia && hote) {
@@ -182,16 +195,43 @@ export function afficher(racine, app, { reste }) {
       h('div', { class: 'place-bas' }, siege(pos(0))),
     );
 
-    const options = [n === 3 ? '3 joueurs' : '2 contre 2'];
-    if (p.reglages?.cinqAdverse) options.push('« 5 adverse »');
+    const assis = monSiege >= 0;
+    const cinq = cinqVoulu ?? !!p.reglages?.cinqAdverse;
+    const reglerCinq = (v) => {
+      cinqVoulu = v;
+      cinqEnvoye = false;
+      agir(async () => {
+        try {
+          await api.reglerCinqAdverse(p.id, v);
+          // Déjà confirmé par la salle ? Sinon, la prochaine mise à jour reçue fait foi.
+          if (!!resume?.reglages?.cinqAdverse === v) cinqVoulu = null;
+          else cinqEnvoye = true;
+        } catch (e) {
+          cinqVoulu = null;
+          throw e;
+        }
+      });
+    };
     const blocs = [
       enteteRetour(p.nom || 'Salle d’attente', '#/parties'),
       h(
         'div',
         { class: 'carte' },
-        h('div', { class: 'titre-carte' }, h('b', {}, 'Salle d’attente'), h('span', { class: 'note' }, `${options.join(' · ')} · ${complet ? 'prêt à lancer' : pluriel(libres.length, 'place libre', 'places libres')}`)),
+        h('div', { class: 'titre-carte' }, h('b', {}, 'Salle d’attente'), h('span', { class: 'note' }, `${n === 3 ? '3 joueurs' : '2 contre 2'} · ${complet ? 'prêt à lancer' : pluriel(libres.length, 'place libre', 'places libres')}`)),
         table,
         n === 3 ? h('p', { class: 'note ordre-jeu' }, `Ordre de jeu (sens des aiguilles d’une montre) : ${ordre.join(' → ')}`) : null,
+      ),
+      // La règle du 5 se choisit ici, par n'importe quel joueur, jusqu'au lancement.
+      h(
+        'div',
+        { class: 'carte regle-cinq', 'data-cinq-adverse': String(cinq) },
+        interrupteur({
+          titre: 'Règle du « 5 adverse »',
+          texte: cinq ? 'Activée : le 5 peut aussi faire avancer un pion adverse de 5 cases.' : 'Désactivée : le 5 ne fait avancer que tes pions.',
+          actif: cinq,
+          desactive: occupe,
+          surChange: reglerCinq,
+        }),
       ),
     ];
     if (erreurAttente) blocs.push(h('div', { class: 'apercu erreur' }, erreurAttente));
@@ -203,28 +243,54 @@ export function afficher(racine, app, { reste }) {
           complet ? 'Lancer la partie' : `Lancer la partie (encore ${pluriel(libres.length, 'place')} à remplir)`,
         ),
       );
-      if (!complet) blocs.push(h('p', { class: 'note centre' }, 'Invite des joueurs, ou touche « IA » sur une place libre pour la compléter.'));
-    } else {
+    } else if (assis) {
+      // (Pas encore assis : les boutons « M'asseoir ici » des places libres suffisent, sans consigne en plus.)
       blocs.push(h('div', { class: 'apercu' }, h('span', {}, complet ? 'Tout le monde est là : l’hôte va lancer la partie.' : `En attente de ${pluriel(libres.length, 'joueur')}… L’hôte lancera la partie.`)));
     }
-    if (!complet) blocs.push(carteInviter(p, hote, libres.length));
+    // Inviter : l'hôte seulement (les autres ont le lien et le code, juste dessous).
+    if (!complet && hote) blocs.push(carteInviter(p, libres.length));
     blocs.push(carteLien(p));
+    // Quitter : seulement si l'on est assis (l'hôte ne quitte pas sa table, il la supprime).
+    if (assis && !hote) {
+      blocs.push(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'bouton discret danger',
+            'data-action': 'quitter',
+            disabled: occupe,
+            onclick: () => {
+              if (!confirm('Quitter cette partie ?')) return;
+              agir(async () => {
+                await api.quitterPartie(p.id);
+                app.naviguer('#/parties');
+              });
+            },
+          },
+          'Quitter la partie',
+        ),
+      );
+    }
+    // Supprimer : n'importe quel joueur, tant que la partie n'est pas lancée.
+    const autres = places.filter((x) => x && !x.ia && x.uid !== moi).length;
     blocs.push(
       h(
         'button',
         {
           type: 'button',
           class: 'bouton discret danger',
-          'data-action': 'quitter',
+          'data-action': 'supprimer',
+          disabled: occupe,
           onclick: () => {
-            if (!confirm(hote ? 'Supprimer cette partie ? Les joueurs déjà assis en sortiront.' : 'Quitter cette partie ?')) return;
+            if (!confirm(autres ? `Supprimer cette salle d’attente ? ${pluriel(autres, 'joueur déjà assis en sortira', 'joueurs déjà assis en sortiront')}.` : 'Supprimer cette salle d’attente ?')) return;
             agir(async () => {
-              await api.quitterPartie(p.id);
+              await api.supprimerPartie(p.id);
               app.naviguer('#/parties');
             });
           },
         },
-        hote ? 'Supprimer la partie' : 'Quitter la partie',
+        'Supprimer la salle d’attente',
       ),
     );
     remplacer(racine, h('div', { class: 'contenu salle-attente' }, blocs));
@@ -250,14 +316,10 @@ export function afficher(racine, app, { reste }) {
     ]);
   }
 
-  function carteInviter(p, hote, nbLibres) {
+  function carteInviter(p, nbLibres) {
     const invites = p.invites || [];
     const assis = new Set((p.joueurs || []).filter(Boolean).map((x) => x.uid));
     const carte = h('div', { class: 'carte formulaire' }, h('b', { class: 'grand' }, 'Avec qui veux-tu jouer ?'));
-    if (!hote) {
-      carte.append(h('span', { class: 'note' }, 'Seul l’hôte invite des joueurs ; tu peux envoyer le lien ci-dessous.'));
-      return carte;
-    }
     const peutInviter = invites.length < nbLibres;
     carte.append(
       h(

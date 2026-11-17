@@ -1,6 +1,7 @@
 // Contre l'IA (route #/ia) : reprendre une partie d'entraînement sauvegardée sur l'appareil, ou en commencer une
 // nouvelle, en « 2 contre 2 » (toi et une IA contre deux IA) ou à « 3 joueurs » (chacun pour soi, toi contre deux
-// IA). C'est l'écran d'ouverture de qui joue sans compte ou sans réseau.
+// IA). C'est l'écran d'ouverture de qui joue sans compte ou sans réseau. Avec un compte, la partie en cours suit
+// d'un appareil à l'autre : celle que le compte garde remplace ici celle de l'appareil si elle est plus récente.
 
 import { h, remplacer, ecrire, lire } from './dom.js';
 import { entete, interrupteur, rangee, segments } from './composants.js';
@@ -9,6 +10,7 @@ import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
 import { lirePartiesFinies } from './parties-finies.js';
 import { rattraperPartiesFinies } from './ecran-bilan.js';
+import { recupererPartiesEnCours } from './synchro-ia.js';
 import { choixNiveau, niveauxLocaux, ecrireNiveauxLocaux, nomNiveau } from './niveaux.js';
 
 const CLE_MODE = 'toc.modeLocal';
@@ -40,7 +42,7 @@ export function afficher(racine, app) {
     );
   };
 
-  rattraperPartiesFinies();
+  rattraperPartiesFinies(app.joueur?.uid);
 
   const dessiner = () => {
     const blocs = [entete('Contre l’IA')];
@@ -153,7 +155,7 @@ export function afficher(racine, app) {
                 const adv = niveaux.adversaires;
                 // Un niveau par siège : partenaire en face (siège 2) à 4 joueurs ; le siège 0 est le tien.
                 const parSiege = nbJoueurs === 3 ? [null, adv, adv] : [null, adv, niveaux.partenaire || adv, adv];
-                nouvellePartieLocale({ cinqAdverse }, nbJoueurs, parSiege);
+                nouvellePartieLocale({ cinqAdverse }, nbJoueurs, parSiege, app.joueur);
                 app.naviguer(MODES_LOCAUX[nbJoueurs].route);
               },
             },
@@ -182,7 +184,20 @@ export function afficher(racine, app) {
 
   dessiner();
   app.surInstallation = dessiner;
+  // Partie jouée sur un autre appareil depuis : on la reprend ici (maintenant, puis dès que la fiche du joueur
+  // annonce du neuf), et la liste « en cours » se met à jour.
+  let affiche = true;
+  const recuperer = () =>
+    void recupererPartiesEnCours(app).then((change) => {
+      if (!change || !affiche) return;
+      rattraperPartiesFinies(app.joueur?.uid);
+      dessiner();
+    });
+  recuperer();
+  app.surJoueur = recuperer;
   return () => {
+    affiche = false;
     app.surInstallation = null;
+    app.surJoueur = null;
   };
 }

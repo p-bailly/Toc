@@ -11,6 +11,7 @@
 //   session.jouer(coup)   → Promise    jouer un coup (phase 'jeu', à son tour) ; rejette si illégal
 //   session.fermer()                   arrêter les écoutes et les minuteries
 //   session.donneesAnalyse() → Promise<{ reglages, joueurs, siege, historique, donnes }>
+//       reglages : ceux de l'état, plus `plateau` (cases entre deux cases de départ : reglagesRejeu du moteur).
 //       pour l'analyse de fin de partie : donnes[d] = { distribuees, donnee, recue } = les cartes
 //       du joueur local à la donne d (distribuées, donnée au partenaire, reçue de lui).
 //       La partie se rejoue avec rejouerPartie(reglages, historique) (moteur/rejeu.js).
@@ -39,7 +40,7 @@
 // Les IA du jeu à 3 sont provisoires (ia/ia3.js).
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { nouvellePartie, donnerCarte, jouerCoup, donneurDon, nombreJoueurs } from './moteur/index.js';
+import { nouvellePartie, donnerCarte, jouerCoup, donneurDon, nombreJoueurs, reglagesRejeu } from './moteur/index.js';
 import { choisirCoup, choisirDon } from './ia/ia.js';
 import { choisirCoup3, choisirDon3 } from './ia/ia3.js';
 
@@ -232,7 +233,7 @@ export class SessionLocale {
           : null,
       );
     const donnesParSiege = this.joueurs.map((_, s) => donnesDe(s));
-    return { reglages: etat.reglages, joueurs: this.joueurs, siege: this.siege, historique, donnes: donnesParSiege[this.siege], donnesParSiege };
+    return { reglages: reglagesRejeu(etat), joueurs: this.joueurs, siege: this.siege, historique, donnes: donnesParSiege[this.siege], donnesParSiege };
   }
 
   fermer() {

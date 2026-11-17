@@ -5,7 +5,9 @@
 // directement, pour chaque coup, le plateau obtenu. Cela évite de cloner l'état complet
 // (pile, etc.) des milliers de fois par seconde pendant la recherche.
 //
-// Le nombre de joueurs se lit sur le plateau : n = pions.length / 4, circuit de 16 × n cases.
+// Le nombre de joueurs se lit sur le plateau : n = pions.length / 4, circuit de COTE × n cases, où COTE
+// est le plateau visé (18 cases entre deux cases de départ, 16 pour les premières parties : voir
+// moteur/plateau.js). Les fonctions qui reçoivent un état (preparer, les analyses) le visent d'abord.
 // À 3 joueurs : pas de partenaire (on ne joue jamais pour un autre), le valet et le « 5 adverse »
 // visent n'importe quel autre joueur, et le joker copie un rang déjà posé dans la donne :
 // les rangs copiables sont passés sous forme de masque de bits (bit r = rang d'index r).
@@ -14,15 +16,17 @@
 // tests/ia.test.js vérifie en outre que ce générateur produit exactement les mêmes coups
 // (mêmes plateaux obtenus) que coupsLegaux sur des milliers de positions, dans les deux modes.
 
+import { COTE, CASES_MAX } from '../moteur/plateau.js';
+
 export const BASE = -1;
 export const ALLEE = 100;
 export const DISTANCE_ENTREE = 3;
 
 /** Nombre de cases du circuit pour un plateau donné. */
-export const casesPlateau = (pions) => pions.length * 4;
+export const casesPlateau = (pions) => (pions.length >> 2) * COTE;
 
 /** Case d'entrée de l'allée de la couleur o (3 cases avant sa case de départ) ; N = nb de cases. */
-export const entree = (o, N = 64) => (o * 16 - DISTANCE_ENTREE + N) % N;
+export const entree = (o, N = 4 * COTE) => (o * COTE - DISTANCE_ENTREE + N) % N;
 
 /** Rangs indexés : 0 = A, 1..9 = 2..10, 10 = V, 11 = D, 12 = R, 13 = joker (jeu à 3). */
 export const RANGS_IA = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'V', 'D', 'R', 'J'];
@@ -66,9 +70,9 @@ export function couleurActivePions(pions, s) {
 export const memeCamp = (pions, a, b) => (pions.length === 16 ? (a & 1) === (b & 1) : a === b);
 
 /** Tableau d'occupation du circuit : occ[case] = pion ou -1. */
-export function occupation(pions, occ = new Int8Array(64)) {
+export function occupation(pions, occ = new Int8Array(CASES_MAX)) {
   occ.fill(-1);
-  const N = pions.length * 4;
+  const N = casesPlateau(pions);
   for (let q = 0; q < pions.length; q++) {
     const p = pions[q];
     if (p >= 0 && p < N) occ[p] = q;
@@ -100,7 +104,7 @@ function resoudre(pions, occ, g, pas, versAllee, sept, capt) {
     for (let i = k + 1; i <= dest; i++) if (alleeOccupee(pions, o, i)) return NUL;
     return ALLEE + dest;
   }
-  const N = pions.length * 4;
+  const N = casesPlateau(pions);
   const n0 = capt.length;
   if (versAllee) {
     const d = (entree(o, N) - p + N) % N;
@@ -109,7 +113,7 @@ function resoudre(pions, occ, g, pas, versAllee, sept, capt) {
     for (let i = 1; i <= d; i++) {
       const q = occ[(p + i) % N];
       if (q >= 0) {
-        if (pions[q] === (q >> 2) * 16) {
+        if (pions[q] === (q >> 2) * COTE) {
           capt.length = n0;
           return NUL;
         }
@@ -127,7 +131,7 @@ function resoudre(pions, occ, g, pas, versAllee, sept, capt) {
   for (let i = 1; i <= pas; i++) {
     const q = occ[(p + i) % N];
     if (q >= 0) {
-      if (pions[q] === (q >> 2) * 16) {
+      if (pions[q] === (q >> 2) * COTE) {
         capt.length = n0;
         return NUL;
       }
@@ -138,20 +142,20 @@ function resoudre(pions, occ, g, pas, versAllee, sept, capt) {
 }
 
 function resoudreRecul(pions, occ, g, capt) {
-  const N = pions.length * 4;
+  const N = casesPlateau(pions);
   const p = pions[g];
   if (p < 0 || p >= N) return NUL;
   for (let i = 1; i <= 4; i++) {
     const q = occ[(p - i + N) % N];
     if (q >= 0) {
-      if (pions[q] === (q >> 2) * 16) return NUL;
+      if (pions[q] === (q >> 2) * COTE) return NUL;
       if (i === 4) capt.push(q);
     }
   }
   return (p - 4 + N) % N;
 }
 
-const echangeable = (pions, q) => pions[q] >= 0 && pions[q] < pions.length * 4 && pions[q] !== (q >> 2) * 16;
+const echangeable = (pions, q) => pions[q] >= 0 && pions[q] < casesPlateau(pions) && pions[q] !== (q >> 2) * COTE;
 
 function poser(pions, g, pos, capt) {
   const np = pions.slice();
@@ -161,7 +165,7 @@ function poser(pions, g, pos, capt) {
 }
 
 const tampon = [];
-const occTemp = new Int8Array(64);
+const occTemp = new Int8Array(CASES_MAX);
 
 function genererAvance(pions, occ, c, carte, pas, sortie) {
   for (let g = c * 4; g < c * 4 + 4; g++) {
@@ -212,7 +216,7 @@ export function clePions(p) {
   );
 }
 
-const occParProfondeur = Array.from({ length: 8 }, () => new Int8Array(64));
+const occParProfondeur = Array.from({ length: 8 }, () => new Int8Array(CASES_MAX));
 
 /** Énumère toutes les façons distinctes (par plateau final) de jouer un 7 en entier. */
 function genererSept(pions, s, carte, sortie, limite) {
@@ -266,7 +270,7 @@ function coupsRang(pions, s, carte, ir, cinqAdverse, sortie, limiteSept, occ) {
     case R_R: {
       for (let g = c * 4; g < c * 4 + 4; g++) {
         if (pions[g] === BASE) {
-          const depart = c * 16;
+          const depart = c * COTE;
           const q = occ[depart];
           const capt = q >= 0 ? [q] : [];
           sortie.push({ coup: { t: 'sortie', carte, pion: g }, pions: poser(pions, g, depart, capt), captures: capt });
@@ -278,7 +282,7 @@ function coupsRang(pions, s, carte, ir, cinqAdverse, sortie, limiteSept, occ) {
     }
     case R_V: {
       for (let a = c * 4; a < c * 4 + 4; a++) {
-        if (pions[a] < 0 || pions[a] >= pions.length * 4) continue; // le sien : même protégé sur sa case de départ
+        if (pions[a] < 0 || pions[a] >= casesPlateau(pions)) continue; // le sien : même protégé sur sa case de départ
         for (let b = 0; b < pions.length; b++) {
           if (b >> 2 !== c && echangeable(pions, b)) {
             const np = pions.slice();
@@ -356,7 +360,7 @@ export function coupsCarte(pions, s, carte, cinqAdverse, sortie = [], limiteSept
 export function coupsMain(pions, s, main, cinqAdverse, limiteSept = Infinity, copiables = 0) {
   const sortie = [];
   let vus = 0;
-  const occ = occupation(pions, new Int8Array(64));
+  const occ = occupation(pions, new Int8Array(CASES_MAX));
   for (const carte of main) {
     const ir = indexRang(carte);
     if (vus & (1 << ir)) continue;

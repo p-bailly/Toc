@@ -6,7 +6,7 @@
 // À 3 joueurs, il n'y a pas de partenaire : on parle de « ton voisin de gauche » (siège suivant),
 // « ton voisin de droite » (siège précédent), « le joueur en tête », « un adversaire ».
 
-import { destinataireDon } from '../moteur/plateau.js';
+import { COTE, destinataireDon, viser } from '../moteur/plateau.js';
 import { preparer, infoMains, comptesRangs } from './recherche.js';
 import { evaluerPlateau } from './evaluation.js';
 import {
@@ -39,6 +39,7 @@ const POIDS_ADVERSAIRE = 0.7;
  * @returns {Object[]} entrées triées : { carte, ir, note, gDest, gMoi, pManque, doubles, ... }
  */
 export function noterDons(etat, siege, main, options = {}) {
+  viser(etat);
   const prep = preparer(etat, siege, main, options);
   const nb = prep.n;
   const a3 = nb === 3;
@@ -80,6 +81,7 @@ export function noterDons(etat, siege, main, options = {}) {
 }
 
 export function raisonsDon(e, etat, siege) {
+  viser(etat);
   const nb = etat.pions.length >> 2;
   const a3 = nb === 3;
   const p = e.dest;
@@ -124,12 +126,13 @@ export function raisonsDon(e, etat, siege) {
 // ---------------------------------------------------------------------------
 
 export function raisonsCoup(prep, etat, siege, main, cand) {
+  viser(etat);
   const coup = cand.res.coup;
   const avant = etat.pions;
   const apres = cand.res.pions;
   const nP = avant.length;
   const nb = nP >> 2;
-  const N = nb * 16;
+  const N = nb * COTE;
   const a3 = nb === 3;
   const ir = indexRang(coup.carte);
   const part = a3 ? -1 : (siege + 2) & 3;
@@ -212,7 +215,7 @@ export function raisonsCoup(prep, etat, siege, main, cand) {
       continue;
     }
     // Sur le circuit
-    if (apres[g] === (g >> 2) * 16) dire(24, `met ${quoi} à l'abri sur sa case de sortie`);
+    if (apres[g] === (g >> 2) * COTE) dire(24, `met ${quoi} à l'abri sur sa case de sortie`);
     const da = distance(g, avant[g], N);
     const dp = distance(g, apres[g], N);
     if (coup.t === 'recul' && dp <= 3) {
@@ -253,7 +256,7 @@ export function raisonsCoup(prep, etat, siege, main, cand) {
   }
 
   // Pion protégé qui bloque désormais un adversaire
-  const c0 = actif * 16;
+  const c0 = actif * COTE;
   const q0 = apres.indexOf(c0);
   if (q0 >= 0 && q0 >> 2 === actif && avant[q0] !== c0) {
     let bloques = 0;

@@ -2,7 +2,7 @@
 <resources>
     <!-- Fond de l'appli web en clair (thème par défaut) : pas d'éclair blanc au lancement. -->
     <color name="fond">#a9d3f4</color>
-    <!-- Bord de l'icône (public/icons/icon-maskable-512.png). -->
-    <color name="icone_fond">#7a4c22</color>
+    <!-- Feuille blanche de l'icône au crayon (public/icons/icon-maskable-512.png). -->
+    <color name="icone_fond">#ffffff</color>
     <color name="notification">#2f6fb5</color>
 </resources>

@@ -1,6 +1,7 @@
 // « Mes parties » (écran d'ouverture, comme dans l'appli Scrabble) : connexion par simple nom d'utilisateur,
 // invitations reçues, parties classées (à toi de jouer, en attente, salles d'attente, terminées), nouvelle partie
-// d'un toucher, rejoindre avec un code, statistiques. Gère aussi la route #/rejoindre/CODE.
+// d'un toucher, rejoindre avec un code. Les salles d'attente sont ouvertes à tous : on y voit aussi celles des
+// autres joueurs. Les statistiques sont dans l'onglet « Stats ». Gère aussi la route #/rejoindre/CODE.
 
 import { h, remplacer, messageErreur, ilYa, lire, ecrire, pluriel } from './dom.js';
 import { entete, avatar, interrupteur, segments, toast } from './composants.js';
@@ -139,6 +140,8 @@ function afficherListe(racine, app) {
   const contenu = h('div', { class: 'contenu' });
   remplacer(racine, contenu);
   let veille = { pret: false, parties: [], invitations: [] };
+  // Salles d'attente ouvertes (celles des autres joueurs comprises) : on peut s'y asseoir sans invitation.
+  let salles = [];
   let occupe = false;
   let erreur = '';
   // « Nom et options » reste ouvert quand la liste se redessine (une partie change en arrière-plan).
@@ -178,7 +181,10 @@ function afficherListe(racine, app) {
     const { parties, invitations, pret } = veille;
     const aMoi = parties.filter((p) => p.aMoiDeJouer && p.statut !== 'finie');
     const enCours = parties.filter((p) => p.statut === 'encours' && !p.aMoiDeJouer);
-    const attente = parties.filter((p) => p.statut === 'attente' && !p.aMoiDeJouer);
+    // Mes salles d'attente d'abord, puis celles des autres (les invitations reçues sont déjà affichées plus haut).
+    const miennes = parties.filter((p) => p.statut === 'attente' && !p.aMoiDeJouer);
+    const dejaVues = new Set([...parties, ...invitations].map((p) => p.id));
+    const attente = miennes.concat(salles.filter((p) => p.statut === 'attente' && !dejaVues.has(p.id)));
     const finies = parties.filter((p) => p.statut === 'finie').slice(0, 20);
 
     const emoji = emojiIcone(j.icone);
@@ -244,7 +250,7 @@ function afficherListe(racine, app) {
       blocs.push(h('h2', {}, 'Invitations reçues'), h('div', { class: 'liste' }, invitations.map((p) => ligneInvitation(p, app))));
     }
     if (!pret) blocs.push(h('div', { class: 'vide-etat' }, 'Chargement…'));
-    else if (!parties.length && !invitations.length)
+    else if (!parties.length && !invitations.length && !attente.length)
       blocs.push(h('div', { class: 'vide-etat' }, 'Aucune partie. Touche « Nouvelle partie », puis invite tes partenaires et adversaires.'));
     const section = (titre, liste) => liste.length && blocs.push(h('h2', {}, titre), h('div', { class: 'liste' }, liste.map((p) => lignePartie(p, app))));
     section('À toi de jouer', aMoi);
@@ -273,40 +279,32 @@ function afficherListe(racine, app) {
       ),
     );
 
-    // Statistiques.
-    const st = j.stats || { jouees: 0, gagnees: 0 };
-    blocs.push(
-      h('h2', {}, 'Mes statistiques'),
-      h(
-        'div',
-        { class: 'stats' },
-        stat('Parties jouées', st.jouees),
-        stat('Gagnées', st.gagnees),
-        stat('Réussite', st.jouees ? Math.round((100 * st.gagnees) / st.jouees) + ' %' : '–'),
-      ),
-    );
     const focus = document.activeElement === champCode;
     remplacer(contenu, blocs);
     if (focus) champCode.focus();
   };
 
+  // Ne pas redessiner pendant la saisie du nom (le champ perdrait le focus).
+  const saisieEnCours = () => contenu.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement !== champCode;
   const arret = surVeille((v) => {
     veille = v;
-    // Ne pas redessiner pendant la saisie du nom (le champ perdrait le focus).
-    if (contenu.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement !== champCode) return;
-    dessiner();
+    if (!saisieEnCours()) dessiner();
   });
+  const arretSalles =
+    typeof api.surSallesAttente === 'function'
+      ? api.surSallesAttente((liste) => {
+          salles = liste || [];
+          if (!saisieEnCours()) dessiner();
+        })
+      : () => {};
   app.surJoueur = () => dessiner();
   app.surInstallation = dessiner;
   return () => {
     arret();
+    arretSalles();
     app.surJoueur = null;
     app.surInstallation = null;
   };
-}
-
-function stat(etiquette, valeur) {
-  return h('div', { class: 'stat' }, h('div', { class: 'etiquette' }, etiquette), h('div', { class: 'valeur' }, String(valeur)));
 }
 
 /** Rappel tant que les notifications sont voulues mais pas encore autorisées par le système. */
@@ -395,8 +393,11 @@ function lignePartie(p, app) {
   let sousTitre = '';
   if (p.statut === 'attente') {
     const invites = p.invites || [];
-    sousTitre = (a3 ? '3 joueurs · ' : '') + (libres ? `${pluriel(libres, 'place libre', 'places libres')}` : 'Complet : prêt à lancer');
-    if (invites.length) sousTitre += ` · invité${invites.length > 1 ? 's' : ''} : ${invites.map((i) => i.pseudo).join(', ')}`;
+    // Salle d'un autre joueur : on dit qui s'y trouve déjà.
+    const presents = moi < 0 ? places.filter(Boolean).map(nomPlace).join(', ') : '';
+    sousTitre = (a3 ? '3 joueurs · ' : '') + (presents ? presents + ' · ' : '') + (libres ? `${pluriel(libres, 'place libre', 'places libres')}` : moi < 0 ? 'Complet' : 'Complet : prêt à lancer');
+    if (p.reglages?.cinqAdverse) sousTitre += ' · 5 adverse';
+    if (invites.length && moi >= 0) sousTitre += ` · invité${invites.length > 1 ? 's' : ''} : ${invites.map((i) => i.pseudo).join(', ')}`;
   } else {
     const avec = partenaire ? `Avec ${nomPlace(partenaire)}` : '';
     const contre = adversaires.filter(Boolean).map(nomPlace).join(' et ');
@@ -411,7 +412,7 @@ function lignePartie(p, app) {
   } else if (p.aMoiDeJouer) {
     badge = h('span', { class: 'badge a-toi' }, 'À toi de jouer');
   } else if (p.statut === 'attente') {
-    badge = h('span', { class: 'badge neutre' }, 'En attente');
+    badge = h('span', { class: 'badge neutre' }, moi >= 0 ? 'En attente' : libres ? 'Ouverte' : 'Complète');
   }
   const autres = [partenaire, ...adversaires].filter(Boolean);
   const premier = autres[0] || places.find((x) => x && x.uid !== app.joueur?.uid);

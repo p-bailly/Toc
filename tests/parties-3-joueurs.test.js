@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BASE, ALLEE, coupsLegauxMain, validerCoup, nouvellePartie, donnerCarte, jouerCoup, generateurAleatoire,
-  rejouerPartie, mainAvantCoup, tailleDonne, longueurCycle, siegesGagnants, aFini, estJoker,
+  rejouerPartie, mainAvantCoup, tailleDonne, longueurCycle, siegesGagnants, aFini, estJoker, nbCases, reglagesRejeu,
 } from '../public/js/moteur/index.js';
 import { choisirCoup3, choisirDon3 } from '../public/js/ia/ia3.js';
 import { SessionLocale } from '../public/js/session-locale.js';
@@ -31,7 +31,7 @@ function verifierPlateau(pions) {
       assert.ok(p < ALLEE + 4);
       continue;
     }
-    assert.ok(Number.isInteger(p) && p >= 0 && p < 48, `pion ${g} en ${p}`);
+    assert.ok(Number.isInteger(p) && p >= 0 && p < nbCases(3), `pion ${g} en ${p}`);
     assert.ok(!circuit.has(p), `deux pions sur la case ${p}`);
     circuit.add(p);
   }
@@ -76,7 +76,7 @@ function jouerPartie(graine, strategie, don, reglages = {}) {
   assert.deepEqual(siegesGagnants(p.etat), [p.etat.gagnant]);
   for (let s = 0; s < 3; s++) if (s !== p.etat.gagnant) assert.equal(aFini(p.etat, s), false);
   // le rejeu de l'historique redonne exactement la partie
-  const rejeu = rejouerPartie(p.etat.reglages, p.historique);
+  const rejeu = rejouerPartie(reglagesRejeu(p.etat), p.historique);
   assert.deepEqual(rejeu.etat.pions, p.etat.pions);
   assert.equal(rejeu.etat.gagnant, p.etat.gagnant);
   assert.deepEqual(rejeu.etat.jokers, p.etat.jokers);

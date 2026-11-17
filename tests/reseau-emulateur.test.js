@@ -94,6 +94,32 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   assert.equal((await b.client.lireJoueur(a.joueur.uid)).icone, 'chat');
   const liste = await b.client.listerJoueurs();
   assert.deepEqual(liste.map((j) => j.pseudo).sort(), ['Alice', 'Chloé']);
+  // Historique contre l'IA : versé par un appareil, retrouvé sur l'autre (même compte), invisible aux autres comptes.
+  const resumeIA = (idIA, date) => ({ id: idIA, date, nb: 4, gagne: true, gagnants: [0, 2], joueurs: [{ pseudo: 'Alice', ia: false, niveau: null }, { pseudo: 'Léo', ia: true, niveau: 'expert' }], donnes: 4, coups: 80, cinqAdverse: false });
+  await a.client.synchroniserPartiesIA({ parties: [resumeIA('ia1', 1000)], retirees: [] });
+  const histoA = await a2.client.synchroniserPartiesIA({ parties: [resumeIA('ia2', 2000)], retirees: [] });
+  assert.deepEqual(histoA.parties.map((x) => x.id), ['ia2', 'ia1']);
+  assert.deepEqual((await a.client.synchroniserPartiesIA({ parties: [], retirees: ['ia1'] })).parties.map((x) => x.id), ['ia2']);
+  assert.deepEqual((await b.client.synchroniserPartiesIA({ parties: [], retirees: [] })).parties, []);
+  // Partie gardée en entier (analyse depuis un autre appareil) et partie en cours : écrites par un appareil, lues
+  // par l'autre ; la plus récente gagne ; la fiche annonce la date.
+  assert.deepEqual((await a.client.ecrirePartieIAFinie('ia2', '{"partie":{"etat":{}}}')).completes, ['ia2']);
+  assert.equal(await a2.client.lirePartieIAFinie('ia2'), '{"partie":{"etat":{}}}');
+  assert.equal(await b.client.lirePartieIAFinie('ia2'), null);
+  assert.deepEqual((await a.client.ecrirePartieIAFinie('ia1', '{}')).completes, ['ia2'], 'retirée de l’historique : pas gardée');
+  assert.deepEqual((await a2.client.synchroniserPartiesIA({ parties: [], retirees: ['ia2'] })).completes, []);
+  assert.equal(await a.client.lirePartieIAFinie('ia2'), null);
+  assert.equal(await a.client.lirePartieIAEnCours(4), null);
+  assert.deepEqual(await a.client.ecrirePartieIAEnCours(4, '{"coups":10}', 5000), { ecrit: true });
+  assert.deepEqual(await a2.client.ecrirePartieIAEnCours(4, '{"coups":3}', 4000), { ecrit: false });
+  assert.deepEqual(await a2.client.lirePartieIAEnCours(4), { json: '{"coups":10}', date: 5000 });
+  assert.deepEqual(await a2.client.ecrirePartieIAEnCours(4, '{"coups":12}', 6000), { ecrit: true });
+  assert.deepEqual(await a.client.lirePartieIAEnCours(4), { json: '{"coups":12}', date: 6000 });
+  assert.equal(await a.client.lirePartieIAEnCours(3), null);
+  let ficheA = null;
+  const arretFiche = a.client.surAuth((j) => (ficheA = j));
+  await attendre(() => ficheA?.enCoursIA?.[4] === 6000, 10000, 'date de la partie en cours dans la fiche');
+  arretFiche();
 
   const { id, code } = await a.client.creerPartie({ nom: 'Émulateur', cinqAdverse: false });
   let invitations = null;
@@ -216,6 +242,52 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(updateDoc(doc(db(B), 'joueurs', B), { verrouille: false }));
   await assertSucceeds(updateDoc(doc(db(B), 'joueurs', B), { visible: true, icone: 'lapin' }));
 
+  // Historique contre l'IA : document privé du joueur, lui seul le lit et l'écrit, forme bornée.
+  const histo = (u, de = u) => doc(db(u), 'joueurs', de, 'prive', 'partiesIA');
+  const resume = { id: 'abc', date: 1000, nb: 4, gagne: true, gagnants: [0, 2], joueurs: [{ pseudo: 'Alice', ia: false, niveau: null }], donnes: 4, coups: 80, cinqAdverse: false };
+  await assertSucceeds(getDoc(histo(A))); // absent : lisible par son titulaire
+  await assertFails(setDoc(histo(A), { parties: [resume], retirees: [] })); // sans l'heure du serveur
+  await assertFails(setDoc(histo(A), { parties: [resume], retirees: [], majLe: serverTimestamp(), autre: 1 }));
+  await assertFails(setDoc(histo(A), { parties: 'x', retirees: [], majLe: serverTimestamp() }));
+  await assertFails(setDoc(histo(A), { parties: Array(301).fill(resume), retirees: [], majLe: serverTimestamp() }));
+  await assertFails(setDoc(doc(db(A), 'joueurs', A, 'prive', 'autre'), { parties: [], retirees: [], majLe: serverTimestamp() }));
+  await assertSucceeds(setDoc(histo(A), { parties: [resume], retirees: [], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(histo(A), { parties: [resume, { ...resume, id: 'def' }], retirees: ['xyz'], majLe: serverTimestamp() }));
+  await assertSucceeds(getDoc(histo(A)));
+  await assertFails(getDoc(histo(X, A))); // l'historique d'un autre
+  await assertFails(setDoc(histo(X, A), { parties: [], retirees: [], majLe: serverTimestamp() }));
+  await assertFails(deleteDoc(histo(A)));
+  await assertFails(getDocs(collection(db(A), 'joueurs', A, 'prive')));
+  await assertSucceeds(updateDoc(histo(A), { completes: ['abc'], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(histo(A), { completes: Array(13).fill('abc'), majLe: serverTimestamp() }));
+  // Parties gardées en entier (terminées, et en cours de chaque mode) : du texte JSON borné, privé lui aussi.
+  const prive = (u, nom, de = u) => doc(db(u), 'joueurs', de, 'prive', nom);
+  const entiere = { json: '{"partie":{}}', date: 1000, majLe: serverTimestamp() };
+  await assertSucceeds(setDoc(prive(A, 'finie_abc'), entiere));
+  await assertSucceeds(setDoc(prive(A, 'encours4'), entiere));
+  await assertSucceeds(setDoc(prive(A, 'encours3'), { ...entiere, date: 2000 }));
+  await assertFails(setDoc(prive(A, 'encours5'), entiere));
+  await assertFails(setDoc(prive(A, 'finie_'), entiere));
+  await assertFails(setDoc(prive(A, 'finie_a-b'), entiere));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, json: 'x'.repeat(1000001) }));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, json: { partie: 1 } }));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, date: 'hier' }));
+  await assertFails(setDoc(prive(A, 'encours4'), { json: '{}', date: 1 }));
+  await assertFails(setDoc(prive(A, 'encours4'), { ...entiere, autre: 1 }));
+  await assertSucceeds(getDoc(prive(A, 'encours4')));
+  await assertFails(getDoc(prive(X, 'encours4', A)));
+  await assertFails(getDoc(prive(X, 'finie_abc', A)));
+  await assertFails(setDoc(prive(X, 'encours4', A), entiere));
+  await assertFails(deleteDoc(prive(X, 'finie_abc', A)));
+  await assertFails(deleteDoc(prive(A, 'encours4')));
+  await assertSucceeds(deleteDoc(prive(A, 'finie_abc')));
+  // La fiche porte la date de la partie en cours de chaque mode, et rien d'autre à cet endroit.
+  await assertSucceeds(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: { 4: 1000 } }));
+  await assertSucceeds(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: { 3: 2000, 4: 1000 } }));
+  await assertFails(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: { 5: 1 } }));
+  await assertFails(updateDoc(doc(db(A), 'joueurs', A), { enCoursIA: 'x' }));
+  await assertFails(updateDoc(doc(db(X), 'joueurs', A), { enCoursIA: { 4: 9 } }));
+
   // Partie : création valide, puis tentatives.
   const id = 'ABCDEF';
   const base = {
@@ -252,7 +324,26 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'maitre' }], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { statut: 'encours', majLe: serverTimestamp() })); // lancer sans être hôte
-  await assertFails(deleteDoc(ref(B)));
+
+  // Salle d'attente ouverte à tous : elle se liste (50 au plus), la règle du 5 se change, la salle se supprime,
+  // par n'importe quel joueur connecté, même ni membre ni invité.
+  const D = 'david';
+  const salles = (u, ...bornes) => getDocs(query(collection(db(u), 'parties'), where('statut', '==', 'attente'), ...bornes));
+  await assertSucceeds(salles(D, limit(50)));
+  await assertFails(salles(D)); // sans borne
+  await assertFails(salles(D, limit(51)));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), where('statut', '==', 'encours'), limit(50))));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), limit(50))));
+  await assertSucceeds(updateDoc(ref(D), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(B), { reglages: { cinqAdverse: false }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, nbJoueurs: 3 }, majLe: serverTimestamp() })); // le mode reste figé
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: 'oui' }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, triche: 1 }, majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true }, nom: 'Autre', majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true } })); // sans l'heure du serveur
+  const annexe = 'ABCDEG';
+  await assertSucceeds(setDoc(doc(db(A), 'parties', annexe), { ...base, code: annexe }));
+  await assertSucceeds(deleteDoc(doc(db(D), 'parties', annexe))); // supprimée par un joueur qui n'y est pas
 
   // Lancement par le vrai client logique serait trop long à rejouer ici : on écrit le lancement à la main.
   const { distribuerCycle } = await import('../public/js/moteur/index.js');
@@ -263,6 +354,8 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   lancer.update(ref(A), { statut: 'encours', etat: etat0, historique: [], enAttente: [A, B, C], invites: [], majLe: serverTimestamp() });
   await assertSucceeds(lancer.commit());
   await assertFails(getDoc(ref(X))); // non-membre : partie en cours illisible
+  await assertFails(updateDoc(ref(A), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() })); // règle du 5 figée après le lancement
+  await assertFails(deleteDoc(ref(A))); // une partie lancée ne se supprime plus, même par l'hôte
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() })); // figé après le lancement
   await assertFails(getDocs(query(collection(db(X), 'parties'), where('uids', 'array-contains', A))));
   await assertSucceeds(getDocs(query(collection(db(A), 'parties'), where('uids', 'array-contains', A))));

@@ -1,7 +1,9 @@
-// Statistiques (route #/stats), sur le modèle de l'appli Scrabble : bilan contre l'IA par mode et par niveau,
-// dernières parties contre l'IA (à rouvrir pour les analyser), puis les parties en ligne terminées et le bilan avec
-// et contre chaque joueur. Les parties contre l'IA viennent de l'appareil (parties-finies.js), celles en ligne de la
-// veille de « Mes parties ».
+// Statistiques (route #/stats), sur le modèle de l'appli Scrabble : « Mes statistiques » en ligne (les totaux du
+// compte, les mêmes sur tous les appareils), le bilan avec et contre chaque joueur et les parties en ligne terminées,
+// puis le bilan contre l'IA par mode et par niveau et les dernières parties contre l'IA (à rouvrir pour les
+// analyser). Les parties contre l'IA viennent de l'appareil (parties-finies.js) et, avec un compte, de ses autres
+// appareils (synchro-ia.js : les résultats suivent tous, et les parties les plus récentes en entier, pour l'analyse) ;
+// celles en ligne viennent de la veille de « Mes parties », et les totaux en ligne de la fiche du joueur.
 // (Le fichier ne s'appelle pas « stats » : les bloqueurs de publicité refusent ce nom, voir tests/noms-fichiers.)
 
 import { h, remplacer, pluriel, ilYa } from './dom.js';
@@ -10,7 +12,8 @@ import { nomNiveau, niveauEnLettres, forceNiveau } from './niveaux.js';
 import { surVeille } from './veille.js';
 import { sauvegardeLocale } from './ecran-jeu.js';
 import { piCroix } from './pictos.js';
-import { lirePartiesFinies, enregistrerPartieFinie, supprimerPartieFinie, bilanContreIA, bilanEnLigne, niveauAdverse } from './parties-finies.js';
+import { lirePartiesFinies, enregistrerPartieFinie, supprimerPartieFinie, partiesDuCompte, bilanContreIA, bilanEnLigne, niveauAdverse } from './parties-finies.js';
+import { synchroniserPartiesIA } from './synchro-ia.js';
 
 const NOM_MODE = { 4: '2 contre 2', 3: '3 joueurs' };
 const pourcent = (n, total) => (total ? Math.round((n / total) * 100) + ' %' : '–');
@@ -18,13 +21,16 @@ const defaites = (l) => l.parties - l.victoires;
 /** « 2 contre 2 · ★★★★ » : le mode et la force des IA adverses. */
 const titreMode = (nb, niveau) => [NOM_MODE[nb], h('span', { class: 'sep' }, ' · '), h('span', { class: 'etoiles', 'aria-label': 'IA ' + niveauEnLettres(niveau) }, nomNiveau(niveau))];
 
-/** Les parties terminées encore posées dans la sauvegarde de chaque mode entrent dans l'historique. */
-export function rattraperPartiesFinies() {
+/** Les parties terminées encore posées dans la sauvegarde de chaque mode entrent dans l'historique (du compte `uid`). */
+export function rattraperPartiesFinies(uid = null) {
   for (const n of [4, 3]) {
     const sv = sauvegardeLocale(n);
-    if (sv?.partie?.etat?.phase === 'fini') enregistrerPartieFinie(sv, n);
+    if (sv?.partie?.etat?.phase === 'fini') enregistrerPartieFinie(sv, n, { uid });
   }
 }
+
+/** Analysable : ses coups sont sur l'appareil, ou gardés par le compte (partie jouée sur un autre appareil). */
+const analysable = (p) => !!(p.sauvegarde || p.auCompte);
 
 const tuiles = (...paires) => h('div', { class: 'stats' }, paires.map(([etiquette, valeur]) => h('div', { class: 'stat' }, h('div', { class: 'etiquette' }, etiquette), h('div', { class: 'valeur' }, valeur))));
 
@@ -33,7 +39,8 @@ export function afficher(racine, app) {
   let toutVoir = false;
 
   const blocIA = () => {
-    const parties = lirePartiesFinies();
+    // Connecté : les parties du compte, celles jouées sur ses autres appareils comprises.
+    const parties = partiesDuCompte(lirePartiesFinies(), app.joueur?.uid);
     const blocs = [h('h2', {}, 'Contre l’IA')];
     if (!parties.length) {
       blocs.push(h('div', { class: 'vide-etat' }, 'Aucune partie terminée contre l’IA pour l’instant. Elles apparaîtront ici, avec leur analyse.'));
@@ -80,14 +87,14 @@ export function afficher(racine, app) {
               'div',
               { class: 'principal' },
               h('div', { class: 'mot' }, titreMode(p.nb, niveauAdverse(p))),
-              h('div', { class: 'note' }, `${resultat ? resultat + ' · ' : ''}${details}${p.sauvegarde ? '' : ' · analyse non gardée'}`),
+              h('div', { class: 'note' }, `${resultat ? resultat + ' · ' : ''}${details}${p.ailleurs ? ' · jouée sur un autre appareil' : ''}${analysable(p) ? '' : ' · analyse non gardée'}`),
             ),
             h('span', { class: 'badge ' + (p.gagne ? 'ok' : 'neutre') }, p.gagne ? 'Gagnée' : 'Perdue'),
           ];
           return h(
             'div',
             { class: 'ligne-avec-action', 'data-finie': p.id },
-            p.sauvegarde
+            analysable(p)
               ? h('a', { class: 'ligne', href: '#/analyse/finie/' + encodeURIComponent(p.id), 'aria-label': 'Analyser cette partie' }, contenu)
               : h('div', { class: 'ligne', style: { cursor: 'default' } }, contenu),
             h(
@@ -98,9 +105,10 @@ export function afficher(racine, app) {
                 'aria-label': 'Retirer cette partie des statistiques',
                 'data-action': 'retirer',
                 onclick: () => {
-                  if (!confirm('Retirer cette partie de l’historique et des statistiques ?')) return;
+                  if (!confirm(app.joueur ? 'Retirer cette partie de l’historique et des statistiques, sur tous tes appareils ?' : 'Retirer cette partie de l’historique et des statistiques ?')) return;
                   supprimerPartieFinie(p.id);
                   dessiner();
+                  void synchroniserPartiesIA(app); // le compte la retire aussi : elle ne reviendra d'aucun appareil
                 },
               },
               piCroix(),
@@ -117,11 +125,14 @@ export function afficher(racine, app) {
 
   const blocEnLigne = () => {
     if (!app.enLigne()) return [];
-    const blocs = [h('h2', {}, 'En ligne')];
+    const blocs = [h('h2', {}, 'Mes statistiques en ligne')];
     if (!app.joueur) {
-      blocs.push(h('div', { class: 'vide-etat' }, 'Indique ton prénom dans « Mes parties » pour jouer en ligne : tes parties terminées apparaîtront ici.'));
+      blocs.push(h('div', { class: 'vide-etat' }, 'Indique ton prénom dans « Mes parties » pour jouer en ligne : tes statistiques et tes parties terminées apparaîtront ici.'));
       return blocs;
     }
+    // Totaux du compte : toutes les parties en ligne terminées, quel que soit l'appareil.
+    const st = app.joueur.stats || { jouees: 0, gagnees: 0 };
+    blocs.push(h('div', { 'data-stats': 'compte' }, tuiles(['Parties jouées', st.jouees], ['Gagnées', st.gagnees], ['Réussite', pourcent(st.gagnees, st.jouees)])));
     if (!veille.pret) {
       blocs.push(h('div', { class: 'vide-etat' }, 'Chargement…'));
       return blocs;
@@ -132,7 +143,6 @@ export function afficher(racine, app) {
       return blocs;
     }
     const b = bilanEnLigne(finies);
-    blocs.push(tuiles(['Parties', b.parties], ['Victoires', b.victoires], ['Réussite', pourcent(b.victoires, b.parties)]));
     if (b.joueurs.length) {
       blocs.push(
         h('h2', {}, 'Avec et contre chaque joueur'),
@@ -197,14 +207,25 @@ export function afficher(racine, app) {
   };
 
   function dessiner() {
-    remplacer(racine, h('div', { class: 'contenu bilan' }, entete('Statistiques'), blocIA(), blocEnLigne()));
+    // Connecté : ses statistiques en ligne d'abord ; sinon le bilan contre l'IA, seul à avoir quelque chose à montrer.
+    const blocs = app.joueur ? [blocEnLigne(), blocIA()] : [blocIA(), blocEnLigne()];
+    remplacer(racine, h('div', { class: 'contenu bilan' }, entete('Statistiques'), blocs));
   }
 
-  rattraperPartiesFinies();
+  rattraperPartiesFinies(app.joueur?.uid);
   dessiner();
+  let ouvert = true;
+  // Historique contre l'IA du compte : on verse les parties de cet appareil, on récupère celles des autres.
+  void synchroniserPartiesIA(app).then((change) => change && ouvert && dessiner());
   const arret = surVeille((v) => {
     veille = v;
     dessiner();
   });
-  return () => arret();
+  // La fiche du joueur change quand une partie terminée est comptée : les totaux suivent.
+  app.surJoueur = () => dessiner();
+  return () => {
+    ouvert = false;
+    arret();
+    app.surJoueur = null;
+  };
 }

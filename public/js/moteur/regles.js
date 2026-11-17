@@ -13,6 +13,9 @@
 //   { t: 'defausse', carte }                       aucune carte jouable : défausse
 //
 // Choix d'interprétation (cahier des charges) :
+//  - Plateau : 18 cases d'une case de départ à la suivante ; les parties commencées sur
+//    l'ancien plateau (16 cases, etat.v = 1) s'y terminent. Chaque fonction qui reçoit un état
+//    vise d'abord son plateau (voir plateau.js).
 //  - L'allée d'arrivée s'ouvre 3 cases avant la case de départ du joueur (case d'entrée,
 //    voir plateau.js). Un pion qui passe par sa case d'entrée, ou qui s'y trouve, peut tourner
 //    dans l'allée ; ce n'est jamais obligatoire. Tout est affaire de position : un pion sorti
@@ -26,7 +29,7 @@
 //    servir aux pions du partenaire qu'une fois son propre quatrième pion rentré.
 //
 // Mode à 3 joueurs (reglages.nbJoueurs = 3, décisions du propriétaire) :
-//  - circuit de 48 cases, 12 pions, même géométrie par siège (voir plateau.js) ;
+//  - circuit de 54 cases, 12 pions, même géométrie par siège (voir plateau.js) ;
 //  - chacun pour soi : pas de partenaire (le 7 ne sert qu'à ses propres pions, un joueur ne
 //    joue jamais pour un autre), le valet échange un de ses pions avec celui de n'importe quel
 //    autre joueur, le « 5 adverse » vise n'importe quel autre joueur ;
@@ -49,7 +52,7 @@
 // nombre se déduit de cartesRestantes (voir cartesDeLaDonne).
 
 import { rang, estJoker, estCarteDuJeu, tailleDonne, longueurCycle, RANGS } from './cartes.js';
-import { BASE, ALLEE, LONGUEUR_ALLEE, caseDepart, caseEntree, equipe } from './plateau.js';
+import { BASE, ALLEE, LONGUEUR_ALLEE, COTE, caseDepart, caseEntree, equipe, viser, viserPlateau, coteDesNouvellesParties, versionDuPlateau, COTE_ACTUEL, COTE_ANCIEN } from './plateau.js';
 
 const PAS_PAR_RANG = {
   A: [1, 11],
@@ -66,14 +69,18 @@ const PAS_PAR_RANG = {
 
 /**
  * État initial d'une partie (phase d'échange de la première donne).
- * @param {Object} [reglages]  { cinqAdverse, nbJoueurs } ; nbJoueurs : 4 (défaut) ou 3.
+ * @param {Object} [reglages]  { cinqAdverse, nbJoueurs, plateau } ; nbJoueurs : 4 (défaut) ou 3 ;
+ *   plateau : 18 ou 16 cases entre deux cases de départ (défaut : celui des nouvelles parties, 18).
+ *   Le plateau ne va pas dans etat.reglages : il se lit dans etat.v (1 = 16 cases, 2 = 18).
  *   À 4, l'état est exactement celui d'avant le mode à 3 (reglages = { cinqAdverse }, sans
  *   champ `jokers`) : les règles Firestore du jeu à 4 n'acceptent aucun champ de plus.
  */
 export function etatInitial(reglages = {}) {
   const n = reglages && reglages.nbJoueurs === 3 ? 3 : 4;
+  const demande = reglages && reglages.plateau;
+  const cote = viserPlateau(demande === COTE_ANCIEN || demande === COTE_ACTUEL ? demande : coteDesNouvellesParties());
   const etat = {
-    v: 1,
+    v: versionDuPlateau(cote),
     reglages: { cinqAdverse: !!(reglages && reglages.cinqAdverse) },
     pions: Array(4 * n).fill(BASE), // position des 16 pions (12 à 3 joueurs)
     phase: 'echange', // 'echange' | 'jeu' | 'fini'
@@ -134,9 +141,9 @@ export function aFini(etat, siege) {
   return fini(etat.pions, siege);
 }
 
-// Le nombre de joueurs se lit sur le plateau : 4 pions par joueur, 16 cases par joueur.
+// Le nombre de joueurs se lit sur le plateau : 4 pions par joueur, COTE cases par joueur (plateau visé).
 function casesDe(pions) {
-  return pions.length * 4;
+  return (pions.length >> 2) * COTE;
 }
 
 /** Couleur jouée par `siege` : la sienne, ou celle du partenaire s'il a fini (jeu à 4 seulement). */
@@ -160,11 +167,12 @@ export function pionSur(etat, cellule) {
 }
 
 function protege(pions, q) {
-  return pions[q] === (q >> 2) * 16;
+  return pions[q] === (q >> 2) * COTE;
 }
 
 /** Pion sur la case de départ de sa propre couleur : inviolable. */
 export function estProtege(etat, pion) {
+  viser(etat);
   return protege(etat.pions, pion);
 }
 
@@ -533,6 +541,7 @@ function septCompletable(pions, siege, reste, memo) {
  *          null si les étapes déjà choisies sont illégales.
  */
 export function etapesSeptPossibles(etat, siege, etapes = []) {
+  viser(etat);
   if (!Array.isArray(etapes)) return null;
   let pions = etat.pions;
   let reste = 7;
@@ -566,6 +575,7 @@ export function etapesSeptPossibles(etat, siege, etapes = []) {
  * Joker (jeu à 3) : union des coups de chaque rang copiable, chacun avec `comme`.
  */
 export function coupsLegaux(etat, siege, carte) {
+  viser(etat);
   if (!estJoker(carte)) return coupsRang(etat, siege, carte, rang(carte));
   const coups = [];
   for (const r of rangsCopiables(etat)) {
@@ -623,11 +633,13 @@ function coupsRang(etat, siege, carte, r) {
 
 /** La carte offre-t-elle au moins un coup légal ? */
 export function carteJouable(etat, siege, carte) {
+  viser(etat);
   return coupsLegaux(etat, siege, carte).length > 0;
 }
 
 /** Le joueur peut-il jouer au moins une carte de sa main ? (sinon il doit défausser) */
 export function mainJouable(etat, siege, main) {
+  viser(etat);
   const vus = new Set();
   for (const carte of main) {
     const r = rang(carte);
@@ -644,6 +656,7 @@ export function mainJouable(etat, siege, main) {
  * seule la première de chaque rang est développée.
  */
 export function coupsLegauxMain(etat, siege, main) {
+  viser(etat);
   const coups = [];
   const vus = new Set();
   for (const carte of main) {
@@ -673,6 +686,7 @@ export function coupsLegauxMain(etat, siege, main) {
  * @returns {string|null} message d'erreur, ou null si le coup est légal
  */
 export function validerCoup(etat, siege, coup, main) {
+  viser(etat);
   if (etat.phase !== 'jeu') return "La partie n'est pas en phase de jeu.";
   if (etat.tour !== siege) return "Ce n'est pas à ce joueur de jouer.";
   if (!coup || !estCarteDuJeu(coup.carte, nombreJoueurs(etat))) return 'Coup mal formé.';
@@ -686,6 +700,7 @@ export function validerCoup(etat, siege, coup, main) {
 
 /** Aperçu d'un coup sans l'appliquer : plateau obtenu, captures et déplacements (ou null). */
 export function apercuCoup(etat, siege, coup) {
+  viser(etat);
   if (coup && coup.t === 'defausse') {
     return { pions: etat.pions.slice(), captures: [], deplacements: [] };
   }
@@ -740,6 +755,7 @@ function equipeGagnante(pions) {
  * Lève une erreur si le coup est illégal.
  */
 export function appliquerCoup(etat, siege, coup, main) {
+  viser(etat);
   const erreur = validerCoup(etat, siege, coup, main);
   if (erreur) throw new Error(erreur);
   const res =

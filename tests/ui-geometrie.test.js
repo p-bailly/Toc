@@ -1,3 +1,4 @@
+import './plateau-16.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { caseCircuit, caseAllee, emplacementBase, positionPion, chemin, coteDe, boiteEtiquette, versSvg } from '../public/js/ui/geometrie.js';

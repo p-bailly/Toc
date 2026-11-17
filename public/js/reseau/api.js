@@ -12,7 +12,9 @@
 // Le nom n'est pas secret : qui le connaît ouvre le compte (voir docs/firebase.md).
 //
 // Types :
-//   Joueur      = { uid, pseudo, icone, visible, verrouille, stats: { jouees, gagnees } }
+//   Joueur      = { uid, pseudo, icone, visible, verrouille, stats: { jouees, gagnees }, enCoursIA: { 3, 4 } }
+//                 enCoursIA[nb] : date (ms) de la partie contre l'IA en cours que le compte garde pour ce
+//                 mode (0 : aucune), voir ecrirePartieIAEnCours ;
 //                 icone : identifiant court d'un emoji du catalogue de l'interface, ou null ;
 //                 visible : accepte d'être trouvé par les autres joueurs ;
 //                 verrouille : pseudo imposé par l'administrateur (non modifiable)
@@ -24,6 +26,7 @@
 //     statut,            'attente' | 'encours' | 'finie'
 //     hote,              uid du créateur
 //     reglages,          { cinqAdverse } à 4 joueurs, { cinqAdverse, nbJoueurs: 3 } à 3
+//                        (cinqAdverse se change en salle d'attente, voir reglerCinqAdverse)
 //     nbJoueurs,         3 ou 4
 //     joueurs,           Place[nbJoueurs], indexé par siège (à 4 : 0 et 2 contre 1 et 3 ;
 //                        à 3 : chacun pour soi)
@@ -90,6 +93,51 @@ export async function modifierProfil(changements) {
   return client.modifierProfil(changements);
 }
 
+/**
+ * Parties contre l'IA : elles se jouent hors ligne, sur l'appareil ; le compte en garde l'historique pour qu'il
+ * suive d'un appareil à l'autre. Verse celui de cet appareil dans celui du compte et renvoie le tout, fusionné.
+ *   local = { parties: [RésuméIA…], retirees: [id…] } → { parties: [RésuméIA…], retirees: [id…] }
+ *   RésuméIA = { id, date (ms), nb, gagne, gagnants, joueurs: [{ pseudo, ia, niveau }], donnes, coups, cinqAdverse }
+ *   retirees : parties retirées de l'historique (elles ne reviennent sur aucun appareil).
+ * Le résultat a aussi `completes: [id…]` : les parties que le compte garde en entier (ecrirePartieIAFinie).
+ */
+export async function synchroniserPartiesIA(local) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.synchroniserPartiesIA(local);
+}
+
+/**
+ * Garde en entier une partie contre l'IA terminée (json : sa sauvegarde { nom, joueurs, partie } en texte), pour
+ * l'analyser depuis un autre appareil. La partie doit être dans l'historique du compte ; seules les 12 plus
+ * récentes sont gardées. → { completes: [id…] }
+ */
+export async function ecrirePartieIAFinie(id, json) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.ecrirePartieIAFinie(id, json);
+}
+
+/** Sauvegarde (texte JSON) d'une partie terminée gardée en entier par le compte, ou null. */
+export async function lirePartieIAFinie(id) {
+  if (!reseauDisponible()) return null;
+  return client.lirePartieIAFinie(id);
+}
+
+/**
+ * Garde la partie contre l'IA en cours du mode nb (3 ou 4) : json = sa sauvegarde en texte, date = sa dernière
+ * modification sur l'appareil (ms). Une seule par mode, la plus récemment jouée : plus ancienne que celle du
+ * compte, elle n'est pas écrite. La date arrive dans Joueur.enCoursIA sur tous les appareils. → { ecrit }
+ */
+export async function ecrirePartieIAEnCours(nb, json, date) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.ecrirePartieIAEnCours(nb, json, date);
+}
+
+/** Partie contre l'IA en cours gardée par le compte pour ce mode → { json, date } | null */
+export async function lirePartieIAEnCours(nb) {
+  if (!reseauDisponible()) return null;
+  return client.lirePartieIAEnCours(nb);
+}
+
 /** Fiche publique d'un joueur (avec cache) → { uid, pseudo, icone } | null */
 export async function lireJoueur(uid) {
   if (!reseauDisponible()) return null;
@@ -143,7 +191,23 @@ export function surPartie(id, cb) {
   return client.surPartie(id, cb);
 }
 
-/** Change de siège dans la salle d'attente (le siège doit être libre). */
+/**
+ * Écoute les salles d'attente ouvertes (toutes les parties pas encore lancées, les miennes comprises ; 50 au
+ * plus), de la plus récente à la plus ancienne : une salle d'attente est ouverte à tous, invité ou non.
+ * cb(ResumePartie[]). Renvoie le désabonnement.
+ */
+export function surSallesAttente(cb) {
+  if (!reseauDisponible()) {
+    cb([]);
+    return () => {};
+  }
+  return client.surSallesAttente(cb);
+}
+
+/**
+ * Salle d'attente : s'assoit sur ce siège (qui doit être libre). Qui n'est pas encore dans la partie y entre,
+ * invité ou non ; qui y est déjà change de siège.
+ */
 export async function choisirSiege(id, siege) {
   if (!reseauDisponible()) return nonConfigure();
   return client.choisirSiege(id, siege);
@@ -166,6 +230,18 @@ export async function changerNiveauIA(id, siege, niveau) {
 export async function retirerIA(id, siege) {
   if (!reseauDisponible()) return nonConfigure();
   return client.retirerIA(id, siege);
+}
+
+/** Salle d'attente : active ou désactive la règle du « 5 adverse ». Ouvert à tout joueur connecté. */
+export async function reglerCinqAdverse(id, actif) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.reglerCinqAdverse(id, actif);
+}
+
+/** Supprime une salle d'attente (partie pas encore lancée). Ouvert à tout joueur connecté. */
+export async function supprimerPartie(id) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.supprimerPartie(id);
 }
 
 /** Quitte une partie en attente (si l'hôte quitte, la partie est supprimée). */

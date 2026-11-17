@@ -34,6 +34,7 @@
   --bois-cadre: #7a4c22;
   --bois-filet: #b98a52;
   --bois-texte: #4a2c10;
+  --crayon: #2e3644;
   --trou: #5b3a1b;
   --trou-centre: #321f0f;
   --trou-bord: #3c240e;
@@ -85,6 +86,7 @@
   --bois-cadre: #4a2e14;
   --bois-filet: #7d5d3a;
   --bois-texte: #2a180a;
+  --crayon: #1c2230;
   --trou: #4a2f16;
   --trou-centre: #24160a;
   --trou-bord: #2a180a;
@@ -883,33 +885,6 @@ details > .reglage:first-of-type {
   letter-spacing: 0.18em;
   font-variant-numeric: tabular-nums;
   color: var(--lien);
-}
-
-/* ─── Règles ────────────────────────────────────────────────────────────── */
-.intro {
-  margin: 0;
-  line-height: 1.5;
-}
-.regles ul {
-  margin: 0;
-  padding-left: 1.2em;
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.valeurs {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-}
-.valeur-carte {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  line-height: 1.4;
-  font-size: calc(14px * var(--texte));
 }
 
 /* ─── Cartes à jouer ────────────────────────────────────────────────────── */
@@ -2100,6 +2075,44 @@ details > .reglage:first-of-type {
   stroke-opacity: 0.55;
   stroke-width: 0.5;
 }
+/* Dessins des coins du tapis (coloriages.js), coloriés de la couleur du joueur (--couleur, posée par plateau.js) :
+   un fond léger et des hachures de crayon de couleur, quelques zones pleines, puis deux passages de crayon noir. */
+.plateau-toc .coloriage path {
+  pointer-events: none;
+}
+.plateau-toc .coloriage .aplat {
+  fill: var(--couleur);
+  opacity: 0.26;
+}
+.plateau-toc .coloriage .hachures {
+  opacity: 0.8;
+}
+.plateau-toc .hachure {
+  stroke-width: 0.85;
+}
+.plateau-toc .coloriage .plein {
+  fill: var(--couleur);
+  opacity: 0.72;
+}
+.plateau-toc .coloriage .blanc {
+  fill: #fff;
+  opacity: 0.85;
+}
+.plateau-toc .coloriage .trait,
+.plateau-toc .coloriage .reprise {
+  fill: none;
+  stroke: var(--crayon);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.plateau-toc .coloriage .trait {
+  stroke-width: 0.95;
+  opacity: 0.82;
+}
+.plateau-toc .coloriage .reprise {
+  stroke-width: 0.62;
+  opacity: 0.42;
+}
 /* Cases : trous percés dans le bois */
 .plateau-toc .trou,
 .plateau-toc .trou.repere,
@@ -2439,14 +2452,9 @@ details > .reglage:first-of-type {
   }
 }
 
-/* Page Règles : l'infographie occupe toute la largeur (pas de colonnes de texte), les règles détaillées sont repliées dessous */
+/* Page Règles : l'infographie occupe toute la largeur (pas de colonnes de texte) */
 .contenu.pleine > .regles-info {
   min-width: 0;
-}
-.regles-detail .regles-texte {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 @media (min-width: 900px) {
   .appli:not(.en-jeu) .contenu.pleine {

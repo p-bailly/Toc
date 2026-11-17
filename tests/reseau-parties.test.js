@@ -63,6 +63,66 @@ test("salle d'attente : créer, rejoindre, sièges, IA, quitter", async () => {
   assert.equal(serveur.get(`parties/${id}`), null);
 });
 
+test("salle d'attente ouverte à tous : s'asseoir sans invitation, règle du 5, suppression, liste des salles", async () => {
+  const serveur = new FauxServeur();
+  const [a, b, c, d] = await quatre(serveur);
+  let salles = null;
+  const arret = d.client.surSallesAttente((l) => (salles = l));
+  const { id } = await a.client.creerPartie({ nom: 'Ouverte' });
+  // David n'est ni membre ni invité : il voit pourtant la salle.
+  await attendre(() => salles?.length === 1);
+  assert.equal(salles[0].id, id);
+  assert.equal(salles[0].monSiege, -1);
+
+  // Bruno s'assoit sur le siège de son choix sans code ni invitation ; Chloé, invitée, aussi (son invitation tombe).
+  await a.client.inviter(id, c.joueur.uid);
+  await b.client.choisirSiege(id, 2);
+  await c.client.choisirSiege(id, 3);
+  await assert.rejects(d.client.choisirSiege(id, 2), /déjà pris/);
+  let p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.joueurs.map((x) => x && x.uid), [a.joueur.uid, null, b.joueur.uid, c.joueur.uid]);
+  assert.deepEqual(p.uids, [a.joueur.uid, b.joueur.uid, c.joueur.uid]);
+  assert.deepEqual(p.invites, []);
+  // Changer de siège ne touche pas à la liste des membres.
+  await b.client.choisirSiege(id, 1);
+  p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.joueurs.map((x) => x && x.uid), [a.joueur.uid, b.joueur.uid, null, c.joueur.uid]);
+  assert.deepEqual(p.uids, [a.joueur.uid, b.joueur.uid, c.joueur.uid]);
+
+  // La règle du 5 : n'importe qui l'active ou la désactive (même sans être assis), le reste des réglages ne bouge pas.
+  await d.client.reglerCinqAdverse(id, true);
+  assert.deepEqual(serveur.get(`parties/${id}`).reglages, { cinqAdverse: true });
+  await attendre(() => salles[0]?.reglages.cinqAdverse === true);
+  await b.client.reglerCinqAdverse(id, false);
+  await b.client.reglerCinqAdverse(id, false); // déjà désactivée : sans effet
+  assert.deepEqual(serveur.get(`parties/${id}`).reglages, { cinqAdverse: false });
+  const trio = await a.client.creerPartie({ nom: 'Trio', nbJoueurs: 3 });
+  await b.client.reglerCinqAdverse(trio.id, true);
+  assert.deepEqual(serveur.get(`parties/${trio.id}`).reglages, { cinqAdverse: true, nbJoueurs: 3 });
+  await attendre(() => salles.length === 2);
+
+  // Supprimer : n'importe qui, tant que la partie n'est pas lancée.
+  await d.client.supprimerPartie(trio.id);
+  assert.equal(serveur.get(`parties/${trio.id}`), null);
+  await d.client.supprimerPartie(trio.id); // déjà supprimée : sans effet
+  await assert.rejects(d.client.reglerCinqAdverse(trio.id, true), /n'existe plus/);
+  await attendre(() => salles.length === 1);
+
+  // Une fois lancée, la partie garde la règle choisie ; elle quitte la liste et ne se touche plus.
+  await d.client.reglerCinqAdverse(id, true);
+  await a.client.ajouterIA(id, 2);
+  await a.client.lancerPartie(id);
+  p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.etat.reglages, { cinqAdverse: true });
+  await attendre(() => salles.length === 0);
+  await assert.rejects(b.client.reglerCinqAdverse(id, false), /commencé/);
+  await assert.rejects(b.client.supprimerPartie(id), /commencé/);
+  await assert.rejects(d.client.supprimerPartie(id), /commencé/); // non-membre : la partie ne se lit même plus
+  await assert.rejects(d.client.choisirSiege(id, 0), /commencé/);
+  assert.equal(serveur.get(`parties/${id}`).statut, 'encours');
+  arret();
+});
+
 test('surMesParties, surPartie et invitations directes', async () => {
   const serveur = new FauxServeur();
   const [a, b, c] = await quatre(serveur);
