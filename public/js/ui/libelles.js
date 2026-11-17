@@ -46,6 +46,30 @@ export function trierMain(main) {
   return main.slice().sort((a, b) => ordre(a) - ordre(b) || couleurCarte(a).localeCompare(couleurCarte(b)));
 }
 
+/**
+ * Main dans l'ordre choisi par le joueur. `ordre` : ses cartes telles qu'il les a rangées (certaines ont pu être
+ * jouées depuis). Les cartes rangées gardent leur ordre ; les nouvelles (carte reçue, nouvelle donne) viennent
+ * après, triées. Sans ordre, ou si plus aucune carte rangée n'est en main : la main triée.
+ */
+export function ordonnerMain(main, ordre) {
+  const reste = main.slice();
+  const rangees = [];
+  for (const c of ordre || []) {
+    const i = reste.indexOf(c);
+    if (i >= 0) rangees.push(reste.splice(i, 1)[0]);
+  }
+  return rangees.length ? rangees.concat(trierMain(reste)) : trierMain(main);
+}
+
+/** La liste, avec l'élément de la place `de` déplacé à la place `vers` (places bornées à la liste). */
+export function deplacer(liste, de, vers) {
+  const copie = liste.slice();
+  if (de < 0 || de >= copie.length) return copie;
+  const [element] = copie.splice(de, 1);
+  copie.splice(Math.max(0, Math.min(copie.length, vers)), 0, element);
+  return copie;
+}
+
 const nomDe = (joueurs, siege) => joueurs?.[siege]?.pseudo || `Joueur ${siege + 1}`;
 
 /** « 2 pions de Léa », « le pion de Léa », pour une liste de pions capturés. */
@@ -118,6 +142,25 @@ export function ligneJournal(entree, joueurs, siegeLocal = -1) {
   let texte = `${qui} ${joueV} ${joue} : ${decrireAction(coup, siege, joueurs)}`;
   if (captures.length) texte += ` et renvoie ${decrireCaptures(captures, joueurs, siege, siegeLocal)} à la base`;
   return texte + '.';
+}
+
+/**
+ * Les morceaux d'une entrée du journal, pour une présentation en colonnes (la carte est dessinée à côté) :
+ * { qui, action, prises, defausse }. Ex. { qui: 'Léa', action: 'Sort un pion', prises: '' } ;
+ * { qui: 'Toi', action: 'Fractionne le 7 (3 + 4)', prises: 'Renvoie un pion de Max à la base' }.
+ */
+export function detailJournal(entree, joueurs, siegeLocal = -1) {
+  const { siege, coup, captures = [] } = entree;
+  const qui = siege === siegeLocal ? 'Toi' : nomDe(joueurs, siege);
+  if (coup.t === 'defausse') return { qui, action: 'Défausse (aucune carte jouable)', prises: '', defausse: true };
+  const action = decrireAction(coup, siege, joueurs);
+  const comme = estJoker(coup.carte) ? `Joker joué comme ${rangAvecArticle(coup.comme)} : ` : '';
+  return {
+    qui,
+    action: comme ? comme + action : action.charAt(0).toUpperCase() + action.slice(1),
+    prises: captures.length ? `Renvoie ${decrireCaptures(captures, joueurs, siege, siegeLocal)} à la base` : '',
+    defausse: false,
+  };
 }
 
 /** « l’As », « le 7 », « la Dame ». */

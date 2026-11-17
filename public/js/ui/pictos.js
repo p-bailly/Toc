@@ -68,3 +68,19 @@ export const piConseil = (t = 22) =>
     ['path', { d: 'M9 18h6M10 21h4' }],
     ['path', { d: 'M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3Z' }],
   ]);
+/** Revoir les coups : une flèche qui remonte le temps. */
+export const piRevoir = (t = 22) => picto(t, [['path', { d: 'M11 6 5 12l6 6M19 6l-6 6 6 6' }]], 2.2);
+export const piPrecedent = (t = 18) => picto(t, [['path', { d: 'm15 18-6-6 6-6' }]], 2.4);
+export const piSuivant = (t = 18) => picto(t, [['path', { d: 'm9 6 6 6-6 6' }]], 2.4);
+/** Carte reçue : un cadeau. */
+export const piCadeau = (t = 14) =>
+  picto(t, [
+    ['rect', { x: 3, y: 8, width: 18, height: 4, rx: 1 }],
+    ['path', { d: 'M5 12v8h14v-8M12 8v12M12 8c-1.5-4-6-4-5.5-1.2C6.9 8 12 8 12 8Zm0 0c1.5-4 6-4 5.5-1.2C17.1 8 12 8 12 8Z' }],
+  ], 2);
+/** Agrandir le plateau : une loupe (avec un « + », ou un « − » pour revenir). */
+export const piLoupe = (t = 18, moins = false) =>
+  picto(t, [
+    ['circle', { cx: 10.5, cy: 10.5, r: 6.5 }],
+    ['path', { d: moins ? 'm20 20-4.6-4.6M7.8 10.5h5.4' : 'm20 20-4.6-4.6M7.8 10.5h5.4M10.5 7.8v5.4' }],
+  ], 2.2);

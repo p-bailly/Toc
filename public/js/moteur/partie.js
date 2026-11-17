@@ -6,7 +6,7 @@
 // alors 3 éléments, le cycle compte 4 donnes (5-4-4-5, 54 cartes) et chaque carte donnée va au
 // voisin désigné par destinataireDon(donne, siege, 3) (plateau.js).
 
-import { distribuerCycle, longueurCycle } from './cartes.js';
+import { distribuerCycle, distribuerPremierCycle, longueurCycle } from './cartes.js';
 import { destinataireDon } from './plateau.js';
 import { etatInitial, appliquerCoup, marquerEchange, nombreJoueurs } from './regles.js';
 
@@ -32,7 +32,8 @@ function destinataires(donne, n) {
 export function nouvellePartie(reglages = {}, rng = Math.random) {
   const etat = etatInitial(reglages);
   const n = nombreJoueurs(etat);
-  const cycle = distribuerCycle(rng, n);
+  // Première donne de la partie : distribution un peu lissée (voir distribuerPremierCycle).
+  const cycle = distribuerPremierCycle(rng, n);
   return {
     etat,
     mains: cycle[0].map((m) => m.slice()),

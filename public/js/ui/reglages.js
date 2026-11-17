@@ -18,17 +18,42 @@ export const TAILLES = [
 ];
 
 /**
- * Vitesse du jeu : rythme des animations (ms par case, plafond d'un déplacement, saut direct, trajet de la carte),
- * temps de lecture après le coup d'un autre joueur, et délai des IA de l'entraînement.
+ * Vitesse du jeu : un curseur de 0 (très lente) à 100 (rapide), par pas de 5. Elle règle le rythme des animations
+ * (ms par case, plafond d'un déplacement, saut direct, trajet de la carte), le temps de lecture après le coup d'un
+ * autre joueur et le délai des IA de l'entraînement : chaque durée glisse de sa valeur lente à sa valeur rapide,
+ * en proportion (échelle géométrique : un cran change toujours la vitesse du même rapport).
  */
-export const VITESSES = [
-  { vitesse: 'posee', nom: 'Posée', pas: 150, max: 1150, saut: 460, carte: 500, lecture: 750, delaiIA: 1300, avantAuto: 1300 },
-  { vitesse: 'normale', nom: 'Normale', pas: 110, max: 1000, saut: 360, carte: 380, lecture: 550, delaiIA: 900, avantAuto: 1000 },
-  { vitesse: 'rapide', nom: 'Rapide', pas: 55, max: 550, saut: 220, carte: 230, lecture: 220, delaiIA: 450, avantAuto: 700 },
-];
+export const VITESSE_MIN = 0;
+export const VITESSE_MAX = 100;
+export const VITESSE_PAS = 5;
+/** Par défaut : lente, pour suivre chaque coup des yeux. */
+export const VITESSE_DEFAUT = 25;
+const RYTHME_LENT = { pas: 300, max: 2300, saut: 920, carte: 1000, lecture: 1500, delaiIA: 2600, avantAuto: 2200 };
+const RYTHME_RAPIDE = { pas: 55, max: 550, saut: 220, carte: 230, lecture: 220, delaiIA: 450, avantAuto: 700 };
+/** Les trois vitesses d'avant le curseur ; « posée », la plus lente d'alors, devient la nouvelle vitesse par défaut. */
+const ANCIENNES_VITESSES = { posee: VITESSE_DEFAUT, normale: 60, rapide: 100 };
+
+/** Une vitesse du curseur (nombre entre 0 et 100, au pas près) d'après une valeur enregistrée, même ancienne ou abîmée. */
+export function vitesseValide(v) {
+  if (typeof v === 'string' && v in ANCIENNES_VITESSES) return ANCIENNES_VITESSES[v];
+  if (typeof v !== 'number' || !Number.isFinite(v)) return VITESSE_DEFAUT;
+  return Math.min(VITESSE_MAX, Math.max(VITESSE_MIN, Math.round(v / VITESSE_PAS) * VITESSE_PAS));
+}
+
+/** Les durées (ms) d'une vitesse du curseur : { pas, max, saut, carte, lecture, delaiIA, avantAuto }. */
+export function rythme(vitesse) {
+  const t = (vitesseValide(vitesse) - VITESSE_MIN) / (VITESSE_MAX - VITESSE_MIN);
+  return Object.fromEntries(Object.keys(RYTHME_LENT).map((cle) => [cle, Math.round(RYTHME_LENT[cle] * (RYTHME_RAPIDE[cle] / RYTHME_LENT[cle]) ** t)]));
+}
+
+/** Nom d'une vitesse du curseur, affiché à côté de lui. */
+export function nomVitesse(vitesse) {
+  const v = vitesseValide(vitesse);
+  return v < 20 ? 'Très lente' : v < 40 ? 'Lente' : v < 60 ? 'Posée' : v < 85 ? 'Normale' : 'Rapide';
+}
+
 /** Rythme des essais automatisés (URL avec « rapide ») : presque instantané. */
-export const VITESSE_ESSAIS = { vitesse: 'essais', nom: 'Essais', pas: 4, max: 40, saut: 15, carte: 15, lecture: 10, delaiIA: 40, avantAuto: 60 };
-export const rythme = (id) => VITESSES.find((v) => v.vitesse === id) || VITESSES[0];
+export const VITESSE_ESSAIS = { pas: 4, max: 40, saut: 15, carte: 15, lecture: 10, delaiIA: 40, avantAuto: 60 };
 
 const CLE = 'toc.reglages';
 const DEFAUT = {
@@ -43,8 +68,8 @@ const DEFAUT = {
   confirmerCoup: false,
   /** Animer les déplacements des pions. */
   animations: true,
-  /** Rythme de présentation des coups des autres joueurs : 'posee' (défaut), 'normale' ou 'rapide'. */
-  vitesse: 'posee',
+  /** Vitesse du jeu : curseur de 0 (très lente) à 100 (rapide), voir rythme(). */
+  vitesse: VITESSE_DEFAUT,
   /** Jouer tout seul le seul coup possible (après l'avoir montré). */
   coupUniqueAuto: true,
   /** Conseils de l'IA (entraînement et analyse de fin de partie) : désactivés par défaut. */
@@ -68,7 +93,7 @@ export function lireReglages() {
     notifFin: booleen('notifFin'),
     confirmerCoup: booleen('confirmerCoup'),
     animations: booleen('animations'),
-    vitesse: VITESSES.some((v) => v.vitesse === r.vitesse) ? r.vitesse : DEFAUT.vitesse,
+    vitesse: 'vitesse' in r ? vitesseValide(r.vitesse) : DEFAUT.vitesse,
     coupUniqueAuto: booleen('coupUniqueAuto'),
     conseilsIA: booleen('conseilsIA'),
     commenterCoups: booleen('commenterCoups'),

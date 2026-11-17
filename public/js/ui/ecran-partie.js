@@ -7,12 +7,13 @@
 // invitations et le lancement.
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
-import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille, interrupteur } from './composants.js';
+import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille, interrupteur, choixCouleur } from './composants.js';
 import { nomNiveau, niveauValide, niveauEnLigne, ecrireNiveauEnLigne, listeNiveaux } from './niveaux.js';
 import { monterJeu } from './vue-jeu.js';
 import { definirPartieOuverte } from './veille.js';
 import { piPartager, piPlus } from './pictos.js';
-import { couleurSiege } from './couleurs.js';
+import { couleurSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie, couleurPreferee, retenirCouleur } from './couleurs.js';
+import { couleursIndisponibles } from '../palette.js';
 import { android } from './android.js';
 
 export function afficher(racine, app, { reste }) {
@@ -31,6 +32,8 @@ export function afficher(racine, app, { reste }) {
   let joueursConnus = null; // liste des joueurs qu'on peut inviter
   let erreurAttente = '';
   let occupe = false;
+  // Couleur préférée déjà proposée au serveur dans cette salle (un seul essai automatique).
+  let couleurTentee = false;
   // Règle du 5 : valeur que je viens de demander, affichée en attendant que la salle la confirme.
   let cinqVoulu = null;
   let cinqEnvoye = false;
@@ -137,6 +140,16 @@ export function afficher(racine, app, { reste }) {
     const libres = Array.from({ length: n }, (_, si) => si).filter((si) => !places[si]);
     const complet = libres.length === 0;
     const vue = monSiege >= 0 ? monSiege : 0;
+    // Couleur de chaque place : celle que son joueur a choisie, sinon une couleur libre (la même chez tous).
+    const couleurs = couleursPartie(places, n);
+    const prises = monSiege >= 0 ? couleursIndisponibles(places, monSiege) : [];
+    // À peine assis, le joueur reçoit la couleur qu'il a choisie la dernière fois (ou en créant la partie), si elle
+    // est libre. Un seul essai par salle : si les règles du serveur la refusent, on garde la couleur d'office.
+    const preferee = couleurPreferee();
+    if (monSiege >= 0 && !places[monSiege].couleur && preferee && !couleurTentee && !prises.includes(preferee) && typeof api.choisirCouleur === 'function') {
+      couleurTentee = true;
+      api.choisirCouleur(p.id, preferee).catch(() => {});
+    }
     // À 3 : pas d'équipe ; on indique l'ordre de jeu (1er, 2e, 3e à partir du siège 0).
     const rangJeu = (si) => ['1er à jouer', '2e à jouer', '3e à jouer'][si];
 
@@ -221,6 +234,24 @@ export function afficher(racine, app, { reste }) {
         table,
         n === 3 ? h('p', { class: 'note ordre-jeu' }, `Ordre de jeu (sens des aiguilles d’une montre) : ${ordre.join(' → ')}`) : null,
       ),
+      // Chaque joueur assis choisit la couleur de ses pions ; celles des autres joueurs sont prises.
+      assis && typeof api.choisirCouleur === 'function'
+        ? h(
+            'div',
+            { class: 'carte carte-couleur' },
+            h('div', { class: 'titre-carte' }, h('b', {}, 'Couleur de tes pions'), h('span', { class: 'note' }, nomCouleurPartie(couleurs, monSiege))),
+            choixCouleur({
+              actuelle: couleurs[monSiege],
+              indisponibles: prises,
+              inactif: occupe,
+              surChoix: (id) => {
+                retenirCouleur(id);
+                couleurTentee = true;
+                agir(() => api.choisirCouleur(p.id, id));
+              },
+            }),
+          )
+        : null,
       // La règle du 5 se choisit ici, par n'importe quel joueur, jusqu'au lancement.
       h(
         'div',
@@ -293,7 +324,9 @@ export function afficher(racine, app, { reste }) {
         'Supprimer la salle d’attente',
       ),
     );
-    remplacer(racine, h('div', { class: 'contenu salle-attente' }, blocs));
+    const salle = h('div', { class: 'contenu salle-attente' }, blocs);
+    appliquerCouleurs(salle, couleurs);
+    remplacer(racine, salle);
   }
 
   /** Feuille de choix du niveau d'une IA déjà assise (hôte, avant le lancement). */

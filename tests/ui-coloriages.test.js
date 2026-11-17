@@ -1,9 +1,11 @@
-// Dessins au crayon des coins du plateau carré, coloriés de la couleur de chaque joueur : le fichier servi est celui du
-// générateur, et les carrés des coins ne touchent ni le circuit, ni une allée, ni une base, sur les deux plateaux.
+// Dessins au crayon des coins du plateau carré, un par couleur de la palette, coloriés de la couleur de chaque joueur :
+// le fichier servi est celui du générateur, et les carrés des coins ne touchent ni le circuit, ni une allée, ni une
+// base, sur les deux plateaux.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { COLORIAGES, COTE_COLORIAGE } from '../public/js/ui/coloriages.js';
+import { COLORIAGES, COTE_COLORIAGE, coloriageDe } from '../public/js/ui/coloriages.js';
+import { IDS_COULEURS } from '../public/js/palette.js';
 import { fichierAppli, COTE } from '../outils/coloriages/generer.mjs';
 import { geometrie } from '../public/js/ui/geometrie.js';
 
@@ -12,8 +14,15 @@ test('coloriages : le fichier de l’appli est celui que produit le générateur
   assert.equal(COTE_COLORIAGE, COTE);
 });
 
-test('coloriages : un dessin par joueur, des zones à colorier et deux passages de crayon, dans leur carré', () => {
-  assert.deepEqual(COLORIAGES.map((d) => d.nom), ['ski', 'voilier', 'montgolfiere', 'maison']);
+test('coloriages : un dessin par couleur, des zones à colorier et deux passages de crayon, dans leur carré', () => {
+  // Chaque couleur de la palette a son dessin, et un seul : le voilier pour le bleu, le renard pour l'orange…
+  assert.deepEqual(COLORIAGES.map((d) => d.couleur).sort(), [...IDS_COULEURS].sort());
+  assert.equal(new Set(COLORIAGES.map((d) => d.nom)).size, IDS_COULEURS.length);
+  assert.deepEqual(
+    ['bleu', 'rouge', 'jaune', 'vert', 'orange', 'violet', 'rose', 'turquoise', 'marron', 'gris'].map((c) => coloriageDe(c).nom),
+    ['voilier', 'montgolfiere', 'tournesol', 'maison', 'renard', 'papillon', 'flamant', 'poisson', 'hibou', 'ski'],
+  );
+  assert.equal(coloriageDe('inconnue').nom, 'voilier');
   for (const d of COLORIAGES) {
     assert.ok(d.titre.length > 5);
     for (const passage of [d.trait, d.reprise]) assert.ok(passage.match(/-?\d+(\.\d+)?/g).length > 200, `${d.nom} : un vrai dessin`);

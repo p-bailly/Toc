@@ -167,8 +167,11 @@ service cloud.firestore {
       function aMoi(p) {
         return p != null && p.ia == false && p.uid == moi();
       }
+      // Sa place ; `couleur` facultative : la couleur de pions qu'il a choisie (palette de js/palette.js).
       function estMoi(p) {
-        return aMoi(p) && p.keys().hasOnly(['uid', 'pseudo', 'ia']) && p.pseudo == pseudoFiche();
+        return aMoi(p) && p.keys().hasOnly(['uid', 'pseudo', 'ia', 'couleur']) && p.pseudo == pseudoFiche()
+          && (!('couleur' in p)
+            || p.couleur in ['bleu', 'rouge', 'jaune', 'vert', 'violet', 'orange', 'turquoise', 'rose', 'gris', 'marron']);
       }
       // Place d'une IA ; `niveau` facultatif (absent dans les parties d'avant les niveaux : champion).
       function estIA(p) {
@@ -176,12 +179,13 @@ service cloud.firestore {
           && p.pseudo is string && p.pseudo.size() > 0 && p.pseudo.size() <= 20
           && (!('niveau' in p) || p.niveau in ['debutant', 'amateur', 'confirme', 'expert', 'champion']);
       }
-      // Changement permis d'un siège en salle d'attente : soi-même s'y placer ou en partir ; l'hôte place,
-      // retire une IA ou change son niveau.
+      // Changement permis d'un siège en salle d'attente : soi-même s'y placer, en partir ou y changer de couleur ;
+      // l'hôte place, retire une IA ou change son niveau.
       function siegeOk(a, b, hote) {
         return a == b
           || (a == null && estMoi(b))
           || (aMoi(a) && b == null)
+          || (aMoi(a) && estMoi(b)) // changer la couleur de ses pions
           || (hote && a == null && estIA(b))
           || (hote && estIA(a) && b == null)
           || (hote && estIA(a) && estIA(b)); // changer le niveau d'une IA

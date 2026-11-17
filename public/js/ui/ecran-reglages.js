@@ -3,13 +3,43 @@
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
 import { entete, rangee, interrupteur, segments, toast, retenirIcone } from './composants.js';
-import { TAILLES, THEMES, VITESSES, lireReglages, modifierReglages } from './reglages.js';
+import { TAILLES, THEMES, VITESSE_MIN, VITESSE_MAX, VITESSE_PAS, nomVitesse, lireReglages, modifierReglages } from './reglages.js';
 import { demanderPermission, notificationsAutorisees, notificationsRefusees, notifier } from './notifications.js';
 import { android } from './android.js';
 import { ICONES } from './icones.js';
 import { SessionLocale } from '../session-locale.js';
 
 export const VERSION = '1.0.0';
+
+/**
+ * Vitesse du jeu : un curseur, de « très lente » à « rapide ». Elle règle les animations des pions et des cartes, le
+ * temps laissé pour lire le coup d'un autre joueur et le délai des IA.
+ */
+function curseurVitesse(vitesse, surChange) {
+  const nom = h('b', { class: 'valeur-curseur' }, nomVitesse(vitesse));
+  return h(
+    'div',
+    { class: 'champ reglage-curseur', style: { padding: '12px 0', borderTop: '1px solid var(--line)' } },
+    h('div', { class: 'titre-curseur' }, h('span', {}, 'Vitesse du jeu'), nom),
+    h('input', {
+      type: 'range',
+      min: VITESSE_MIN,
+      max: VITESSE_MAX,
+      step: VITESSE_PAS,
+      value: vitesse,
+      'aria-label': 'Vitesse du jeu',
+      'aria-valuetext': nomVitesse(vitesse),
+      'data-reglage': 'vitesse',
+      oninput: (e) => {
+        nom.textContent = nomVitesse(Number(e.target.value));
+        e.target.setAttribute('aria-valuetext', nom.textContent);
+      },
+      onchange: (e) => surChange(Number(e.target.value)),
+    }),
+    h('div', { class: 'bornes-curseur', 'aria-hidden': 'true' }, h('span', {}, 'Lente'), h('span', {}, 'Rapide')),
+    h('p', { class: 'note' }, 'Animations des pions et des cartes, temps de lecture après chaque coup, délai des IA.'),
+  );
+}
 
 export function afficher(racine, app) {
   let message = '';
@@ -64,16 +94,7 @@ export function afficher(racine, app) {
           actif: r.confirmerCoup,
           surChange: (confirmerCoup) => maj({ confirmerCoup }),
         }),
-        h(
-          'div',
-          { class: 'champ', style: { padding: '12px 0', borderTop: '1px solid var(--line)' } },
-          'Vitesse du jeu',
-          segments(
-            VITESSES.map((v) => ({ valeur: v.vitesse, nom: v.nom })),
-            r.vitesse,
-            (vitesse) => maj({ vitesse }),
-          ),
-        ),
+        curseurVitesse(r.vitesse, (vitesse) => maj({ vitesse })),
         interrupteur({
           titre: 'Jouer tout seul le coup quand il n’y en a qu’un',
           actif: r.coupUniqueAuto,

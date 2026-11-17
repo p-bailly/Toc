@@ -127,6 +127,10 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   await a.client.inviter(id, c.joueur.uid);
   await attendre(() => invitations?.length === 1, 10000, 'invitation');
   await b.client.rejoindrePartie(code);
+  // Couleur des pions : chacun la sienne, gardée en changeant de siège.
+  await b.client.choisirCouleur(id, 'orange');
+  await assert.rejects(a.client.choisirCouleur(id, 'orange'), /déjà prise/);
+  await a.client.choisirCouleur(id, 'violet');
   await b.client.choisirSiege(id, 3);
   await a.client.ajouterIA(id, 1);
   await a.client.retirerIA(id, 1);
@@ -322,6 +326,16 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'debutant' }], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'expert' }], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'maitre' }], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
+  // Couleur des pions : chacun choisit la sienne dans la palette, jamais celle de la place d'un autre.
+  const hoteViolet = { ...base.joueurs[0], couleur: 'violet' };
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], { ...pB, couleur: 'fuchsia' }, pC, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], { ...pB, couleur: 3 }, pC, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'rose' }, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, couleur: 'rose' }], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], { ...pB, couleur: 'orange' }, pC, ia], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(A), { joueurs: [hoteViolet, { ...pB, couleur: 'orange' }, pC, ia], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(B), { joueurs: [hoteViolet, pB, pC, ia], majLe: serverTimestamp() })); // y renoncer
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { statut: 'encours', majLe: serverTimestamp() })); // lancer sans être hôte
 

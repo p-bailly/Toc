@@ -615,6 +615,74 @@ h2 {
   background: var(--accent);
   color: var(--accent-text);
 }
+/* Réglage à curseur (vitesse du jeu) : le nom de la valeur à droite du titre, les deux bornes dessous. */
+.reglage-curseur .titre-curseur {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.reglage-curseur .valeur-curseur {
+  color: var(--lien);
+}
+.reglage-curseur input[type='range'] {
+  width: 100%;
+  min-height: 44px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.reglage-curseur .bornes-curseur {
+  display: flex;
+  justify-content: space-between;
+  font-size: calc(12px * var(--texte));
+  font-weight: 400;
+  color: var(--muted);
+}
+.reglage-curseur .note {
+  margin: 6px 0 0;
+  font-weight: 400;
+}
+/* Choix de la couleur de ses pions : une bille par couleur de la palette (--c, --c-fonce posées par composants.js). */
+.choix-couleur {
+  display: grid;
+  grid-template-columns: repeat(5, 44px);
+  justify-content: space-between;
+  gap: 4px;
+  max-width: 330px;
+  margin-top: 6px;
+}
+.pastille-couleur {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+}
+.pastille-couleur .bille {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, rgb(255 255 255 / 0.55) 0 14%, transparent 34%), var(--c);
+  border: 2px solid var(--c-fonce);
+  box-shadow: 0 1.5px 2px rgb(0 0 0 / 0.25);
+}
+.pastille-couleur.choisie {
+  border-color: var(--accent-bord);
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.pastille-couleur:disabled {
+  cursor: default;
+}
+.pastille-couleur:disabled:not(.choisie) .bille {
+  opacity: 0.28;
+  box-shadow: none;
+}
 details.options > summary {
   cursor: pointer;
   font-weight: 700;
@@ -1383,6 +1451,298 @@ details > .reglage:first-of-type {
   border-radius: var(--rayon);
   font-size: calc(14px * var(--texte));
   line-height: 1.35;
+}
+/* ─── Zoom du plateau (zoom-plateau.js) : pincement, double toucher ou bouton loupe ─── */
+.zone-plateau {
+  /* Deux doigts sur le plateau l'agrandissent ; un seul fait toujours défiler la page de haut en bas. */
+  touch-action: pan-y;
+}
+.zone-plateau[data-zoom] {
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+.zone-plateau .plateau-toc {
+  will-change: transform;
+}
+.bouton-zoom {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--bord);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+/* Cible de toucher de 44 px autour du petit bouton. */
+.bouton-zoom::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+.bouton-zoom[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent-bord);
+}
+
+/* ─── Main : cartes à ranger en les faisant glisser ─────────────────────── */
+.main-joueur .carte-jeu {
+  /* Le glissement de côté déplace la carte ; la page défile toujours de haut en bas. */
+  touch-action: pan-y;
+}
+.carte-jeu.glisse {
+  z-index: 3;
+  cursor: grabbing;
+  transition: none;
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 10px 18px rgb(0 0 0 / 0.35);
+}
+.main-joueur.rangement .carte-jeu:not(.glisse) {
+  opacity: 0.9;
+}
+
+/* ─── Carte reçue à l'échange : un liseré et une pastille « cadeau » à la couleur de qui l'a donnée
+   (--c-recue, --c-recue-fonce posées par carte.js), et une entrée animée la première fois. ─── */
+.carte-jeu.recue {
+  border-color: var(--c-recue-fonce);
+  box-shadow:
+    0 0 0 3px var(--c-recue),
+    0 3px 8px rgba(15, 34, 56, 0.35);
+}
+/* Reçue mais injouable : le contenu s'efface comme sur les autres cartes, le liseré garde sa couleur. */
+.carte-jeu.recue.injouable {
+  opacity: 1;
+  filter: none;
+  background: color-mix(in srgb, var(--carte-fond) 45%, transparent);
+}
+.carte-jeu.recue.injouable > :not(.pastille-recue) {
+  opacity: 0.42;
+  filter: grayscale(0.6);
+}
+.carte-jeu.recue.choisie {
+  box-shadow:
+    0 0 0 3px var(--c-recue),
+    0 0 0 6px var(--dernier),
+    0 8px 14px rgba(0, 0, 0, 0.3);
+}
+.carte-jeu .pastille-recue {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: max(18px, 30cqw);
+  height: max(18px, 30cqw);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--c-recue);
+  color: #fff;
+  border: 1.5px solid var(--c-recue-fonce);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+.carte-jeu .pastille-recue svg {
+  width: 68%;
+  height: 68%;
+  stroke: var(--c-recue-fonce);
+  fill: rgb(255 255 255 / 0.55);
+}
+.carte-jeu.recue.arrive {
+  animation: carte-recue 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.carte-jeu.recue.arrive .pastille-recue {
+  animation: pastille-recue 0.9s ease-out both;
+  animation-delay: inherit;
+}
+@keyframes carte-recue {
+  0% {
+    transform: translateY(-46px) rotate(-9deg) scale(0.86);
+    opacity: 0;
+  }
+  45% {
+    transform: translateY(4px) rotate(2deg) scale(1.05);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(-2px) rotate(-1deg) scale(1);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes pastille-recue {
+  0%,
+  45% {
+    transform: scale(0);
+  }
+  75% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carte-jeu.recue.arrive,
+  .carte-jeu.recue.arrive .pastille-recue {
+    animation: none;
+  }
+}
+
+/* ─── Journal des coups : une ligne par coup, avec la carte jouée ; touchée, elle rejoue le coup ─── */
+.journal > li {
+  display: block;
+}
+.journal .entete-donne {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: calc(12px * var(--texte));
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.journal .entete-donne:first-child {
+  margin-top: 0;
+}
+.journal .entete-donne::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.ligne-journal.coup {
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 6px;
+  font: inherit;
+  font-size: calc(14px * var(--texte));
+  line-height: 1.3;
+  color: var(--text);
+  text-align: left;
+}
+button.ligne-journal.coup {
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+button.ligne-journal.coup:hover {
+  border-color: var(--accent-bord);
+  box-shadow: 0 0 0 1px var(--accent-bord);
+}
+.ligne-journal.coup .carte-jeu.petite {
+  width: 34px;
+  border-radius: 5px;
+  box-shadow: 0 1px 2px rgba(15, 34, 56, 0.3);
+}
+.ligne-journal.coup .texte-coup {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ligne-journal.coup .qui {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ligne-journal.coup .numero-coup {
+  margin-left: auto;
+  font-size: calc(11px * var(--texte));
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ligne-journal.coup .action {
+  color: var(--text);
+}
+.ligne-journal.coup .prises {
+  color: var(--err);
+  font-weight: 700;
+}
+.ligne-journal.coup.avec-prise {
+  border-color: var(--err);
+}
+.ligne-journal.coup.defausse {
+  background: transparent;
+  border-style: dashed;
+}
+.ligne-journal.coup.defausse .action {
+  color: var(--muted);
+}
+.ligne-journal.coup.defausse .carte-jeu {
+  opacity: 0.7;
+}
+.zone-journal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.filtres-journal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filtre-journal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1.5px solid var(--bord);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(13px * var(--texte));
+  font-weight: 700;
+  cursor: pointer;
+}
+.filtre-journal.actif {
+  border-color: var(--accent-bord);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+/* Revue des coups : le coup montré tient la place de la consigne ; la main attend. */
+.revue-coups {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+.revue-coups .ligne-journal.coup {
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.ecran-jeu[data-revue] .main-joueur {
+  filter: grayscale(0.7);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.ecran-jeu[data-revue] .choix-coup {
+  display: flex;
+  gap: 6px;
+}
+.ecran-jeu[data-revue] .choix-coup .bouton {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.bouton-icone[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent-bord);
 }
 .fin-titre {
   display: flex;

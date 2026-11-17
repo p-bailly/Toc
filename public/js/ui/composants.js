@@ -4,6 +4,7 @@
 import { h } from './dom.js';
 import { piRetour } from './pictos.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
+import { PALETTE } from '../palette.js';
 
 /** Logo : le plateau en bois vu de dessus (le même dessin que l'icône de l'appli). */
 export function logo() {
@@ -187,4 +188,41 @@ export function avatar({ uid = null, nom = '?', ia = false, fond = null, icone =
   poser(icone !== undefined ? icone : iconeConnue(uid));
   if (!ia && icone === undefined && uid && !connues.has(uid)) chargerIcone(uid).then(poser);
   return el;
+}
+
+/**
+ * Choix de la couleur de ses pions : une pastille par couleur de la palette. `indisponibles` : celles qu'un autre
+ * joueur a déjà choisies (grisées). `surChoix(id)` à chaque toucher d'une couleur libre.
+ */
+export function choixCouleur({ actuelle, indisponibles = [], surChoix, inactif = false }) {
+  const groupe = h(
+    'div',
+    { class: 'choix-couleur', role: 'radiogroup', 'aria-label': 'Couleur de tes pions' },
+    PALETTE.map((c) => {
+      const prise = indisponibles.includes(c.id);
+      return h(
+        'button',
+        {
+          type: 'button',
+          class: 'pastille-couleur' + (c.id === actuelle ? ' choisie' : ''),
+          role: 'radio',
+          'aria-checked': String(c.id === actuelle),
+          'aria-label': c.nom + (prise ? ' (déjà prise)' : ''),
+          title: c.nom,
+          'data-couleur': c.id,
+          disabled: prise || inactif,
+          style: { '--c': c.valeur, '--c-fonce': c.fonce },
+          onclick: () => {
+            for (const b of groupe.children) {
+              b.classList.toggle('choisie', b.dataset.couleur === c.id);
+              b.setAttribute('aria-checked', String(b.dataset.couleur === c.id));
+            }
+            surChoix(c.id);
+          },
+        },
+        h('span', { class: 'bille', 'aria-hidden': 'true' }),
+      );
+    }),
+  );
+  return groupe;
 }

@@ -31,11 +31,11 @@ export function sauvegardeLocale(nbJoueurs = 4) {
  * récente du mode : celle que le compte du `joueur` connecté garde encore (jouée sur un autre appareil) ne revient
  * pas à sa place.
  */
-export function nouvellePartieLocale(reglages, nbJoueurs = 4, niveaux = null, joueur = null) {
+export function nouvellePartieLocale(reglages, nbJoueurs = 4, niveaux = null, joueur = null, couleur = null) {
   const mode = MODES_LOCAUX[nbJoueurs];
   SessionLocale.effacerSauvegarde(localStorage, mode.cle);
   noterModification(nbJoueurs, joueur?.uid, localStorage, Date.now, joueur?.enCoursIA?.[nbJoueurs]);
-  ecrire(mode.options, { cinqAdverse: !!reglages.cinqAdverse, niveaux: niveaux || null });
+  ecrire(mode.options, { cinqAdverse: !!reglages.cinqAdverse, niveaux: niveaux || null, couleur: couleur || null });
 }
 
 /** Attente maximale de la partie gardée par le compte avant d'ouvrir celle de l'appareil. */
@@ -60,6 +60,8 @@ export function afficher(racine, app, { reste }) {
       reglages: { cinqAdverse: !!options.cinqAdverse },
       // Force des IA (un niveau par siège) ; une partie reprise garde ceux de sa sauvegarde.
       niveaux: options.niveaux || undefined,
+      // Couleur de ses pions, choisie en créant la partie.
+      couleur: options.couleur || undefined,
       pseudo: app.joueur?.pseudo || 'Toi',
       // Délai des IA accordé à la « Vitesse du jeu » (la file de présentation donne le rythme à l'écran).
       delaiIA: app.rapide ? 40 : rythme(lireReglages().vitesse).delaiIA,
@@ -97,9 +99,9 @@ export function afficher(racine, app, { reste }) {
       rejouer: () => {
         const reglages = vraie.partie?.etat?.reglages || {};
         fermer();
-        // Rejouer garde la force des IA de la partie terminée.
+        // Rejouer garde la force des IA et la couleur du joueur de la partie terminée.
         const niveaux = (vraie.joueurs || []).map((j) => (j.ia ? j.niveau || null : null));
-        nouvellePartieLocale(reglages, nbJoueurs, niveaux, app.joueur);
+        nouvellePartieLocale(reglages, nbJoueurs, niveaux, app.joueur, vraie.joueurs?.[0]?.couleur);
         ouvrir();
       },
     });

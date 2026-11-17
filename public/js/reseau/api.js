@@ -214,6 +214,15 @@ export async function choisirSiege(id, siege) {
 }
 
 /**
+ * Salle d'attente : choisit la couleur de ses pions (identifiant de la palette, voir js/palette.js). Refusé si un
+ * autre joueur l'a déjà choisie.
+ */
+export async function choisirCouleur(id, couleur) {
+  if (!reseauDisponible()) return nonConfigure();
+  return client.choisirCouleur(id, couleur);
+}
+
+/**
  * Hôte : place une IA sur un siège libre / la retire. niveau : un des id de NIVEAUX (js/ia/ia.js),
  * facultatif (défaut 'champion') ; un niveau inconnu est refusé.
  */

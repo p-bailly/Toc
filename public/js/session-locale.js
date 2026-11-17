@@ -24,7 +24,8 @@
 //     enLigne,       booléen
 //     nom,           nom de la partie
 //     siege,         siège du joueur local (0 à 3)
-//     joueurs,       [{ pseudo, ia, niveau? }] × 4, indexé par siège (niveau = force d'une IA)
+//     joueurs,       [{ pseudo, ia, niveau?, couleur? }] × 4, indexé par siège (niveau = force d'une IA ;
+//                    couleur = celle que le joueur a choisie pour ses pions, voir js/palette.js)
 //     etat,          état public du moteur (voir moteur/regles.js)
 //     main,          cartes du joueur local (tableau de chaînes, déjà à jour)
 //     don,           carte que le joueur local a donnée pour la donne en cours, ou null
@@ -43,6 +44,7 @@
 import { nouvellePartie, donnerCarte, jouerCoup, donneurDon, nombreJoueurs, reglagesRejeu } from './moteur/index.js';
 import { choisirCoup, choisirDon } from './ia/ia.js';
 import { choisirCoup3, choisirDon3 } from './ia/ia3.js';
+import { couleurValide } from './palette.js';
 
 const CLE_PAR_DEFAUT = 'toc.partieLocale';
 
@@ -99,6 +101,8 @@ export class SessionLocale {
         const niveau = Array.isArray(niveaux) ? niveaux[s] : niveaux;
         if (j.ia && typeof niveau === 'string') j.niveau = niveau;
       });
+      // Couleur des pions choisie par le joueur ; les IA reçoivent des couleurs libres (couleursDesSieges).
+      if (couleurValide(options.couleur)) this.joueurs[0].couleur = options.couleur;
       const reglages = a3 ? { ...(options.reglages || {}), nbJoueurs: 3 } : options.reglages || {};
       this.partie = nouvellePartie(reglages, this.rng);
       this.sauvegarder();

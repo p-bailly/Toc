@@ -30,10 +30,11 @@ import {
 import { Plateau } from './plateau.js';
 import { dessinCarte } from './carte.js';
 import { ouvrirFeuille } from './composants.js';
-import { piRetour, piHistorique, piOk, piAnnuler, piConseil } from './pictos.js';
+import { piRetour, piHistorique, piOk, piAnnuler, piConseil, piRevoir, piPrecedent, piSuivant, piLoupe } from './pictos.js';
+import { activerZoom } from './zoom-plateau.js';
 import * as IA from '../ia/ia.js';
-import { trierMain, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
-import { couleurSiege, nomCouleur, PIONS } from './couleurs.js';
+import { trierMain, ordonnerMain, deplacer, detailJournal, carteCourte, libelleChoix, ligneJournal, enumerer, nomCarte, decrireAction, rangAvecArticle, leCarte } from './libelles.js';
+import { couleurSiege, couleurFonceeSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie, PIONS } from './couleurs.js';
 import { lireReglages, rythme, VITESSE_ESSAIS } from './reglages.js';
 import { nomNiveau } from './niveaux.js';
 import { majMonTour, notifier } from './notifications.js';
@@ -62,17 +63,35 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     piConseil(),
   );
   const boutonConseilPlace = () => boutonConseil;
-  const boutonJournal = h('button', { type: 'button', class: 'bouton-icone', 'aria-label': 'Journal des coups', onclick: () => ouvrirJournal() }, piHistorique());
+  const boutonJournal = h('button', { type: 'button', class: 'bouton-icone', 'aria-label': 'Journal des coups', title: 'Journal des coups', onclick: () => ouvrirJournal() }, piHistorique());
+  // Revoir les coups précédents un par un, sur le plateau (voir « Revue des coups »).
+  const boutonRevoir = h(
+    'button',
+    { type: 'button', class: 'bouton-icone', 'aria-label': 'Revoir les coups précédents', title: 'Revoir les coups', 'data-action': 'revoir', onclick: () => (revue ? quitterRevue() : ouvrirRevue()) },
+    piRevoir(),
+  );
   const barre = h(
     'header',
     { class: 'barre-jeu' },
     h('a', { class: 'bouton-icone', href: retour, 'aria-label': libelleRetour }, piRetour()),
     h('div', { class: 'titre' }, titre, sousTitre),
     boutonConseilPlace(),
+    boutonRevoir,
     boutonJournal,
   );
-  const zonePlateau = h('div', { class: 'zone-plateau pleine' }, plateau.el);
-  const main = h('div', { class: 'chevalet main-joueur', role: 'group', 'aria-label': 'Tes cartes' });
+  // Le plateau s'agrandit pour mieux voir (pincement, double toucher, bouton loupe) : voir zoom-plateau.js.
+  const boutonZoom = h('button', { type: 'button', class: 'bouton-zoom', 'aria-label': 'Agrandir le plateau', title: 'Agrandir le plateau', 'aria-pressed': 'false', 'data-action': 'zoom', onclick: () => zoom.basculer() }, piLoupe());
+  const zonePlateau = h('div', { class: 'zone-plateau pleine' }, plateau.el, boutonZoom);
+  const zoom = activerZoom(zonePlateau, plateau.el, {
+    surChange: (k) => {
+      const agrandi = k > 1;
+      boutonZoom.setAttribute('aria-pressed', String(agrandi));
+      boutonZoom.setAttribute('aria-label', agrandi ? 'Revoir le plateau entier' : 'Agrandir le plateau');
+      boutonZoom.title = agrandi ? 'Plateau entier' : 'Agrandir le plateau';
+      boutonZoom.replaceChildren(piLoupe(18, agrandi));
+    },
+  });
+  const main = h('div', { class: 'chevalet main-joueur', role: 'group', 'aria-label': 'Tes cartes (fais glisser une carte pour la ranger ailleurs)' });
   const consigne = h('div', { class: 'apercu consigne', role: 'status', 'aria-live': 'polite' });
   const actions = h('div', { class: 'actions choix-coup' });
   // Journal visible en permanence sur grand écran (masqué sur téléphone : il reste dans sa feuille).
@@ -89,7 +108,19 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   let sept = null; // { etapes, pions, captures } pendant la saisie d'un 7
   let envoi = false;
   let recuSignale = null;
+  let recuArrive = null; // { cle, t } : moment où la carte reçue est apparue dans la main (son entrée animée)
   let finMontree = false;
+  // Rangement de la main : l'ordre choisi par le joueur pour la donne en cours ({ cle, cartes }), et la carte qu'il
+  // est en train de faire glisser ({ el, id, x0, actif }).
+  let ordreMain = null;
+  let glisse = null;
+  let sansClicJusqua = 0;
+  // Revue des coups précédents : { tours, histo, index } tant que le joueur les fait défiler sur le plateau.
+  let revue = null;
+  let minuterieRevue = null;
+  // Journal : filtre choisi dans la feuille (un joueur, sans les défausses) ; donne de chaque coup, par longueur d'historique.
+  const filtreJournal = { siege: null, sansDefausses: false };
+  let donnesJournal = { n: -1, donnes: [] };
   let feuilleFin = null;
   let feuilleJournal = null;
   let monTourAvant = false;
@@ -137,6 +168,220 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (vue) rendre();
   }
 
+  // ─── Rangement de la main : le joueur fait glisser ses cartes pour les mettre dans l'ordre qu'il veut ─────────
+  // L'ordre vaut pour la donne en cours (il est retenu sur l'appareil) ; la carte reçue et la donne suivante arrivent
+  // triées. Au clavier : Maj + flèche gauche ou droite sur une carte.
+  const CLE_ORDRE = 'toc.ordreMain';
+  const cleOrdre = () => `${vue.id ?? vue.nom}|${vue.etat.donne}`;
+
+  function cartesOrdonnees() {
+    if (!ordreMain) {
+      const garde = lire(CLE_ORDRE, null);
+      ordreMain = garde && typeof garde.cle === 'string' && Array.isArray(garde.cartes) ? garde : { cle: '', cartes: [] };
+    }
+    return ordreMain.cle === cleOrdre() ? ordonnerMain(vue.main, ordreMain.cartes) : trierMain(vue.main);
+  }
+
+  function rangerMain(cartes) {
+    ordreMain = { cle: cleOrdre(), cartes };
+    ecrire(CLE_ORDRE, ordreMain);
+  }
+
+  const cartesAffichees = () => [...main.querySelectorAll('button.carte-jeu')];
+
+  main.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest?.('button.carte-jeu');
+    if (!el || e.button > 0 || glisse || revue || !vue || cartesAffichees().length < 2) return;
+    glisse = { el, id: e.pointerId, x0: e.clientX, actif: false };
+  });
+  main.addEventListener('pointermove', (e) => {
+    if (!glisse || e.pointerId !== glisse.id) return;
+    const { el } = glisse;
+    if (!glisse.actif) {
+      // Un toucher choisit la carte ; elle ne se déplace qu'après un vrai glissement.
+      if (Math.abs(e.clientX - glisse.x0) < 10) return;
+      if (!el.isConnected) {
+        glisse = null;
+        return;
+      }
+      glisse.actif = true;
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* pointeur déjà relâché */
+      }
+      el.classList.add('glisse');
+      main.classList.add('rangement');
+    }
+    e.preventDefault();
+    const dx = e.clientX - glisse.x0;
+    el.style.transform = `translateX(${dx}px)`;
+    // La carte prend la place de sa voisine dès que son milieu la dépasse. On déplace la voisine, jamais la carte
+    // tenue (elle perdrait le pointeur), et la voisine glisse à sa nouvelle place.
+    const cadre = el.getBoundingClientRect();
+    const centre = cadre.left + cadre.width / 2;
+    const milieu = (v) => cadre.left - dx + (v.offsetLeft - el.offsetLeft) + v.offsetWidth / 2;
+    const voisine = (v) => (v?.matches?.('button.carte-jeu') ? v : null);
+    const suivante = voisine(el.nextElementSibling);
+    const precedente = voisine(el.previousElementSibling);
+    const echanger = (v, apres) => {
+      const gaucheCarte = el.offsetLeft;
+      const gaucheVoisine = v.offsetLeft;
+      if (apres) main.insertBefore(v, el);
+      else main.insertBefore(v, el.nextSibling);
+      glisse.x0 += el.offsetLeft - gaucheCarte;
+      el.style.transform = `translateX(${e.clientX - glisse.x0}px)`;
+      if (!mouvementReduit()) v.animate([{ transform: `translateX(${gaucheVoisine - v.offsetLeft}px)` }, { transform: 'none' }], { duration: 140, easing: 'ease-out' });
+    };
+    if (suivante && centre > milieu(suivante)) echanger(suivante, true);
+    else if (precedente && centre < milieu(precedente)) echanger(precedente, false);
+  });
+  const finGlisse = (e) => {
+    if (!glisse || e.pointerId !== glisse.id) return;
+    const g = glisse;
+    glisse = null;
+    if (!g.actif) return;
+    g.el.classList.remove('glisse');
+    g.el.style.transform = '';
+    main.classList.remove('rangement');
+    // Le relâchement ne doit pas compter comme un toucher de la carte (le clic suit aussitôt le relâchement).
+    sansClicJusqua = Date.now() + 80;
+    if (!vue) return;
+    rangerMain(cartesAffichees().map((b) => b.dataset.carte));
+    rendre();
+  };
+  main.addEventListener('pointerup', finGlisse);
+  main.addEventListener('pointercancel', finGlisse);
+  main.addEventListener(
+    'click',
+    (e) => {
+      if (Date.now() < sansClicJusqua) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    },
+    true,
+  );
+  main.addEventListener('keydown', (e) => {
+    if (!e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || revue || !vue) return;
+    const el = e.target.closest?.('button.carte-jeu');
+    if (!el) return;
+    e.preventDefault();
+    const cartes = cartesAffichees();
+    const place = cartes.indexOf(el);
+    rangerMain(deplacer(cartes.map((b) => b.dataset.carte), place, place + (e.key === 'ArrowLeft' ? -1 : 1)));
+    rendre();
+    cartesAffichees()[Math.max(0, Math.min(cartes.length - 1, place + (e.key === 'ArrowLeft' ? -1 : 1)))]?.focus();
+  });
+
+  // ─── Revue des coups : les coups déjà joués défilent sur le plateau, un par un ────────────────────────────────
+  // La partie continue pendant ce temps (les coups reçus attendent) ; rien ne se joue tant que la revue est ouverte.
+
+  /** Ouvre la revue sur le coup `index` de l'historique (par défaut : le dernier joué). */
+  function ouvrirRevue(index) {
+    if (!vueReelle || revue) return;
+    const histo = vueReelle.historique || [];
+    if (!histo.length) {
+      annoncer('Aucun coup à revoir pour l’instant.');
+      return;
+    }
+    let tours;
+    try {
+      ({ tours } = rejouerPartie(reglagesRejeu(vueReelle.etat), histo));
+    } catch {
+      annoncer('Ce journal ne peut pas être rejoué.', { erreur: true });
+      return;
+    }
+    // Les coups en cours de présentation sont passés : la revue les montrera.
+    if (enPresentation) passerPresentation();
+    clearTimeout(minuterieAuto);
+    reinitialiser();
+    feuilleJournal?.fermer();
+    feuilleConseil?.fermer();
+    revue = { tours, histo: histo.slice(), index: 0 };
+    ecran.toggleAttribute('data-revue', true);
+    boutonRevoir.setAttribute('aria-pressed', 'true');
+    allerRevue(index ?? tours.length - 1);
+  }
+
+  /** Montre le coup `i` : la position d'avant, puis le coup qui se joue. */
+  function allerRevue(i) {
+    if (!revue) return;
+    revue.index = Math.max(0, Math.min(revue.tours.length - 1, i));
+    const tour = revue.tours[revue.index];
+    const base = { siegeVue: vueReelle.siege, siegeLocal: vueReelle.siege, joueurs: vueReelle.joueurs };
+    clearTimeout(minuterieRevue);
+    plateau.arreterAnimations();
+    if (animationsActives()) {
+      plateau.maj({ ...base, etat: { ...tour.avant, dernierCoup: null } });
+      minuterieRevue = setTimeout(() => {
+        if (!revue) return;
+        plateau.maj({ ...base, etat: tour.apres });
+        plateau.animer(tour.apres.dernierCoup, vueReelle.siege, leRythme());
+      }, 320);
+    } else {
+      plateau.maj({ ...base, etat: tour.apres });
+    }
+    rendreRevue();
+  }
+
+  function rendreRevue() {
+    const { tours, histo, index } = revue;
+    const tour = tours[index];
+    const reel = vueReelle;
+    titre.textContent = reel.nom || 'Partie de Toc';
+    sousTitre.textContent = 'Revue';
+    main.classList.add('inactive');
+    zonePlateau.classList.remove('a-moi');
+    const nouveaux = (reel.historique?.length || 0) - histo.length;
+    const aMonTour = (reel.etat.phase === 'jeu' && reel.etat.tour === reel.siege) || (reel.etat.phase === 'echange' && !reel.don);
+    remplacer(
+      consigne,
+      h(
+        'div',
+        { class: 'mots revue-coups' },
+        h('span', { class: 'note position-revue' }, `Donne ${tour.avant.donne + 1} · coup ${index + 1} sur ${tours.length}`),
+        ligneCoup(histo[index], index, { bouton: false }),
+        nouveaux > 0
+          ? h('span', { class: 'note resume-retard' }, `La partie continue : ${pluriel(nouveaux, 'nouveau coup', 'nouveaux coups')} depuis.`)
+          : aMonTour && reel.etat.phase !== 'fini'
+            ? h('span', { class: 'tour-de' }, h('b', {}, 'C’est à toi de jouer.'))
+            : null,
+      ),
+    );
+    remplacer(
+      actions,
+      h('button', { type: 'button', class: 'bouton', disabled: index === 0, 'data-action': 'revue-precedent', 'aria-label': 'Coup précédent', onclick: () => allerRevue(index - 1) }, piPrecedent(), 'Précédent'),
+      h('button', { type: 'button', class: 'bouton', disabled: index === tours.length - 1, 'data-action': 'revue-suivant', 'aria-label': 'Coup suivant', onclick: () => allerRevue(index + 1) }, 'Suivant', piSuivant()),
+      h('button', { type: 'button', class: 'bouton principal', 'data-action': 'revue-fin', onclick: quitterRevue }, 'Reprendre la partie'),
+    );
+    actions.hidden = false;
+  }
+
+  /** Ferme la revue : le plateau retrouve la partie, et montre les coups joués entre-temps. */
+  function quitterRevue() {
+    if (!revue) return;
+    revue = null;
+    clearTimeout(minuterieRevue);
+    plateau.arreterAnimations();
+    ecran.toggleAttribute('data-revue', false);
+    boutonRevoir.setAttribute('aria-pressed', 'false');
+    if (enPresentation) return; // la présentation en cours finit par afficher la partie
+    if ((vueReelle.historique?.length || 0) > nHisto) presenter();
+    else appliquerVue(vueReelle);
+  }
+
+  /** Dans la revue : flèches gauche et droite pour défiler, Échap pour reprendre la partie. */
+  const clavierRevue = (e) => {
+    if (!revue || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'ArrowLeft') allerRevue(revue.index - 1);
+    else if (e.key === 'ArrowRight') allerRevue(revue.index + 1);
+    else if (e.key === 'Escape') quitterRevue();
+    else return;
+    e.preventDefault();
+  };
+  document.addEventListener('keydown', clavierRevue);
+
   /** Rythme courant (réglage « Vitesse du jeu », ou presque instantané pour les essais automatisés). */
   const leRythme = () => (essais ? VITESSE_ESSAIS : rythme(lireReglages().vitesse));
   const animationsActives = () => lireReglages().animations && !mouvementReduit();
@@ -151,6 +396,11 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       nHisto = typeof vu === 'number' && vu >= 0 && vu <= v.historique.length ? vu : v.historique.length;
     }
     if (enPresentation) return; // la file lira les nouveaux coups
+    if (revue) {
+      // Le joueur revoit des coups : la partie avance sans toucher au plateau, il la retrouvera en sortant.
+      rendreRevue();
+      return;
+    }
     if ((v.historique?.length || 0) > nHisto) {
       presenter();
       return;
@@ -265,7 +515,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
    * Jamais pour la carte à donner, ni quand plusieurs cartes différentes peuvent être défaussées.
    */
   function verifierCoupUnique() {
-    if (enPresentation || !vue || envoi || carte || !lireReglages().coupUniqueAuto) return;
+    if (enPresentation || revue || !vue || envoi || carte || !lireReglages().coupUniqueAuto) return;
     const { etat, siege } = vue;
     if (etat.phase !== 'jeu' || etat.tour !== siege) return;
     let coups;
@@ -287,7 +537,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     annoncer(`Seul coup possible : ${resumeCoup(coup)}. Il va être joué pour toi…`, { duree: 4000 });
     clearTimeout(minuterieAuto);
     minuterieAuto = setTimeout(() => {
-      if (!vue || vue.etat.numCoup !== etat.numCoup || envoi || coupPret !== coup || enPresentation) return;
+      if (!vue || vue.etat.numCoup !== etat.numCoup || envoi || coupPret !== coup || enPresentation || revue) return;
       envoyer().then((ok) => ok && annoncer(`Seul coup possible, joué pour toi : ${resumeCoup(coup)}`, { duree: 6000 }));
     }, leRythme().avantAuto);
   }
@@ -375,7 +625,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   // ─── Touchers ─────────────────────────────────────────────────────────────
 
   function toucherCarte(c) {
-    if (enPresentation) return;
+    if (enPresentation || revue) return;
     if (envoi || !vue) return;
     const { etat } = vue;
     if (etat.phase === 'echange') {
@@ -465,7 +715,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function toucherPion(g) {
-    if (enPresentation) return;
+    if (enPresentation || revue) return;
     if (envoi || !carte) return;
     if (pion === g && !sept) {
       // Valet : toucher à nouveau son pion le désélectionne.
@@ -486,7 +736,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function toucherCible(i) {
-    if (enPresentation) return;
+    if (enPresentation || revue) return;
     const cible = ciblesCourantes[i];
     if (!cible || envoi) return;
     if (sept) {
@@ -552,7 +802,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   async function envoyer() {
-    if (!coupPret || envoi || enPresentation) return false;
+    if (!coupPret || envoi || enPresentation || revue) return false;
     const coup = coupPret;
     const avant = { etat: vue.etat, main: vue.main.slice(), don: vue.don, recu: vue.recu };
     envoi = true;
@@ -591,9 +841,22 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   // ─── Affichage ────────────────────────────────────────────────────────────
 
+  /** Une feuille (journal, conseil, fin de partie) aux couleurs de la partie : elle s'ouvre hors de l'écran de jeu. */
+  function ouvrirFeuilleJeu(...args) {
+    const feuille = ouvrirFeuille(...args);
+    if (vue) appliquerCouleurs(feuille.el, couleursPartie(vue.joueurs, vue.joueurs.length));
+    return feuille;
+  }
+
   function rendre() {
     if (!vue) return;
+    if (revue) {
+      rendreRevue();
+      return;
+    }
     const { etat, siege, joueurs } = vue;
+    // Les couleurs choisies par les joueurs, sur le plateau comme sur les puces du journal et de la consigne.
+    appliquerCouleurs(ecran, couleursPartie(joueurs, joueurs.length));
     const jeu = etat.phase === 'jeu';
     const monTour = jeu && etat.tour === siege && !enPresentation;
     ecran.toggleAttribute('data-presentation', enPresentation);
@@ -615,8 +878,12 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
     // Main.
     const recue = jeu && vue.recu && vue.main.includes(vue.recu) ? vue.recu : null;
-    const marqueRecue = nb() === 3 ? `reçue de ${(vue.joueurs[donneurDe()]?.pseudo || '').slice(0, 9)}` : 'reçue';
-    const cartes = trierMain(vue.main).map((c) => {
+    // La carte reçue porte la couleur de qui l'a donnée ; elle entre dans la main avec un petit élan, une seule fois.
+    const donneur = donneurDe();
+    const cleRecue = `${vue.id}-${etat.donne}`;
+    if (recue && recuArrive?.cle !== cleRecue) recuArrive = { cle: cleRecue, t: Date.now() };
+    const marqueRecue = { couleur: couleurSiege(donneur), fonce: couleurFonceeSiege(donneur), texte: `reçue de ${vue.joueurs[donneur]?.pseudo || (nb() === 3 ? 'ton voisin' : 'ton partenaire')}`, depuis: recue ? Date.now() - recuArrive.t : 0 };
+    const cartes = cartesOrdonnees().map((c) => {
       const injouable = monTour && jouable && !(coups.get(c) || []).length;
       const inactive = (!monTour && !(etat.phase === 'echange' && !vue.don && !enPresentation)) || envoi;
       return dessinCarte(c, {
@@ -624,38 +891,67 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         choisie: carte === c,
         injouable,
         inactive,
-        marque: c === recue ? marqueRecue : c === vue.don ? 'donnée' : null,
+        recue: c === recue ? marqueRecue : null,
+        marque: c === vue.don && c !== recue ? 'donnée' : null,
         surToucher: () => toucherCarte(c),
       });
     });
     if (!cartes.length) cartes.push(h('span', { class: 'main-vide' }, etat.phase === 'fini' ? 'Partie terminée' : 'Plus de cartes pour cette donne'));
-    remplacer(main, cartes);
+    // Une carte en train d'être déplacée garde la main telle quelle : elle sera redessinée quand le joueur la lâche.
+    if (!glisse?.actif) remplacer(main, cartes);
     main.classList.toggle('inactive', !aMoi());
 
     rendreConsigne(monTour, jouable, actifCouleur);
   }
 
-  /** Journal toujours visible sur grand écran (les 40 derniers coups). */
+  // ─── Journal des coups ────────────────────────────────────────────────────
+
+  /**
+   * Une ligne du journal : la carte jouée en petit, qui l'a jouée, ce que le coup a fait, et les pions renvoyés à la
+   * base. En bouton (par défaut), la toucher rejoue ce coup sur le plateau (revue des coups).
+   */
+  function ligneCoup(entree, index, { bouton = true } = {}) {
+    const { joueurs, siege } = vueReelle || vue;
+    const d = detailJournal(entree, joueurs, siege);
+    const contenu = [
+      dessinCarte(entree.coup.carte, { petite: true }),
+      h(
+        'span',
+        { class: 'texte-coup' },
+        h('span', { class: 'qui' }, puceCouleur(entree.siege), h('b', {}, d.qui), h('span', { class: 'numero-coup' }, `n° ${index + 1}`)),
+        h('span', { class: 'action' }, d.action),
+        d.prises ? h('span', { class: 'prises' }, d.prises) : null,
+      ),
+    ];
+    const classes = 'ligne-journal coup' + (d.defausse ? ' defausse' : '') + (d.prises ? ' avec-prise' : '');
+    if (!bouton) return h('div', { class: classes, 'data-coup': index }, contenu);
+    return h('button', { type: 'button', class: classes, 'data-coup': index, 'aria-label': `Coup ${index + 1}. ${ligneJournal(entree, joueurs, siege)} Le revoir sur le plateau.`, onclick: () => ouvrirRevue(index) }, contenu);
+  }
+
+  /** Donne de chaque coup de l'historique (pour les intertitres du journal) ; vide si l'historique ne se rejoue pas. */
+  function donnesDesCoups() {
+    const histo = vue.historique || [];
+    if (donnesJournal.n !== histo.length) {
+      let donnes = [];
+      try {
+        donnes = rejouerPartie(reglagesRejeu(vue.etat), histo).tours.map((t) => t.avant.donne);
+      } catch {
+        donnes = [];
+      }
+      donnesJournal = { n: histo.length, donnes };
+    }
+    return donnesJournal.donnes;
+  }
+
+  /** Journal toujours visible sur grand écran (les 40 derniers coups, le plus récent en haut). */
   function rendreJournalPanneau() {
     const histo = vue.historique || [];
-    const derniers = histo.slice(-40).reverse();
+    const lignes = [];
+    for (let i = histo.length - 1; i >= Math.max(0, histo.length - 40); i--) lignes.push(h('li', {}, ligneCoup(histo[i], i)));
     remplacer(
       journalPanneau,
       h('div', { class: 'titre-journal' }, 'Journal des coups'),
-      derniers.length
-        ? h(
-            'ol',
-            { class: 'journal compact' },
-            derniers.map((e) =>
-              h(
-                'li',
-                { class: 'ligne-journal' },
-                h('span', { class: 'puce-pion', style: { '--c': couleurSiege(e.siege) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[e.siege].forme]),
-                h('span', {}, ligneJournal(e, vue.joueurs, vue.siege)),
-              ),
-            ),
-          )
-        : h('p', { class: 'note' }, 'Aucun coup joué pour l’instant.'),
+      lignes.length ? h('ol', { class: 'journal compact' }, lignes) : h('p', { class: 'note' }, 'Aucun coup joué pour l’instant.'),
     );
   }
 
@@ -863,15 +1159,19 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         lignes.push(h('span', {}, h('b', {}, `${titreCarte()} : `), pion === null ? 'touche un pion.' : 'touche la destination.'));
       }
       const proposes = pion === null ? (coups.length <= 4 ? coups : []) : coups.filter((k) => k.pion === pion);
-      for (const k of proposes.slice(0, 12)) {
-        boutons.push(
-          h('button', { type: 'button', class: 'bouton', onclick: () => preparer(k), 'data-choix': cle(k) }, libelleCoupComplet(k)),
-        );
+      // Un bouton par coup, sauf quand plusieurs diraient la même chose (« Avancer de 12 » pour deux pions) : rien ne
+      // les distinguerait, et c'est le pion touché sur le plateau qui choisit.
+      const libelles = proposes.slice(0, 12).map((k) => [k, libelleCoupComplet(k)]);
+      const nbLibelles = new Map();
+      for (const [, texte] of libelles) nbLibelles.set(texte, (nbLibelles.get(texte) || 0) + 1);
+      for (const [k, texte] of libelles) {
+        if (nbLibelles.get(texte) > 1) continue;
+        boutons.push(h('button', { type: 'button', class: 'bouton', onclick: () => preparer(k), 'data-choix': cle(k) }, texte));
       }
       boutons.push(h('button', { type: 'button', class: 'bouton discret', onclick: () => (reinitialiser(), rendre()), 'data-action': 'annuler' }, 'Annuler'));
     }
     if (monTour && actifCouleur !== siege && etat.phase === 'jeu') {
-      lignes.push(h('span', { class: 'note joue-pour' }, puceCouleur(actifCouleur), ` Tes pions sont rentrés : tu joues les pions ${nomCouleur(actifCouleur)}s de ${nomP}.`));
+      lignes.push(h('span', { class: 'note joue-pour' }, puceCouleur(actifCouleur), ` Tes pions sont rentrés : tu joues les pions ${nomCouleurPartie(couleursPartie(vue.joueurs, vue.joueurs.length), actifCouleur, true)} de ${nomP}.`));
     }
     remplacer(consigne, h('div', { class: 'mots' }, lignes));
     remplacer(actions, boutons);
@@ -941,7 +1241,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (!conseilsDispo || !vue || !aMoi() || vue.enLigne || !lireReglages().conseilsIA) return;
     const echange = vue.etat.phase === 'echange';
     const liste = h('div', { class: 'liste' }, h('div', { class: 'vide-etat' }, 'Réflexion…'));
-    feuilleConseil = ouvrirFeuille(
+    feuilleConseil = ouvrirFeuilleJeu(
       [
         h('h3', {}, echange ? 'Quelle carte donner ?' : 'Quel coup jouer ?'),
         h('p', { class: 'note' }, 'Les meilleures options selon l’IA, avec ses raisons.'),
@@ -1019,25 +1319,56 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   // ─── Feuilles : journal, fin de partie ────────────────────────────────────
 
+  /**
+   * Feuille du journal : les coups du plus récent au plus ancien, rangés par donne. On peut n'y garder qu'un joueur,
+   * masquer les défausses, et toucher un coup pour le revoir sur le plateau.
+   */
   function ouvrirJournal() {
     if (!vue) return;
-    const lignes = (vue.historique || [])
-      .slice()
-      .reverse()
-      .map((e) =>
+    const zone = h('div', { class: 'zone-journal' });
+    const filtre = (contenu, actif, surToucher, attrs = {}) => h('button', { type: 'button', class: 'filtre-journal' + (actif ? ' actif' : ''), 'aria-pressed': String(actif), onclick: surToucher, ...attrs }, contenu);
+    const dessiner = () => {
+      const histo = vue.historique || [];
+      const donnes = donnesDesCoups();
+      const items = [];
+      let donneCourante = null;
+      let montres = 0;
+      for (let i = histo.length - 1; i >= 0; i--) {
+        const e = histo[i];
+        if (filtreJournal.siege !== null && e.siege !== filtreJournal.siege) continue;
+        if (filtreJournal.sansDefausses && e.coup.t === 'defausse') continue;
+        if (donnes.length && donnes[i] !== donneCourante) {
+          donneCourante = donnes[i];
+          items.push(h('li', { class: 'entete-donne' }, `Donne ${donneCourante + 1}`));
+        }
+        items.push(h('li', {}, ligneCoup(e, i)));
+        montres++;
+      }
+      remplacer(
+        zone,
         h(
-          'li',
-          { class: 'ligne-journal' },
-          h('span', { class: 'puce-pion', style: { '--c': couleurSiege(e.siege) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[e.siege].forme]),
-          h('span', {}, ligneJournal(e, vue.joueurs, vue.siege)),
+          'div',
+          { class: 'filtres-journal', role: 'group', 'aria-label': 'Filtrer le journal' },
+          filtre('Tous', filtreJournal.siege === null, () => ((filtreJournal.siege = null), dessiner()), { 'data-filtre': 'tous' }),
+          vue.joueurs.map((_, si) => filtre([puceCouleur(si), nomSiege(si)], filtreJournal.siege === si, () => ((filtreJournal.siege = filtreJournal.siege === si ? null : si), dessiner()), { 'data-filtre': si })),
+          filtre('Sans les défausses', filtreJournal.sansDefausses, () => ((filtreJournal.sansDefausses = !filtreJournal.sansDefausses), dessiner()), { 'data-filtre': 'defausses' }),
         ),
+        montres ? h('ol', { class: 'journal' }, items) : h('p', { class: 'vide-etat' }, histo.length ? 'Aucun coup ne correspond à ce choix.' : 'Aucun coup joué pour l’instant.'),
       );
-    feuilleJournal = ouvrirFeuille(
+    };
+    dessiner();
+    const total = vue.historique?.length || 0;
+    feuilleJournal = ouvrirFeuilleJeu(
       [
         h('h3', {}, 'Journal des coups'),
-        h('p', { class: 'note' }, `Donne ${vue.etat.donne + 1} · ${pluriel(vue.historique?.length || 0, 'coup joué', 'coups joués')}`),
-        lignes.length ? h('ol', { class: 'journal' }, lignes) : h('p', { class: 'vide-etat' }, 'Aucun coup joué pour l’instant.'),
-        h('button', { type: 'button', class: 'bouton large', onclick: () => feuilleJournal?.fermer() }, 'Fermer'),
+        h('p', { class: 'note' }, total ? `${pluriel(total, 'coup joué', 'coups joués')} · touche un coup pour le revoir sur le plateau.` : `Donne ${vue.etat.donne + 1}`),
+        zone,
+        h(
+          'div',
+          { class: 'actions' },
+          total ? h('button', { type: 'button', class: 'bouton', 'data-action': 'revoir-tout', onclick: () => ouvrirRevue(0) }, 'Revoir depuis le début') : null,
+          h('button', { type: 'button', class: 'bouton principal', onclick: () => feuilleJournal?.fermer() }, 'Fermer'),
+        ),
       ],
       { surFermer: () => (feuilleJournal = null) },
     );
@@ -1088,7 +1419,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         ),
       );
     }
-    feuilleFin = ouvrirFeuille(
+    feuilleFin = ouvrirFeuilleJeu(
       [
         h('div', { class: 'fin-titre' + (gagne ? ' gagne' : '') }, h('span', { class: 'fin-embleme', 'aria-hidden': 'true' }, gagne ? '🏆' : '🎲'), h('h3', {}, gagne ? 'Victoire !' : 'Défaite')),
         explication,
@@ -1108,6 +1439,8 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     feuilleConseil?.fermer();
     clearTimeout(minuterieAvis);
     clearTimeout(minuterieAuto);
+    clearTimeout(minuterieRevue);
+    document.removeEventListener('keydown', clavierRevue);
     passer = true;
     finAttente?.();
     majMonTour(false);

@@ -61,3 +61,20 @@ test('session locale : une partie complète humain (aléatoire) + 3 IA, avec sau
   session.fermer();
   reprise.fermer();
 });
+
+test('session locale : la couleur choisie est gardée avec la partie, les IA n’en choisissent pas', () => {
+  const stockage = new Map();
+  const magasin = { getItem: (k) => (stockage.has(k) ? stockage.get(k) : null), setItem: (k, v) => stockage.set(k, v), removeItem: (k) => stockage.delete(k) };
+  const s = new SessionLocale({ stockage: magasin, cle: 'essai', couleur: 'turquoise', delaiIA: 1e9 });
+  assert.deepEqual(s.joueurs.map((j) => j.couleur || null), ['turquoise', null, null, null]);
+  s.fermer();
+  const reprise = new SessionLocale({ stockage: magasin, cle: 'essai', reprendre: true, delaiIA: 1e9 });
+  assert.equal(reprise.joueurs[0].couleur, 'turquoise');
+  reprise.fermer();
+  // Couleur inconnue ou absente : aucune (les couleurs d'origine).
+  for (const couleur of ['fuchsia', undefined]) {
+    const autre = new SessionLocale({ couleur, delaiIA: 1e9, nbJoueurs: 3 });
+    assert.deepEqual(autre.joueurs.map((j) => j.couleur || null), [null, null, null]);
+    autre.fermer();
+  }
+});

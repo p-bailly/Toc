@@ -18,7 +18,7 @@ import { partieFinieEntiere } from './synchro-ia.js';
 import { appliquerCoup } from '../moteur/regles.js';
 import { lancerAnalyse } from './etude-pilote.js';
 import { lireReglages, modifierReglages, rythme } from './reglages.js';
-import { PIONS, couleurSiege } from './couleurs.js';
+import { PIONS, couleurSiege, couleursPartie, appliquerCouleurs } from './couleurs.js';
 import {
   toursDuJoueur, siegesAnalysables, qualifier, candidatJoue, bilan, enPions, formatPions, etatApresCoup, graduations, graduationsTours, QUALIFICATIFS,
 } from './etude-calcul.js';
@@ -162,6 +162,8 @@ function monterVue(contenu, { donnees, tours, resultatsDe, retour, lancer }) {
   const { siege, joueurs } = donnees;
   const nb = (joueurs?.length || 4) === 3 || donnees.reglages?.nbJoueurs === 3 ? 3 : 4;
   const a3 = nb === 3;
+  // L'analyse se lit aux couleurs que les joueurs avaient choisies.
+  appliquerCouleurs(contenu, couleursPartie(joueurs, nb));
   // À 3, l'évaluation est celle du joueur seul : un joueur neutre a 1 chance sur 3, pas 1 sur 2.
   const neutre = a3 ? 1 / 3 : 0.5;
   const pions = (cases, options) => formatPions(cases, nb, options);

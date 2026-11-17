@@ -18,6 +18,41 @@ async function quatre(serveur) {
   return c;
 }
 
+test("salle d'attente : chacun choisit la couleur de ses pions", async () => {
+  const serveur = new FauxServeur();
+  const [a, b, c] = await quatre(serveur);
+  const { id } = await a.client.creerPartie({ nom: 'Couleurs' });
+  // La création n'écrit pas de couleur : elle se choisit ensuite (et la partie se crée même si le serveur l'ignore).
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[0], { uid: a.joueur.uid, pseudo: 'Alice', ia: false });
+  await a.client.choisirCouleur(id, 'violet');
+  await a.client.choisirCouleur(id, 'violet'); // sans effet
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[0], { uid: a.joueur.uid, pseudo: 'Alice', ia: false, couleur: 'violet' });
+  await assert.rejects(a.client.choisirCouleur(id, 'fuchsia'), /Couleur inconnue/);
+  await assert.rejects(b.client.choisirCouleur(id, 'rose'), /Assieds-toi/);
+  await b.client.rejoindrePartie(id);
+  await assert.rejects(b.client.choisirCouleur(id, 'violet'), /déjà prise/);
+  await b.client.choisirCouleur(id, 'orange');
+  // Changer de siège garde sa couleur ; une IA n'en choisit pas, elle reçoit une couleur libre.
+  await b.client.choisirSiege(id, 3);
+  await a.client.ajouterIA(id, 1);
+  let p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.joueurs[3], { uid: b.joueur.uid, pseudo: 'Bruno', ia: false, couleur: 'orange' });
+  assert.equal(p.joueurs[1].couleur, undefined);
+  // Le résumé montré aux écrans porte les couleurs choisies.
+  let vue = null;
+  const arret = a.client.surPartie(id, (r) => (vue = r));
+  await attendre(() => vue?.joueurs?.[3]?.couleur === 'orange', 2000, 'résumé');
+  arret();
+  assert.equal(vue.joueurs[0].couleur, 'violet');
+  assert.equal(vue.joueurs[1].couleur, undefined);
+  // Une fois la partie lancée, les couleurs ne bougent plus.
+  await c.client.choisirSiege(id, 2);
+  await a.client.lancerPartie(id);
+  await assert.rejects(b.client.choisirCouleur(id, 'gris'), /commencé/);
+  p = serveur.get(`parties/${id}`);
+  assert.deepEqual(p.joueurs.map((j) => j.couleur || null), ['violet', null, null, 'orange']);
+});
+
 test("salle d'attente : créer, rejoindre, sièges, IA, quitter", async () => {
   const serveur = new FauxServeur();
   const [a, b, c, d] = await quatre(serveur);

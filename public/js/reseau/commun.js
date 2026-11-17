@@ -1,6 +1,11 @@
 // Outils communs de la couche réseau : chemins Firestore, codes d'invitation, noms de joueurs,
 // traduction des erreurs. Aucun appel à Firebase ici (module pur, testé dans Node).
 
+import { couleurValide } from '../palette.js';
+
+/** { couleur } si la place en a choisi une valable, sinon rien (à étaler dans la place montrée). */
+export const couleurChoisie = (place) => (couleurValide(place?.couleur) ? { couleur: place.couleur } : {});
+
 // ─── Noms de joueurs ────────────────────────────────────────────────────────
 
 /**
@@ -209,7 +214,7 @@ export function resumePartie(id, d, uid) {
     reglages: reglagesPartie(d.reglages?.cinqAdverse, nbJoueurs),
     nbJoueurs,
     joueurs: (d.joueurs || Array(nbJoueurs).fill(null)).map((p) =>
-      p ? (p.ia ? { uid: null, pseudo: p.pseudo, ia: true, niveau: niveauDe(p) } : { uid: p.uid ?? null, pseudo: p.pseudo, ia: false }) : null,
+      p ? (p.ia ? { uid: null, pseudo: p.pseudo, ia: true, niveau: niveauDe(p) } : { uid: p.uid ?? null, pseudo: p.pseudo, ia: false, ...couleurChoisie(p) }) : null,
     ),
     monSiege,
     aMoiDeJouer: d.statut === 'encours' && monSiege >= 0 && siegeDoitAgir(etat, monSiege),
