@@ -7,6 +7,7 @@
 import { s } from './dom.js';
 import { BASE, viser, viserPlateau } from '../moteur/plateau.js';
 import { CELLULE, geometrie, chemin } from './geometrie.js';
+import { COLORIAGES, COTE_COLORIAGE } from './coloriages.js';
 import { PIONS, couleurSiege, couleurFonceeSiege } from './couleurs.js';
 import { emojiIcone, EMOJI_IA } from './icones.js';
 import { rangAffiche, symbole, estRouge, carteCourte } from './libelles.js';
@@ -15,6 +16,8 @@ import { nomNiveau, niveauEnLettres } from './niveaux.js';
 import { estHabille, contenuFigure, CADRE_FIGURE } from './figures.js';
 
 /** Rayon d'un trou percé (case du circuit, de l'allée, emplacement de base) et d'une bille. */
+/** Côté (0 bas, 1 gauche, 2 haut, 3 droite) du joueur dont l'allée longe chaque coin de geo.coins. */
+const COTE_DU_COIN = [2, 3, 1, 0];
 const RAYON_TROU = 3.4;
 const RAYON_PION = 3.15;
 
@@ -100,6 +103,7 @@ export class Plateau {
     this.idBois = id + '-bois';
     this.idTrou = id + '-trou';
     this.idVeinage = id + '-veinage';
+    this.idHachures = id + '-hachures';
     const imageVeinage = s('image', { x: ZONE_VEINAGE.x, y: ZONE_VEINAGE.y, width: ZONE_VEINAGE.l, height: ZONE_VEINAGE.h, preserveAspectRatio: 'none' });
     this.svg.append(
       s(
@@ -108,6 +112,14 @@ export class Plateau {
         s('radialGradient', { id: this.idBois, cx: '50%', cy: '42%', r: '70%' }, s('stop', { offset: 0, class: 'stop-bois' }), s('stop', { offset: 1, class: 'stop-bois-2' })),
         s('radialGradient', { id: this.idTrou, cx: '50%', cy: '35%', r: '65%' }, s('stop', { offset: 0, class: 'stop-trou-centre' }), s('stop', { offset: 1, class: 'stop-trou' })),
         s('pattern', { id: this.idVeinage, patternUnits: 'userSpaceOnUse', x: ZONE_VEINAGE.x, y: ZONE_VEINAGE.y, width: ZONE_VEINAGE.l, height: ZONE_VEINAGE.h }, imageVeinage),
+        // Coups de crayon de couleur des dessins des coins : des hachures de la couleur de chaque joueur.
+        ...PIONS.map((_, o) =>
+          s(
+            'pattern',
+            { id: this.idHachures + o, patternUnits: 'userSpaceOnUse', width: 2.2, height: 2.2, patternTransform: 'rotate(-38)' },
+            s('line', { class: 'hachure', x1: 0, y1: 1.1, x2: 2.2, y2: 1.1, style: { stroke: couleurSiege(o) } }),
+          ),
+        ),
       ),
     );
     veinage().then((url) => {
@@ -193,6 +205,32 @@ export class Plateau {
         s('rect', { class: 'veinage', x: -0.75, y: -0.75, width: COTE + 1.5, height: COTE + 1.5, rx: 3.5, style: { fill: motif } }),
         s('rect', { class: 'filet', x: CELLULE * 1.24, y: CELLULE * 1.24, width: COTE - CELLULE * 2.48, height: COTE - CELLULE * 2.48, rx: 2.5 }),
       );
+      // Un dessin au crayon dans chaque coin libre du tapis, toujours à l'endroit : celui du joueur dont l'allée longe
+      // ce coin (le coin en bas à droite pour le joueur du bas), colorié de la couleur de ses pions.
+      geo.coins.forEach((coin, i) => {
+        const o = (siegeVue + COTE_DU_COIN[i]) % n;
+        const dessin = COLORIAGES[o % COLORIAGES.length];
+        const zone = (classe, d, attrs = {}) => (d ? [s('path', { class: classe, d, ...attrs })] : []);
+        f.append(
+          s(
+            'g',
+            {
+              class: 'coloriage',
+              'data-coloriage': dessin.nom,
+              'data-siege': o,
+              transform: `translate(${coin.x} ${coin.y}) scale(${coin.cote / COTE_COLORIAGE})`,
+              style: { '--couleur': couleurSiege(o) },
+              'aria-hidden': 'true',
+            },
+            ...zone('aplat', dessin.hachures),
+            ...zone('hachures', dessin.hachures, { style: { fill: `url(#${this.idHachures}${o})` } }),
+            ...zone('plein', dessin.plein),
+            ...zone('blanc', dessin.blanc),
+            s('path', { class: 'trait', d: dessin.trait }),
+            s('path', { class: 'reprise', d: dessin.reprise }),
+          ),
+        );
+      });
     }
     const g = s('g', { class: 'cases' });
     for (let o = 0; o < n; o++) {

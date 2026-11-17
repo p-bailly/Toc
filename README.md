@@ -56,6 +56,8 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 | `tests/` | Tests `node:test` : règles (dont deux oracles indépendants), IA, réseau (faux magasin en mémoire, et émulateur s'il est disponible), interface (géométrie, libellés, analyse). |
 | `outils/` | Tournois entre IA et calibrage (`node outils/tournoi.js --a=ia --b=glouton --parties=100 --budget=600`). |
 | `outils/regles/` | Générateur de la page Règles (« Le Toc en une page ») : `SORTIE_APPLI=public node outils/regles/construire.mjs` réécrit `public/js/ui/regles-page.js` et `public/css/regles.css`. Les exemples illustrés y sont vérifiés par le moteur. |
+| `outils/coloriages/` | Dessins au crayon des quatre coins du plateau carré, un par joueur, coloriés de la couleur de ses pions : `node outils/coloriages/generer.mjs` réécrit `public/js/ui/coloriages.js`. |
+| `outils/logo/` | Logo au crayon (repris de Nimbus) : `node outils/logo/generer.mjs` réécrit `public/icons/icon.svg` et, avec Playwright, les icônes PNG. Changer une icône demande d'incrémenter `VERSION` dans `public/sw.js`. |
 
 ## Règles : décisions
 

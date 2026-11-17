@@ -190,7 +190,8 @@ export function tournerTriangle(p, k, c = COTE) {
  * plateau visé), en coordonnées SVG.
  * Méthodes : coteDe, caseCircuit, caseAllee, emplacementBase, centreBase, positionPion, angleCote,
  * boiteEtiquette, centre (défausse) ; champs : nbJoueurs, nbCases, casesParCote, cadre (viewBox),
- * TAILLE_BASE (côté du carré de base), cote (côté du tapis carré), triangle (sommets, à 3 joueurs).
+ * TAILLE_BASE (côté du carré de base), cote (côté du tapis carré), coins (carrés libres des coins du tapis carré),
+ * triangle (sommets, à 3 joueurs).
  * Deux appels avec les mêmes arguments renvoient le même objet.
  */
 export function geometrie(nbJoueurs = 4, cote = COTE) {
@@ -210,6 +211,10 @@ function geoCarre(c) {
   /** Côté du tapis, et son milieu. */
   const L = (c + 1) * CELLULE;
   const M = L / 2;
+  // Coins libres du tapis, entre le circuit, les bases et les allées : un carré dans chaque coin, à 15 unités des
+  // deux bords, assez petit pour ne toucher ni l'allée du joueur d'à côté ni le filet.
+  const coin = (c / 2 - 5) * CELLULE + 2;
+  const loin = L - 15 - coin;
   return {
     nbJoueurs: 4,
     nbCases: 4 * c,
@@ -245,6 +250,13 @@ function geoCarre(c) {
       { x: L + 9.25, y: M, angle: 90, longueur: L + 6 },
     ][cote],
     centre: { x: M, y: M },
+    /** Carrés libres des quatre coins (dessins à colorier) : en haut à gauche, en haut à droite, en bas à gauche, en bas à droite. */
+    coins: [
+      { x: 15, y: 15, cote: coin },
+      { x: loin, y: 15, cote: coin },
+      { x: 15, y: loin, cote: coin },
+      { x: loin, y: loin, cote: coin },
+    ],
   };
 }
 
