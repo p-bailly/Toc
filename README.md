@@ -86,18 +86,19 @@ depuis là. Lien direct : <https://github.com/p-bailly/Toc/releases/latest/downl
 
 Chaque joueur choisit la couleur de ses pions parmi dix (`public/js/palette.js`) : en créant une partie contre l'IA,
 dans « Nom et options » d'une partie en ligne, puis à tout moment dans la salle d'attente. La dernière couleur choisie
-est retenue sur l'appareil et proposée à la partie suivante.
+est retenue sur l'appareil et proposée à la partie suivante. Dans la salle d'attente, la couleur des pions d'une IA ou
+d'un autre joueur se choisit aussi, par n'importe qui (`choisirCouleur(id, couleur, siege)`).
 
-- Tout le monde voit les mêmes couleurs : le choix est gardé dans la place du joueur (`joueurs[s].couleur`). Une
-  couleur choisie par un autre joueur est prise ; une place sans choix (IA, partie d'avant les couleurs) reçoit une
+- Tout le monde voit les mêmes couleurs : le choix est gardé dans la place (`joueurs[s].couleur`, joueur ou IA). Une
+  couleur choisie pour une autre place est prise ; une place sans choix (IA, partie d'avant les couleurs) reçoit une
   couleur libre, d'abord celle d'origine de son siège (bleu, rouge, jaune, vert), en évitant les couleurs voisines
-  de celles déjà prises (`couleursDesSieges`).
+  de celles déjà prises, les places occupées étant servies avant les places libres (`couleursDesSieges`).
 - L'affichage passe par les variables CSS `--pion-0` … `--pion-3` : la feuille de style porte les couleurs d'origine,
   l'écran d'une partie y pose les siennes (`appliquerCouleurs` dans `public/js/ui/couleurs.js`).
 - Chaque couleur a son dessin au crayon dans le coin du plateau carré, tourné vers son joueur.
-- En ligne, le choix demande les règles Firestore de ce dépôt (`firestore.rules`, à republier, voir
-  `docs/firebase.md`). Tant qu'elles ne sont pas publiées, les parties se créent et se jouent comme avant, aux
-  couleurs d'origine : seul le choix d'une couleur est refusé.
+- En ligne, le choix demande les règles Firestore de ce dépôt (`firestore.rules`, publiées à chaque fusion, voir
+  `docs/firebase.md`). Tant qu'elles ne sont pas publiées, les parties se créent et se jouent comme avant : seul le
+  choix d'une couleur est refusé (celle d'une IA ou d'un autre joueur, tant que les règles datent d'avant ce choix).
 
 ## Règles : décisions
 
@@ -140,6 +141,12 @@ Communes aux deux modes :
   qui a copié) ; injouable s'il n'y a rien à copier.
 
 ## Salles d'attente (en ligne)
+
+La table d'une salle d'attente est un aperçu du plateau tel qu'il sera joué (`Plateau.apercu` dans
+`public/js/ui/plateau.js`) : vu de sa place, aux couleurs des joueurs, les places libres en bois brut avec un « + ».
+On touche une place libre pour s'y asseoir (le plateau tourne pour l'amener en bas), une place occupée pour choisir la
+couleur de ses pions dans la palette placée dessous ; le plateau prend la couleur aussitôt. Sous la palette, une ligne
+par place (s'asseoir, placer une IA, son niveau, la retirer).
 
 Une salle d'attente est ouverte à tous : elle apparaît dans « Mes parties » de chaque joueur connecté, qui peut s'y
 asseoir sans invitation, y activer ou désactiver l'option « 5 adverse », et la supprimer. L'hôte garde les IA, les

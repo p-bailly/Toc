@@ -53,6 +53,47 @@ test("salle d'attente : chacun choisit la couleur de ses pions", async () => {
   assert.deepEqual(p.joueurs.map((j) => j.couleur || null), ['violet', null, null, 'orange']);
 });
 
+test("salle d'attente : la couleur des pions d'une IA ou d'un autre joueur se choisit aussi", async () => {
+  const serveur = new FauxServeur();
+  const [a, b, c] = await quatre(serveur);
+  const { id } = await a.client.creerPartie({ nom: 'Couleurs des autres' });
+  await b.client.rejoindrePartie(id);
+  await a.client.ajouterIA(id, 2, 'amateur');
+  // Une IA : sa place garde son nom et son niveau, et sa couleur la suit quand son niveau change.
+  await a.client.choisirCouleur(id, 'gris', 2);
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[2], { uid: null, pseudo: 'IA Nord', ia: true, niveau: 'amateur', couleur: 'gris' });
+  await b.client.changerNiveauIA(id, 2, 'expert');
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[2], { uid: null, pseudo: 'IA Nord', ia: true, niveau: 'expert', couleur: 'gris' });
+  // Un autre joueur : sa place ne change que de couleur. Même sans être assis (la salle est ouverte à tous).
+  await a.client.choisirCouleur(id, 'rose', 1);
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[1], { uid: b.joueur.uid, pseudo: 'Bruno', ia: false, couleur: 'rose' });
+  await c.client.choisirCouleur(id, 'marron', 0);
+  assert.deepEqual(serveur.get(`parties/${id}`).joueurs[0], { uid: a.joueur.uid, pseudo: 'Alice', ia: false, couleur: 'marron' });
+  // Une couleur choisie pour une autre place est prise, pour tout le monde ; une place libre n'a pas de couleur.
+  await assert.rejects(a.client.choisirCouleur(id, 'gris'), /déjà prise/);
+  await assert.rejects(a.client.choisirCouleur(id, 'rose', 2), /déjà prise/);
+  await assert.rejects(a.client.choisirCouleur(id, 'vert', 3), /personne à cette place/);
+  await assert.rejects(a.client.choisirCouleur(id, 'vert', 7), /Siège|siège/);
+  await assert.rejects(c.client.choisirCouleur(id, 'vert'), /Assieds-toi/);
+  // Les écrans les reçoivent toutes : résumé de la salle, puis joueurs de la partie en cours.
+  let vue = null;
+  const arret = a.client.surPartie(id, (r) => (vue = r));
+  await attendre(() => vue?.joueurs?.[2]?.couleur === 'gris', 2000, 'résumé');
+  arret();
+  assert.deepEqual(vue.joueurs.map((j) => j?.couleur || null), ['marron', 'rose', 'gris', null]);
+  // Passer à 3 joueurs garde la couleur de l'IA, qui change de nom avec son siège.
+  await a.client.modifierSalle(id, { nbJoueurs: 3 });
+  assert.equal(serveur.get(`parties/${id}`).joueurs[2].couleur, 'gris');
+  await a.client.lancerPartie(id);
+  const session = await a.client.ouvrirSession(id);
+  let jeu = null;
+  const fin = session.abonner((v) => (jeu = v));
+  await attendre(() => jeu?.joueurs?.length === 3, 2000, 'vue de la partie');
+  assert.deepEqual(jeu.joueurs.map((j) => j.couleur || null), ['marron', 'rose', 'gris']);
+  fin?.();
+  session.fermer();
+});
+
 test("salle d'attente : créer, rejoindre, sièges, IA, quitter", async () => {
   const serveur = new FauxServeur();
   const [a, b, c, d] = await quatre(serveur);

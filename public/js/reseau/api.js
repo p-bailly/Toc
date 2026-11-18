@@ -217,12 +217,13 @@ export async function choisirSiege(id, siege) {
 }
 
 /**
- * Salle d'attente : choisit la couleur de ses pions (identifiant de la palette, voir js/palette.js). Refusé si un
- * autre joueur l'a déjà choisie.
+ * Salle d'attente : choisit la couleur des pions (identifiant de la palette, voir js/palette.js) : les siens, ou
+ * avec `siege` ceux de cette place (une IA, un autre joueur ; tout joueur connecté). Refusé si la couleur a déjà
+ * été choisie pour une autre place.
  */
-export async function choisirCouleur(id, couleur) {
+export async function choisirCouleur(id, couleur, siege) {
   if (!reseauDisponible()) return nonConfigure();
-  return client.choisirCouleur(id, couleur);
+  return client.choisirCouleur(id, couleur, siege);
 }
 
 /**

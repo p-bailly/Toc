@@ -432,15 +432,16 @@ export async function choisirSiege(id, siege) {
   changer();
 }
 
-/** Salle d'attente : choisit la couleur de ses pions (refusée si un autre joueur l'a choisie). */
-export async function choisirCouleur(id, couleur) {
+/** Salle d'attente : choisit la couleur de ses pions, ou de ceux de la place `siege` (refusée si elle est prise). */
+export async function choisirCouleur(id, couleur, siege) {
   await attendre();
   const c = exigerConnexion();
   const p = exigerPartie(id);
   if (!couleurValide(couleur)) throw new Error('Couleur inconnue.');
   if (p.statut !== 'attente') throw new Error('La partie a déjà commencé.');
-  const siege = siegeDe(p, c.uid);
+  siege ??= siegeDe(p, c.uid);
   if (siege < 0) throw new Error('Assieds-toi d’abord à une place.');
+  if (!p.joueurs[siege]) throw new Error('Il n’y a personne à cette place.');
   if (couleursIndisponibles(p.joueurs, siege).includes(couleur)) throw new Error('Cette couleur est déjà prise.');
   p.joueurs[siege] = { ...p.joueurs[siege], couleur };
   p.majLe = Date.now();

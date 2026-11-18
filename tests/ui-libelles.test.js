@@ -102,3 +102,17 @@ test('erreurs : deux versions de l’appli mélangées donnent un message clair,
   assert.equal(messageErreur(new TypeError('Failed to fetch')), 'Failed to fetch');
   assert.equal(messageErreur(null), 'Erreur inconnue.');
 });
+
+test('salle d’attente : rôle de chaque place et côté du plateau où elle est dessinée', async () => {
+  const { rolePlace, cotePlace, deNom } = await import('../public/js/ui/libelles.js');
+  assert.deepEqual([deNom('Camille'), deNom('Inès'), deNom('Élise'), deNom('IA Est', true)], ['de Camille', 'd’Inès', 'd’Élise', 'de l’IA Est']);
+  // À 4 : les partenaires sont face à face ; pas encore assis, on nomme les deux équipes.
+  assert.deepEqual([0, 1, 2, 3].map((s) => rolePlace(4, s, 1)), ['Adversaire', '', 'Adversaire', 'Partenaire']);
+  assert.deepEqual([0, 1, 2, 3].map((s) => rolePlace(4, s)), ['Équipe A', 'Équipe B', 'Équipe A', 'Équipe B']);
+  // À 3, chacun pour soi : l'ordre de jeu, assis ou non.
+  assert.deepEqual([0, 1, 2].map((s) => rolePlace(3, s, 2)), ['1er à jouer', '2e à jouer', '3e à jouer']);
+  // Le siège vu est en bas, les suivants tournent dans le sens des aiguilles d'une montre.
+  assert.deepEqual([0, 1, 2, 3].map((s) => cotePlace(4, s, 0)), ['en bas', 'à gauche', 'en haut', 'à droite']);
+  assert.deepEqual([0, 1, 2, 3].map((s) => cotePlace(4, s, 3)), ['à gauche', 'en haut', 'à droite', 'en bas']);
+  assert.deepEqual([0, 1, 2].map((s) => cotePlace(3, s, 1)), ['à droite', 'en bas', 'à gauche']);
+});

@@ -214,7 +214,7 @@ export function resumePartie(id, d, uid) {
     reglages: reglagesPartie(d.reglages?.cinqAdverse, nbJoueurs),
     nbJoueurs,
     joueurs: (d.joueurs || Array(nbJoueurs).fill(null)).map((p) =>
-      p ? (p.ia ? { uid: null, pseudo: p.pseudo, ia: true, niveau: niveauDe(p) } : { uid: p.uid ?? null, pseudo: p.pseudo, ia: false, ...couleurChoisie(p) }) : null,
+      p ? (p.ia ? { uid: null, pseudo: p.pseudo, ia: true, niveau: niveauDe(p), ...couleurChoisie(p) } : { uid: p.uid ?? null, pseudo: p.pseudo, ia: false, ...couleurChoisie(p) }) : null,
     ),
     monSiege,
     aMoiDeJouer: d.statut === 'encours' && monSiege >= 0 && siegeDoitAgir(etat, monSiege),

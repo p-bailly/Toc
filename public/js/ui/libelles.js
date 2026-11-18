@@ -201,3 +201,30 @@ export function enumerer(noms) {
   if (noms.length <= 1) return noms.join('');
   return noms.slice(0, -1).join(', ') + ' et ' + noms[noms.length - 1];
 }
+
+// ─── Salle d'attente ────────────────────────────────────────────────────────
+
+/**
+ * Ce qu'est la place `siege` pour le joueur assis en `monSiege` (-1 : pas encore assis). À 3 joueurs, chacun pour
+ * soi : son rang dans l'ordre de jeu. À 4 : son camp, les partenaires étant face à face (« Partenaire »,
+ * « Adversaire », rien pour sa propre place ; « Équipe A » ou « Équipe B » tant qu'on n'est pas assis).
+ */
+export function rolePlace(nbJoueurs, siege, monSiege = -1) {
+  if (nbJoueurs === 3) return ['1er à jouer', '2e à jouer', '3e à jouer'][siege] || '';
+  if (monSiege < 0) return siege % 2 === 0 ? 'Équipe A' : 'Équipe B';
+  if (siege === monSiege) return '';
+  return siege % 2 === monSiege % 2 ? 'Partenaire' : 'Adversaire';
+}
+
+/** Complément du nom d'un joueur : « de Camille », « d’Inès » ; pour une IA, « de l’IA Est ». */
+export const deNom = (nom, ia = false) => (ia ? `de l’${nom}` : /^[aeiouyhàâäéèêëîïôöùûü]/i.test(nom) ? `d’${nom}` : `de ${nom}`);
+
+/**
+ * Où la place `siege` est dessinée sur le plateau vu du siège `siegeVue` (celui du bas) : les sièges se suivent
+ * dans le sens des aiguilles d'une montre (bas, gauche, haut, droite ; à 3 : bas, gauche, droite).
+ */
+export function cotePlace(nbJoueurs, siege, siegeVue = 0) {
+  const n = nbJoueurs === 3 ? 3 : 4;
+  const cote = (((siege - siegeVue) % n) + n) % n;
+  return (n === 3 ? ['en bas', 'à gauche', 'à droite'] : ['en bas', 'à gauche', 'en haut', 'à droite'])[cote];
+}

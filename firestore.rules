@@ -167,28 +167,41 @@ service cloud.firestore {
       function aMoi(p) {
         return p != null && p.ia == false && p.uid == moi();
       }
-      // Sa place ; `couleur` facultative : la couleur de pions qu'il a choisie (palette de js/palette.js).
+      // `couleur` facultative d'une place : la couleur de ses pions, dans la palette de js/palette.js.
+      function couleurOk(p) {
+        return !('couleur' in p)
+          || p.couleur in ['bleu', 'rouge', 'jaune', 'vert', 'violet', 'orange', 'turquoise', 'rose', 'gris', 'marron'];
+      }
+      // Sa place.
       function estMoi(p) {
         return aMoi(p) && p.keys().hasOnly(['uid', 'pseudo', 'ia', 'couleur']) && p.pseudo == pseudoFiche()
-          && (!('couleur' in p)
-            || p.couleur in ['bleu', 'rouge', 'jaune', 'vert', 'violet', 'orange', 'turquoise', 'rose', 'gris', 'marron']);
+          && couleurOk(p);
       }
       // Place d'une IA ; `niveau` facultatif (absent dans les parties d'avant les niveaux : champion).
       function estIA(p) {
-        return p != null && p.keys().hasOnly(['uid', 'pseudo', 'ia', 'niveau']) && p.ia == true && p.uid == null
+        return p != null && p.keys().hasOnly(['uid', 'pseudo', 'ia', 'niveau', 'couleur']) && p.ia == true && p.uid == null
           && p.pseudo is string && p.pseudo.size() > 0 && p.pseudo.size() <= 20
-          && (!('niveau' in p) || p.niveau in ['debutant', 'amateur', 'confirme', 'expert', 'champion']);
+          && (!('niveau' in p) || p.niveau in ['debutant', 'amateur', 'confirme', 'expert', 'champion'])
+          && couleurOk(p);
       }
-      // Changement permis d'un siège en salle d'attente : soi-même s'y placer, en partir ou y changer de couleur ;
-      // tout joueur connecté place une IA, la retire ou change son niveau. Personne ne déplace un autre joueur.
+      // La place d'un joueur, inchangée à la couleur de ses pions près.
+      function recoloree(a, b) {
+        return a != null && b != null && a.ia == false && b.ia == false
+          && b.keys().hasOnly(['uid', 'pseudo', 'ia', 'couleur']) && b.uid == a.uid && b.pseudo == a.pseudo
+          && couleurOk(b);
+      }
+      // Changement permis d'un siège en salle d'attente : soi-même s'y placer ou en partir ; tout joueur connecté
+      // place une IA, la retire, change son niveau, et change la couleur des pions d'une place occupée (la sienne,
+      // celle d'une IA, celle d'un autre joueur). Personne ne déplace un autre joueur.
       function siegeOk(a, b) {
         return a == b
           || (a == null && estMoi(b))
           || (aMoi(a) && b == null)
           || (aMoi(a) && estMoi(b)) // changer la couleur de ses pions
+          || recoloree(a, b) // changer la couleur des pions d'un autre joueur
           || (a == null && estIA(b))
           || (estIA(a) && b == null)
-          || (estIA(a) && estIA(b)); // changer le niveau d'une IA
+          || (estIA(a) && estIA(b)); // changer le niveau d'une IA, ou la couleur de ses pions
       }
       function nbMoi(j) {
         return un(aMoi(j[0])) + un(aMoi(j[1])) + un(aMoi(j[2])) + (j.size() > 3 ? un(aMoi(j[3])) : 0);
