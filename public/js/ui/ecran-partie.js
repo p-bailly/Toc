@@ -1,8 +1,11 @@
 // Partie en ligne (route #/partie/ID) : salle d'attente tant que la partie n'est pas lancée, puis plateau.
 //
-// Salle d'attente : la table (on s'assoit, on place des IA), les réglages de la partie (nom, mode, règle du
-// « 5 adverse »), la couleur de ses pions, les invitations (lien, code, joueurs de l'appli), et en bas le bouton
-// qui lance la partie. Elle est ouverte à tous et personne n'y a de droit particulier : tout joueur connecté peut
+// Salle d'attente : la table, montrée par un aperçu du plateau tel qu'il sera joué (vu de sa place, aux couleurs
+// des joueurs ; on y touche une place libre pour s'y asseoir, une place occupée pour choisir la couleur de ses
+// pions), la palette juste dessous (ses pions, ceux d'une IA ou d'un autre joueur ; le plateau prend la couleur
+// aussitôt), la liste des places (on s'assoit, on place des IA), les réglages de la partie (nom, mode, règle du
+// « 5 adverse »), les invitations (lien, code, joueurs de l'appli), et en bas le bouton qui lance la partie.
+// Elle est ouverte à tous et personne n'y a de droit particulier : tout joueur connecté peut
 // l'ouvrir, s'y asseoir (invité ou non), placer ou retirer des IA, changer les réglages, inviter, et supprimer la
 // salle ; tout joueur assis peut lancer la partie. Celui qui l'a créée peut la quitter comme les autres.
 //
@@ -11,12 +14,13 @@
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
 import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille, interrupteur, choixCouleur, segments } from './composants.js';
-import { enumerer } from './libelles.js';
+import { enumerer, rolePlace, cotePlace, deNom } from './libelles.js';
 import { nomNiveau, niveauValide, niveauEnLigne, ecrireNiveauEnLigne, listeNiveaux } from './niveaux.js';
 import { monterJeu } from './vue-jeu.js';
+import { Plateau } from './plateau.js';
 import { definirPartieOuverte } from './veille.js';
 import { piPartager, piPlus, piCrayon } from './pictos.js';
-import { couleurSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie, couleurPreferee, retenirCouleur } from './couleurs.js';
+import { couleurSiege, couleurFonceeSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie, couleurPreferee, retenirCouleur } from './couleurs.js';
 import { couleursIndisponibles } from '../palette.js';
 import { android } from './android.js';
 
@@ -41,6 +45,13 @@ export function afficher(racine, app, { reste }) {
   // Règle du 5 : valeur que je viens de demander, affichée en attendant que la salle la confirme.
   let cinqVoulu = null;
   let cinqEnvoye = false;
+  // Couleur des pions : la place dont la palette règle la couleur (null : la mienne, ou la première occupée), et
+  // la couleur que je viens de toucher ({ siege, id }), montrée tout de suite sur le plateau en attendant la salle.
+  let siegeCouleur = null;
+  let couleurVoulue = null;
+  let couleurEnvoyee = false;
+  // Aperçu du plateau de la salle d'attente : le même d'un dessin à l'autre (il tourne quand on change de place).
+  let apercuPlateau = null;
   // Abandon d'une partie en cours : le bandeau posé dans l'écran de jeu, et ce qu'on savait de ma proposition.
   const bandeauAbandon = h('div', { class: 'bandeau-abandon', hidden: true, role: 'status', 'aria-live': 'polite' });
   let salleVue = false; // la salle d'attente a déjà été dessinée (les fois suivantes, sans fondu)
@@ -79,6 +90,10 @@ export function afficher(racine, app, { reste }) {
     if (cinqVoulu !== null && (cinqEnvoye || !p || !!p.reglages?.cinqAdverse === cinqVoulu)) {
       cinqVoulu = null;
       cinqEnvoye = false;
+    }
+    if (couleurVoulue !== null && (couleurEnvoyee || !p || p.joueurs?.[couleurVoulue.siege]?.couleur === couleurVoulue.id)) {
+      couleurVoulue = null;
+      couleurEnvoyee = false;
     }
     // Salle supprimée (par n'importe quel joueur), ou partie lancée sans moi : il n'y a plus rien à voir ici.
     if (p === null || (p.statut !== 'attente' && p.monSiege < 0)) {
@@ -226,6 +241,51 @@ export function afficher(racine, app, { reste }) {
     }
   }
 
+  /**
+   * Choix d'une couleur dans la palette, pour les pions de la place `si` (la mienne, une IA, un autre joueur) : le
+   * plateau la prend aussitôt, sans attendre la salle, et la palette reste utilisable (on peut en essayer plusieurs
+   * de suite). La mienne est retenue sur l'appareil pour les parties suivantes.
+   */
+  async function changerCouleur(si, id) {
+    const aMoi = resume?.joueurs?.[si]?.uid === app.joueur.uid;
+    if (aMoi) {
+      retenirCouleur(id);
+      couleurTentee = true;
+    }
+    const voulue = { siege: si, id };
+    couleurVoulue = voulue;
+    couleurEnvoyee = false;
+    erreurAttente = '';
+    dessinerAttente();
+    try {
+      // Sa propre couleur se choisit sans nommer de siège (comme avant : toutes les versions du serveur l'acceptent).
+      await (aMoi ? api.choisirCouleur(resume.id, id) : api.choisirCouleur(resume.id, id, si));
+      if (couleurVoulue === voulue) {
+        // Déjà confirmée par la salle ? Sinon, la prochaine mise à jour reçue fait foi.
+        if (resume?.joueurs?.[si]?.couleur === id) couleurVoulue = null;
+        else couleurEnvoyee = true;
+      }
+    } catch (e) {
+      if (couleurVoulue === voulue) couleurVoulue = null;
+      erreurAttente = messageErreur(e);
+    } finally {
+      if (!fermee && resume?.statut === 'attente') dessinerAttente();
+    }
+  }
+
+  /**
+   * Une place touchée sur l'aperçu du plateau : libre, on s'y assoit (ou on y vient) ; occupée, la palette règle
+   * désormais la couleur de ses pions.
+   */
+  function toucherPlace(si) {
+    const p = resume;
+    if (!p || p.statut !== 'attente' || fermee) return;
+    if (p.joueurs?.[si]) {
+      siegeCouleur = si;
+      dessinerAttente();
+    } else if (!occupe) agir(() => api.choisirSiege(p.id, si));
+  }
+
   function dessinerAttente() {
     const p = resume;
     const moi = app.joueur.uid;
@@ -236,9 +296,18 @@ export function afficher(racine, app, { reste }) {
     const libres = Array.from({ length: n }, (_, si) => si).filter((si) => !places[si]);
     const complet = libres.length === 0;
     const vue = assis ? monSiege : 0;
-    // Couleur de chaque place : celle que son joueur a choisie, sinon une couleur libre (la même chez tous).
-    const couleurs = couleursPartie(places, n);
+    // Couleur de chaque place : celle qu'on lui a choisie, sinon une couleur libre (la même chez tous). La couleur
+    // que je viens de toucher compte déjà pour sa place.
+    const voulue = couleurVoulue && places[couleurVoulue.siege] ? couleurVoulue : null;
+    const couleurs = couleursPartie(voulue ? places.map((x, si) => (si === voulue.siege ? { ...x, couleur: voulue.id } : x)) : places, n);
     const prises = assis ? couleursIndisponibles(places, monSiege) : [];
+    // Les places occupées, dans le sens du jeu à partir de celle du bas ; et celle dont la palette règle la couleur :
+    // la dernière touchée si elle est encore occupée, sinon la mienne, sinon la première.
+    const occupees = Array.from({ length: n }, (_, c) => (vue + c) % n).filter((si) => places[si]);
+    if (siegeCouleur !== null && (!places[siegeCouleur] || siegeCouleur === monSiege)) siegeCouleur = null;
+    const cible = siegeCouleur ?? (assis ? monSiege : occupees[0] ?? -1);
+    const nomPlace = (si) => (si === monSiege ? 'Toi' : places[si]?.pseudo || (places[si]?.ia ? 'IA' : '?'));
+    const titreCouleur = cible < 0 ? '' : cible === monSiege ? 'Couleur de tes pions' : `Couleur des pions ${deNom(nomPlace(cible), !!places[cible].ia)}`;
     // À peine assis, le joueur reçoit la couleur qu'il a choisie la dernière fois (ou en créant la partie), si elle
     // est libre. Un seul essai par salle : si les règles du serveur la refusent, on garde la couleur d'office.
     const preferee = couleurPreferee();
@@ -246,15 +315,15 @@ export function afficher(racine, app, { reste }) {
       couleurTentee = true;
       api.choisirCouleur(p.id, preferee).catch(() => {});
     }
-    // À 3 : pas d'équipe ; on indique l'ordre de jeu (1er, 2e, 3e à partir du siège 0).
-    const rangJeu = (si) => ['1er à jouer', '2e à jouer', '3e à jouer'][si];
     const modifiable = typeof api.modifierSalle === 'function';
+    const majuscule = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
-    // ── La table : on s'y assoit, et chacun peut y placer ou en retirer des IA. ──
+    // ── La table : l'aperçu du plateau, puis une ligne par place (on s'assoit, on place ou on retire des IA). ──
     const siege = (si) => {
       const place = places[si];
-      // Pas encore assis : pas de « mon équipe » ; on nomme les deux équipes (partenaires face à face).
-      const equipe = n === 3 ? rangJeu(si) : !assis ? (si % 2 === 0 ? 'Équipe A' : 'Équipe B') : si % 2 === vue % 2 ? 'Mon équipe' : 'Adversaires';
+      // Ce qu'est cette place pour moi (partenaire, adversaire ; à 3 : son rang de jeu), et où elle est sur le plateau.
+      const role = rolePlace(n, si, monSiege);
+      const ou = cotePlace(n, si, vue);
       const actions = [];
       if (!place) {
         // Ouvert à tous : qui n'est pas encore dans la partie y entre en s'asseyant, invité ou non.
@@ -268,45 +337,76 @@ export function afficher(racine, app, { reste }) {
         );
       }
       const nom = place ? (place.uid === moi ? `${place.pseudo} (toi)` : place.pseudo || (place.ia ? 'IA' : '?')) : 'Place libre';
+      const note = majuscule([role, si === monSiege && !role ? 'en bas du plateau' : ou].filter(Boolean).join(' · '));
       return h(
         'div',
         { class: 'siege' + (place ? '' : ' libre') + (si === monSiege ? ' moi' : ''), 'data-siege': si, style: { '--c': couleurSiege(si) } },
         place ? avatar({ uid: place.uid, nom: place.pseudo, ia: place.ia, fond: couleurSiege(si) }) : h('div', { class: 'avatar vide', 'aria-hidden': 'true' }, '?'),
-        h('div', { class: 'nom-siege' }, nom),
-        h('div', { class: 'note' }, place?.ia ? `IA · ${equipe}` : equipe),
+        h('div', { class: 'texte-siege' }, h('div', { class: 'nom-siege' }, nom), h('div', { class: 'note' }, note)),
         actions.length ? h('div', { class: 'actions-siege' }, actions) : null,
       );
     };
-    const pos = (c) => (vue + c) % n;
-    const ordre = Array.from({ length: n }, (_, k) => {
-      const pl = places[k];
-      return pl ? (pl.uid === moi ? 'toi' : pl.pseudo) : 'place libre';
-    });
-    const table =
-      n === 3
-        ? h(
-            'div',
-            { class: 'table-attente table-3', 'aria-label': 'Places autour de la table' },
-            h('div', { class: 'place-haut-gauche' }, siege(pos(1))),
-            h('div', { class: 'place-haut-droite' }, siege(pos(2))),
-            h('div', { class: 'tapis-table tapis-triangle-attente' }, h('span', {}, 'Chacun pour soi')),
-            h('div', { class: 'place-bas' }, siege(pos(0))),
-          )
-        : h(
-            'div',
-            { class: 'table-attente', 'aria-label': 'Places autour de la table' },
-            h('div', { class: 'place-haut' }, siege(pos(2))),
-            h('div', { class: 'place-gauche' }, siege(pos(1))),
-            h('div', { class: 'tapis-table' }, h('span', {}, 'Partenaires'), h('span', { class: 'note' }, 'face à face')),
-            h('div', { class: 'place-droite' }, siege(pos(3))),
-            h('div', { class: 'place-bas' }, siege(pos(0))),
-          );
+    // L'aperçu du plateau : celui de la partie, vu de ma place (en bas), aux couleurs des joueurs.
+    apercuPlateau ||= new Plateau({ surSiege: toucherPlace });
+    const gestes = [complet ? '' : `un + pour ${assis ? 'changer de place' : 't’asseoir'}`, occupees.length > 1 ? 'des pions pour choisir leur couleur' : ''].filter(Boolean);
+    const aide = gestes.length ? `Touche ${gestes.join(', ')}.` : '';
     const carteTable = h(
       'div',
       { class: 'carte carte-table' },
       h('div', { class: 'titre-carte' }, h('b', {}, 'La table'), h('span', { class: 'note', 'data-etat': complet ? 'complete' : 'incomplete' }, complet ? 'Tout le monde est là' : `${pluriel(libres.length, 'place libre', 'places libres')} : un joueur ou une IA`)),
-      table,
-      n === 3 ? h('p', { class: 'note ordre-jeu' }, `Ordre de jeu (sens des aiguilles d’une montre) : ${ordre.join(' → ')}`) : null,
+      h('div', { class: 'apercu-plateau', 'data-mode': String(n), 'data-vue': String(vue) }, apercuPlateau.el),
+      aide ? h('p', { class: 'note aide-apercu' }, aide) : null,
+      // La couleur des pions : les siens, ceux d'une IA ou d'un autre joueur (on choisit la place en la touchant sur
+      // le plateau, ou ici). Une couleur choisie pour une autre place est prise.
+      cible >= 0 && typeof api.choisirCouleur === 'function'
+        ? h(
+            'div',
+            { class: 'carte-couleur', 'data-place': cible },
+            h(
+              'div',
+              { class: 'titre-couleur' },
+              h('b', {}, titreCouleur),
+              h('span', { class: 'note' }, nomCouleurPartie(couleurs, cible)),
+            ),
+            occupees.length > 1
+              ? h(
+                  'div',
+                  { class: 'choix-place', role: 'radiogroup', 'aria-label': 'Les pions de qui ?' },
+                  occupees.map((si) =>
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        role: 'radio',
+                        class: 'puce-place' + (si === cible ? ' choisie' : ''),
+                        'aria-checked': String(si === cible),
+                        'data-place': si,
+                        style: { '--c': couleurSiege(si), '--c-fonce': couleurFonceeSiege(si) },
+                        onclick: () => {
+                          siegeCouleur = si;
+                          dessinerAttente();
+                        },
+                      },
+                      h('span', { class: 'bille', 'aria-hidden': 'true' }),
+                      h('span', { class: 'nom' }, nomPlace(si)),
+                    ),
+                  ),
+                )
+              : null,
+            choixCouleur({
+              actuelle: couleurs[cible],
+              indisponibles: couleursIndisponibles(places, cible),
+              libelle: titreCouleur,
+              surChoix: (id) => changerCouleur(cible, id),
+            }),
+          )
+        : null,
+      // Les places, dans le sens du jeu à partir de celle du bas du plateau.
+      h(
+        'div',
+        { class: 'places-table', 'aria-label': 'Places autour de la table' },
+        Array.from({ length: n }, (_, c) => siege((vue + c) % n)),
+      ),
     );
 
     // ── Les réglages de la partie : chacun peut les changer jusqu'au lancement. ──
@@ -362,30 +462,7 @@ export function afficher(racine, app, { reste }) {
       }),
     );
 
-    const blocs = [
-      enteteRetour(p.nom || 'Salle d’attente', '#/parties'),
-      carteTable,
-      // Chaque joueur assis choisit la couleur de ses pions ; celles des autres joueurs sont prises.
-      assis && typeof api.choisirCouleur === 'function'
-        ? h(
-            'div',
-            { class: 'carte carte-couleur' },
-            h('div', { class: 'titre-carte' }, h('b', {}, 'Couleur de tes pions'), h('span', { class: 'note' }, nomCouleurPartie(couleurs, monSiege))),
-            choixCouleur({
-              actuelle: couleurs[monSiege],
-              indisponibles: prises,
-              inactif: occupe,
-              surChoix: (id) => {
-                retenirCouleur(id);
-                couleurTentee = true;
-                agir(() => api.choisirCouleur(p.id, id));
-              },
-            }),
-          )
-        : null,
-      carteReglages,
-      carteInviter(p, libres.length),
-    ];
+    const blocs = [enteteRetour(p.nom || 'Salle d’attente', '#/parties'), carteTable, carteReglages, carteInviter(p, libres.length)];
     // Quitter la table (si l'on y est) ; supprimer la salle : n'importe quel joueur, tant que la partie n'est pas lancée.
     const autres = places.filter((x) => x && !x.ia && x.uid !== moi).length;
     blocs.push(
@@ -452,6 +529,25 @@ export function afficher(racine, app, { reste }) {
     // La page garde sa place quand la salle se redessine (une mise à jour arrive, ou une action vient d'être faite).
     const defilement = window.scrollY;
     remplacer(racine, salle);
+    // Une fois dans la page (les noms se mesurent pour se centrer) : le plateau de la salle, vu de ma place.
+    const titres = Array.from({ length: n }, (_, si) => rolePlace(n, si, monSiege)).map((t) => t.charAt(0).toLowerCase() + t.slice(1));
+    apercuPlateau.apercu({
+      nbJoueurs: n,
+      siegeVue: vue,
+      siegeLocal: monSiege,
+      places: Array.from({ length: n }, (_, si) => (places[si] ? { ...places[si], icone: places[si].ia ? null : iconeConnue(places[si].uid) } : null)),
+      couleurs,
+      sousTitres: titres,
+      // La place dont la palette règle la couleur (entourée, dès qu'il y a le choix).
+      choisi: occupees.length > 1 ? cible : -1,
+      // Tout se touche : une place libre pour s'y asseoir (pas pendant une action), une place occupée pour sa couleur.
+      touchables: Array.from({ length: n }, (_, si) => si)
+        .filter((si) => (places[si] ? si !== cible : !occupe))
+        .map((si) => ({
+          siege: si,
+          libelle: places[si] ? `${nomPlace(si)}, ${cotePlace(n, si, vue)} : choisir la couleur de ses pions` : `Place libre ${cotePlace(n, si, vue)} : ${assis ? 'venir ici' : 'm’asseoir ici'}`,
+        })),
+    });
     if (defilement) window.scrollTo(0, defilement);
   }
 

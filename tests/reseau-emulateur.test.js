@@ -133,6 +133,12 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   await a.client.choisirCouleur(id, 'violet');
   await b.client.choisirSiege(id, 3);
   await a.client.ajouterIA(id, 1);
+  // Celle d'une IA et celle d'un autre joueur se choisissent aussi.
+  await a.client.choisirCouleur(id, 'gris', 1);
+  await a.client.changerNiveauIA(id, 1, 'expert');
+  await a.client.choisirCouleur(id, 'rose', 3);
+  await assert.rejects(b.client.choisirCouleur(id, 'gris', 0), /déjà prise/);
+  await b.client.choisirCouleur(id, 'orange');
   await a.client.retirerIA(id, 1);
   await a.client.ajouterIA(id, 2);
   await c.client.accepterInvitation(id); // siège 1
@@ -327,12 +333,21 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'expert' }], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'maitre' }], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
-  // Couleur des pions : chacun choisit la sienne dans la palette, jamais celle de la place d'un autre.
+  // Couleur des pions, dans la palette : la sienne, celle d'une IA, celle d'un autre joueur (tout joueur connecté,
+  // comme le reste de la salle) ; mais rien d'autre de la place d'un autre ne change.
   const hoteViolet = { ...base.joueurs[0], couleur: 'violet' };
   await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], { ...pB, couleur: 'fuchsia' }, pC, ia], majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], { ...pB, couleur: 3 }, pC, ia], majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'rose' }, ia], majLe: serverTimestamp() }));
-  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, couleur: 'rose' }], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'fuchsia' }, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, pseudo: 'Clown', couleur: 'rose' }, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, uid: X, couleur: 'rose' }, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'rose', niveau: 'expert' }, ia], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, { ...ia, couleur: 'fuchsia' }], majLe: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'rose' }, ia], majLe: serverTimestamp() })); // celle d'un autre joueur
+  await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'rose' }, { ...ia, couleur: 'gris' }], majLe: serverTimestamp() })); // celle d'une IA
+  await assertSucceeds(updateDoc(ref(X), { joueurs: [base.joueurs[0], pB, { ...pC, couleur: 'marron' }, { ...ia, couleur: 'gris' }], majLe: serverTimestamp() })); // sans être assis
+  await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], pB, pC, { ...ia, niveau: 'expert', couleur: 'gris' }], majLe: serverTimestamp() })); // niveau changé, couleur gardée
+  await assertSucceeds(updateDoc(ref(A), { joueurs: [base.joueurs[0], pB, pC, ia], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(B), { joueurs: [base.joueurs[0], { ...pB, couleur: 'orange' }, pC, ia], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(A), { joueurs: [hoteViolet, { ...pB, couleur: 'orange' }, pC, ia], majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(B), { joueurs: [hoteViolet, pB, pC, ia], majLe: serverTimestamp() })); // y renoncer

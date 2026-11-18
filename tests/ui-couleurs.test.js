@@ -57,6 +57,12 @@ test('palette : sans choix, les couleurs d’origine ; un choix est gardé, les 
     }
   }
   // Seules les couleurs choisies par les AUTRES joueurs sont prises (pas celles données d'office, ni la sienne).
+  // Les places occupées sont servies avant les places libres : la couleur d'office d'une IA ne dépend pas d'elles.
+  assert.deepEqual(couleursDesSieges([null, ia, h('rose'), h('turquoise')]), ['gris', 'jaune', 'rose', 'turquoise']);
+  assert.equal(couleursDesSieges([null, ia, h('rose'), h('turquoise')])[1], couleursDesSieges([h('marron'), ia, h('rose'), h('turquoise')])[1]);
+  // Une IA à qui l'on a choisi une couleur la garde, comme un joueur.
+  assert.deepEqual(couleursDesSieges([h(), { ...ia, couleur: 'gris' }, ia, ia]), ['bleu', 'gris', 'jaune', 'vert']);
+  assert.deepEqual(couleursIndisponibles([h('rose'), { ...ia, couleur: 'gris' }, h(), null], 2), ['rose', 'gris']);
   assert.deepEqual(couleursIndisponibles([h('rose'), ia, h('gris'), null], 0), ['gris']);
   assert.deepEqual(couleursIndisponibles([h('rose'), ia, h(), null], 2), ['rose']);
 });

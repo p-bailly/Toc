@@ -224,21 +224,28 @@ export async function choisirSiege(ctx, id, siege) {
 }
 
 /**
- * Salle d'attente : choisit la couleur de ses pions dans la palette. Une couleur choisie par un autre joueur est
- * prise ; celle qu'une place a reçue d'office (une IA, par exemple) se choisit : cette place en recevra une autre.
+ * Salle d'attente : choisit la couleur des pions d'une place dans la palette. Sans `siege` : la sienne (il faut
+ * être assis). Avec `siege` : celle de cette place, tenue par une IA ou par un autre joueur ; comme le reste de la
+ * salle, c'est ouvert à tout joueur connecté. Une couleur choisie pour une autre place est prise ; celle qu'une
+ * place a reçue d'office (une IA sans choix, par exemple) se choisit : cette place en recevra une autre.
  */
-export async function choisirCouleur(ctx, id, couleur) {
+export async function choisirCouleur(ctx, id, couleur, siege) {
   if (!couleurValide(couleur)) throw new ErreurToc('Couleur inconnue.');
+  if (siege !== undefined && siege !== null) exigerSiege(siege);
   await transactionSalle(ctx, id, async (tx, p) => {
     if (!p) throw new ErreurToc(PARTIE_ABSENTE, 'not-found');
     exigerAttente(p);
-    const siege = siegeDe(p, ctx.uid);
-    if (siege < 0) throw new ErreurToc('Assieds-toi d’abord à une place.');
-    if (p.joueurs[siege].couleur === couleur) return;
-    if (couleursIndisponibles(p.joueurs, siege).includes(couleur)) throw new ErreurToc('Cette couleur est déjà prise.');
-    const pseudo = await lirePseudo(tx, ctx.uid);
+    const mien = siegeDe(p, ctx.uid);
+    const cible = siege ?? mien;
+    if (cible < 0) throw new ErreurToc('Assieds-toi d’abord à une place.');
+    exigerSiege(cible, p);
+    const place = p.joueurs[cible];
+    if (!place) throw new ErreurToc('Il n’y a personne à cette place.');
+    if (place.couleur === couleur) return;
+    if (couleursIndisponibles(p.joueurs, cible).includes(couleur)) throw new ErreurToc('Cette couleur est déjà prise.');
     const joueurs = p.joueurs.slice();
-    joueurs[siege] = { uid: ctx.uid, pseudo, ia: false, couleur };
+    // Sa propre place se réécrit avec le pseudo de sa fiche ; celle d'un autre garde tout, sauf la couleur.
+    joueurs[cible] = cible === mien ? { uid: ctx.uid, pseudo: await lirePseudo(tx, ctx.uid), ia: false, couleur } : { ...place, couleur };
     tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
   });
 }
@@ -287,7 +294,7 @@ export async function changerNiveauIA(ctx, id, siege, niveau) {
     if (!place?.ia) throw new ErreurToc("Ce siège n'est pas tenu par une IA.");
     if (place.niveau === n) return;
     const joueurs = p.joueurs.slice();
-    joueurs[siege] = { uid: null, pseudo: place.pseudo, ia: true, niveau: n };
+    joueurs[siege] = { uid: null, pseudo: place.pseudo, ia: true, niveau: n, ...couleurChoisie(place) };
     tx.maj(chemins.partie(id), { joueurs, majLe: ctx.magasin.horodatage() });
   });
 }

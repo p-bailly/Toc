@@ -3,9 +3,10 @@
 // comptage, pions en billes. Noms des joueurs autour du plateau carré (dans les coins libres pour le triangle),
 // défausse au centre, pions animés.
 // Le plateau n'applique aucune règle : il affiche ce qu'on lui donne et signale les touchers (pions, cibles).
+// Avant la partie, il sert d'aperçu à la salle d'attente (apercu) : les places autour, et celles qu'on touche.
 
-import { s } from './dom.js';
-import { BASE, viser, viserPlateau } from '../moteur/plateau.js';
+import { s, mouvementReduit } from './dom.js';
+import { BASE, viser, viserPlateau, coteDesNouvellesParties } from '../moteur/plateau.js';
 import { CELLULE, geometrie, chemin } from './geometrie.js';
 import { coloriageDe, COTE_COLORIAGE } from './coloriages.js';
 import { PIONS, couleurSiege, couleurFonceeSiege, couleursPartie, appliquerCouleurs, nomCouleurPartie } from './couleurs.js';
@@ -94,6 +95,7 @@ export class Plateau {
    * @param {Object} rappels
    * @param {(pion:number)=>void} rappels.surPion    toucher d'un pion proposé
    * @param {(i:number)=>void}    rappels.surCible   toucher de la i-ième cible proposée
+   * @param {(siege:number)=>void} rappels.surSiege  toucher d'une place de l'aperçu (salle d'attente)
    */
   constructor(rappels = {}) {
     this.rappels = rappels;
@@ -152,20 +154,23 @@ export class Plateau {
     const n = Number(cible.dataset.valeur);
     if (cible.dataset.action === 'pion') this.rappels.surPion?.(n);
     else if (cible.dataset.action === 'cible') this.rappels.surCible?.(n);
+    else if (cible.dataset.action === 'siege') this.rappels.surSiege?.(n);
   }
 
   /**
    * Change de forme (carré à 4, triangle à 3), de taille (cases par côté) ou de couleurs : cadre, nombre de pions,
    * couleur de chaque siège (identifiants de la palette ; par défaut celles d'origine).
+   * `libres` (aperçu de la salle d'attente) : les sièges sans joueur, laissés en bois brut.
    */
-  preparer(nbJoueurs, siegeVue, cote, couleurs = couleursPartie(null, nbJoueurs)) {
+  preparer(nbJoueurs, siegeVue, cote, couleurs = couleursPartie(null, nbJoueurs), libres = []) {
     const geo = geometrie(nbJoueurs, cote);
-    const cleCouleurs = couleurs.join(' ');
+    const cleCouleurs = couleurs.join(' ') + '|' + libres.join(' ');
     if (this.geo === geo && this.siegeVue === siegeVue && this.cleCouleurs === cleCouleurs) return;
     const changeForme = this.geo !== geo;
     this.geo = geo;
     this.siegeVue = siegeVue;
     this.couleurs = couleurs;
+    this.libres = new Set(libres);
     this.cleCouleurs = cleCouleurs;
     appliquerCouleurs(this.svg, couleurs);
     if (changeForme) {
@@ -220,6 +225,8 @@ export class Plateau {
       geo.coins.forEach((coin, i) => {
         const cote = COTE_DU_COIN[i];
         const o = (siegeVue + cote) % n;
+        // Place libre (aperçu) : pas encore de couleur, donc pas de dessin.
+        if (this.libres.has(o)) return;
         const dessin = coloriageDe(this.couleurs[o]);
         const zone = (classe, d, attrs = {}) => (d ? [s('path', { class: classe, d, ...attrs })] : []);
         const milieu = COTE_COLORIAGE / 2;
@@ -249,8 +256,10 @@ export class Plateau {
     for (let o = 0; o < n; o++) {
       const cote = geo.coteDe(o, siegeVue);
       const angle = geo.angleCote(cote);
+      // Place libre (aperçu) : ses blocs ne sont pas encore peints (la couleur vient avec le joueur).
+      const brut = this.libres.has(o) ? ' libre' : '';
       // Base.
-      g.append(rectTourne('zone-base', geo.centreBase(o, siegeVue), geo.TAILLE_BASE, geo.TAILLE_BASE, angle, { rx: 3, fill: couleurSiege(o), 'data-base': o }));
+      g.append(rectTourne('zone-base' + brut, geo.centreBase(o, siegeVue), geo.TAILLE_BASE, geo.TAILLE_BASE, angle, { rx: 3, fill: couleurSiege(o), 'data-base': o }));
       for (let k = 0; k < 4; k++) {
         const b = geo.emplacementBase(o, k, siegeVue);
         g.append(s('circle', { class: 'trou', cx: b.x, cy: b.y, r: RAYON_TROU + 0.4, style: { fill: `url(#${this.idTrou})` } }));
@@ -259,13 +268,13 @@ export class Plateau {
       const a0 = geo.caseAllee(o, 0, siegeVue);
       const a3 = geo.caseAllee(o, 3, siegeVue);
       const milieu = { x: (a0.x + a3.x) / 2, y: (a0.y + a3.y) / 2 };
-      g.append(rectTourne('zone-allee', milieu, 9.8, 3 * CELLULE + 9.8, angle, { rx: 2.6, fill: couleurSiege(o) }));
+      g.append(rectTourne('zone-allee' + brut, milieu, 9.8, 3 * CELLULE + 9.8, angle, { rx: 2.6, fill: couleurSiege(o) }));
       for (let k = 0; k < 4; k++) {
         const p = geo.caseAllee(o, k, siegeVue);
         g.append(s('circle', { class: 'trou', cx: p.x, cy: p.y, r: RAYON_TROU, style: { fill: `url(#${this.idTrou})` } }));
       }
       // Sortie : petit carré plein de sa couleur.
-      g.append(rectTourne('zone-sortie', geo.caseCircuit(o * geo.casesParCote, siegeVue), 9.8, 9.8, angle, { rx: 2, fill: couleurSiege(o) }));
+      g.append(rectTourne('zone-sortie' + brut, geo.caseCircuit(o * geo.casesParCote, siegeVue), 9.8, 9.8, angle, { rx: 2, fill: couleurSiege(o) }));
     }
     const departs = new Set(Array.from({ length: n }, (_, o) => o * geo.casesParCote));
     for (let i = 0; i < geo.nbCases; i++) {
@@ -303,6 +312,7 @@ export class Plateau {
     const n = etat.pions.length >> 2;
     // Le plateau de la partie montrée : 18 cases par côté (16 pour les premières), aux couleurs de ses joueurs.
     this.preparer(n, siegeVue, viser(etat), couleursPartie(joueurs, n));
+    this.vueApercu = null;
     this.etat = etat;
     const positions = pions || etat.pions;
     this.positions = positions;
@@ -313,6 +323,7 @@ export class Plateau {
       const el = this.pions[g];
       el.style.transform = translate(this.geo.positionPion(g, positions[g], siegeVue));
       el.classList.toggle('en-base', positions[g] === BASE);
+      el.classList.remove('absent');
       el.classList.toggle('candidat', !!choix?.candidats?.has(g));
       el.classList.toggle('choisi', choix?.choisi === g);
       el.classList.toggle('capture-prevue', !!choix?.captures?.includes(g));
@@ -322,6 +333,94 @@ export class Plateau {
     this.dessinerEtiquettes(etat, joueurs, siegeVue, sousTitres, siegeLocal);
     this.dessinerCentre(etat, joueurs);
     this.dessinerChoix(choix, positions, siegeVue);
+  }
+
+  /**
+   * Aperçu d'avant la partie (salle d'attente) : le plateau tel qu'il sera joué, vu du siège `siegeVue`, sans carte
+   * ni tour de jeu. Une place occupée a ses quatre pions dans sa base, à sa couleur, et son dessin dans le coin ;
+   * une place libre reste en bois brut et porte un « + ». Le nom de chaque place est autour, comme en jeu.
+   * Quand le point de vue change (on vient de s'asseoir ailleurs), le plateau tourne jusqu'à sa nouvelle position.
+   * @param {Object} o
+   * @param {number} o.nbJoueurs           4 (carré) ou 3 (triangle)
+   * @param {number} o.siegeVue            siège montré en bas
+   * @param {(Object|null)[]} o.places     par siège : { pseudo, ia, icone, niveau } ou null (place libre)
+   * @param {string[]} o.couleurs          couleur de chaque siège (identifiants de la palette)
+   * @param {string[]} [o.sousTitres]      texte à côté de chaque nom (par siège)
+   * @param {number} [o.siegeLocal]        siège du joueur local (« Toi »), -1 s'il n'est pas assis
+   * @param {{siege:number, libelle:string}[]} [o.touchables]  places qu'on peut toucher (rappels.surSiege)
+   * @param {number} [o.choisi]            place dont la base est entourée (celle dont on règle la couleur), -1 : aucune
+   */
+  apercu({ nbJoueurs, siegeVue, places, couleurs, sousTitres = [], siegeLocal = -1, touchables = [], choisi = -1 }) {
+    const n = nbJoueurs === 3 ? 3 : 4;
+    const libres = Array.from({ length: n }, (_, si) => si).filter((si) => !places[si]);
+    const avant = this.vueApercu;
+    this.preparer(n, siegeVue, coteDesNouvellesParties(), couleurs, libres);
+    const geo = this.geo;
+    this.vueApercu = { geo, siegeVue };
+    this.etat = null;
+    this.positions = null;
+    this.svg.setAttribute('aria-label', 'Aperçu du plateau et des places');
+    for (let g = 0; g < this.pions.length; g++) {
+      const el = this.pions[g];
+      el.style.transform = translate(geo.positionPion(g, BASE, siegeVue));
+      el.classList.add('en-base');
+      el.classList.remove('candidat', 'choisi', 'capture-prevue');
+      el.classList.toggle('absent', !places[g >> 2]);
+    }
+    this.coucheDernier.replaceChildren();
+    this.coucheCentre.replaceChildren();
+    this.carteCentre = null;
+    this.dessinerEtiquettes({ phase: 'attente', tour: -1 }, places, siegeVue, sousTitres, siegeLocal, true);
+    const c = this.coucheChoix;
+    c.replaceChildren();
+    // Place libre : un « + » au milieu de sa base.
+    for (const si of libres) {
+      const p = geo.centreBase(si, siegeVue);
+      c.append(
+        s(
+          'g',
+          { class: 'marque-place', transform: `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})`, 'data-place-libre': si, 'aria-hidden': 'true' },
+          s('circle', { class: 'halo', r: 8.4 }),
+          s('circle', { class: 'rond', r: 6.6 }),
+          s('path', { class: 'plus', d: 'M-3.1 0H3.1M0 -3.1V3.1' }),
+        ),
+      );
+    }
+    if (choisi >= 0 && places[choisi]) {
+      const cote = geo.TAILLE_BASE + 4.6;
+      c.append(rectTourne('marque-place-choisie', geo.centreBase(choisi, siegeVue), cote, cote, geo.angleCote(geo.coteDe(choisi, siegeVue)), { rx: 4.6, 'data-place-choisie': choisi }));
+    }
+    for (const { siege, libelle } of touchables) {
+      const cote = geo.TAILLE_BASE + 9;
+      c.append(
+        rectTourne('zone-touche zone-siege', geo.centreBase(siege, siegeVue), cote, cote, geo.angleCote(geo.coteDe(siege, siegeVue)), {
+          rx: 5,
+          role: 'button',
+          tabindex: 0,
+          'data-action': 'siege',
+          'data-valeur': siege,
+          'aria-label': libelle,
+        }),
+      );
+    }
+    // Changement de place : le plateau tourne (un quart ou un tiers de tour par siège) vers sa nouvelle position.
+    // (Un nouveau dessin sans changement de place laisse la rotation en cours aller au bout.)
+    if (!avant || avant.geo !== geo) this.arreterAnimations();
+    if (avant && avant.geo === geo && avant.siegeVue !== siegeVue && !mouvementReduit()) {
+      this.arreterAnimations();
+      let pas = (((siegeVue - avant.siegeVue) % n) + n) % n;
+      if (pas > n / 2) pas -= n;
+      const origine = `${geo.centre.x}px ${geo.centre.y}px`;
+      const options = { duration: 520, easing: 'cubic-bezier(0.3, 0.1, 0.2, 1)' };
+      try {
+        for (const couche of [this.coucheFond, this.couchePions, c]) {
+          this.animations.push(couche.animate([{ transform: `rotate(${(pas * 360) / n}deg)`, transformOrigin: origine }, { transform: 'rotate(0deg)', transformOrigin: origine }], options));
+        }
+        this.animations.push(this.coucheEtiquettes.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], options));
+      } catch {
+        /* animations indisponibles : position finale directement */
+      }
+    }
   }
 
   dessinerDernier(etat, siegeVue, masquer) {
@@ -342,12 +441,13 @@ export class Plateau {
     }
   }
 
-  dessinerEtiquettes(etat, joueurs, siegeVue, sousTitres, siegeLocal) {
+  /** `apercu` (salle d'attente) : ni cartes ni tour de jeu, et « Place libre » là où personne n'est assis. */
+  dessinerEtiquettes(etat, joueurs, siegeVue, sousTitres, siegeLocal, apercu = false) {
     const c = this.coucheEtiquettes;
     c.replaceChildren();
     const n = this.geo.nbJoueurs;
     if (this.geo.etiquettesAutour) {
-      this.dessinerNomsAutour(etat, joueurs, siegeVue, sousTitres, siegeLocal);
+      this.dessinerNomsAutour(etat, joueurs, siegeVue, sousTitres, siegeLocal, apercu);
       return;
     }
     for (let siege = 0; siege < n; siege++) {
@@ -356,10 +456,11 @@ export class Plateau {
       const j = joueurs?.[siege] || {};
       const actif = etat.phase === 'jeu' && etat.tour === siege;
       const attend = etat.phase === 'echange' && !etat.echanges?.[siege];
+      const libre = apercu && !joueurs?.[siege];
       const emoji = j.ia ? EMOJI_IA : emojiIcone(j.icone);
-      const nom = siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
+      const nom = libre ? 'Place libre' : siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
       const g = s('g', {
-        class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : ''),
+        class: 'etiquette' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (libre ? ' libre' : '') + (siege === siegeLocal ? ' moi' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
         'aria-label': `${nom}${j.ia ? ', IA ' + niveauEnLettres(j.niveau) : ''}${actif ? ', à son tour' : ''}`,
@@ -372,18 +473,23 @@ export class Plateau {
       const ay = b.y + 11.5;
       g.append(s('circle', { class: 'avatar-plateau', cx: ax, cy: ay, r: 6, fill: couleurSiege(siege) }));
       g.append(
-        s('text', { class: 'avatar-texte' + (emoji ? ' emoji' : ''), x: ax, y: ay + (emoji ? 2.3 : 2.1) }, emoji || (nom.slice(0, 1).toUpperCase() || '?')),
+        s('text', { class: 'avatar-texte' + (emoji && !libre ? ' emoji' : ''), x: ax, y: ay + (emoji && !libre ? 2.3 : 2.1) }, libre ? '?' : emoji || (nom.slice(0, 1).toUpperCase() || '?')),
       );
-      // Nombre de cartes : petit éventail de dos de cartes et le chiffre.
-      const nb = etat.cartesRestantes?.[siege] ?? 0;
-      const cx = b.x + 18;
-      for (let k = 0; k < Math.min(nb, 3); k++) {
-        g.append(s('rect', { class: 'dos-carte', x: cx + k * 2.2, y: b.y + 6.5 + k * 0.4, width: 5.2, height: 7.6, rx: 0.8 }));
+      if (!apercu) {
+        // Nombre de cartes : petit éventail de dos de cartes et le chiffre.
+        const nb = etat.cartesRestantes?.[siege] ?? 0;
+        const cx = b.x + 18;
+        for (let k = 0; k < Math.min(nb, 3); k++) {
+          g.append(s('rect', { class: 'dos-carte', x: cx + k * 2.2, y: b.y + 6.5 + k * 0.4, width: 5.2, height: 7.6, rx: 0.8 }));
+        }
+        g.append(s('text', { class: 'nb-cartes', x: b.x + b.l - 3, y: b.y + 14 }, String(nb)));
+      } else if (j.ia) {
+        // Aperçu : à la place des cartes, le niveau d'une IA.
+        g.append(s('text', { class: 'niveau-apercu', x: b.x + b.l - 3, y: b.y + 13.4 }, nomNiveau(j.niveau)));
       }
-      g.append(s('text', { class: 'nb-cartes', x: b.x + b.l - 3, y: b.y + 14 }, String(nb)));
       g.append(s('text', { class: 'pseudo-plateau', x: b.x + 3, y: b.y + 24.5 }, tronquer(nom, 11)));
       // Sous le pseudo : l'état du joueur (joue…, a donné ✓…), sinon le niveau d'une IA.
-      const sous = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '') || (j.ia ? nomNiveau(j.niveau) : '');
+      const sous = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '') || (j.ia && !apercu ? nomNiveau(j.niveau) : '');
       if (sous) g.append(s('text', { class: 'sous-plateau', x: b.x + 3, y: b.y + 30.5 }, tronquer(sous, 15)));
       c.append(g);
     }
@@ -393,7 +499,7 @@ export class Plateau {
    * 2 contre 2 : les noms autour du plateau, sur une ligne : pastille (couleur, icône ou initiale), prénom, nombre
    * de cartes, état (à toi, joue…, a donné ✓, a fini ✓) et niveau d'une IA ; celui dont c'est le tour est encadré.
    */
-  dessinerNomsAutour(etat, joueurs, siegeVue, sousTitres, siegeLocal) {
+  dessinerNomsAutour(etat, joueurs, siegeVue, sousTitres, siegeLocal, apercu = false) {
     const c = this.coucheEtiquettes;
     for (let siege = 0; siege < 4; siege++) {
       const cote = this.geo.coteDe(siege, siegeVue);
@@ -401,27 +507,30 @@ export class Plateau {
       const j = joueurs?.[siege] || {};
       const actif = etat.phase === 'jeu' && etat.tour === siege;
       const attend = etat.phase === 'echange' && !etat.echanges?.[siege];
-      const emoji = j.ia ? EMOJI_IA : emojiIcone(j.icone);
-      const nom = siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
+      const libre = apercu && !joueurs?.[siege];
+      const emoji = libre ? null : j.ia ? EMOJI_IA : emojiIcone(j.icone);
+      const nom = libre ? 'Place libre' : siege === siegeLocal ? 'Toi' : j.pseudo || `Joueur ${siege + 1}`;
       const nb = etat.cartesRestantes?.[siege] ?? 0;
       const etatJoueur = sousTitres[siege] || (actif ? 'joue…' : attend ? 'choisit sa carte' : '');
-      const morceaux = [String(nb)]; // précédé de l'icône des cartes
+      // En jeu : le nombre de cartes (précédé de leur icône), le niveau d'une IA, l'état. Aperçu : pas de cartes.
+      const morceaux = apercu ? [] : [String(nb)];
       if (j.ia) morceaux.push(nomNiveau(j.niveau));
       if (etatJoueur) morceaux.push(etatJoueur);
       const g = s('g', {
-        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : ''),
+        class: 'etiquette etiquette-autour' + (actif ? ' actif' : '') + (attend ? ' attend' : '') + (siege === siegeLocal ? ' moi' : '') + (libre ? ' libre' : ''),
         'data-siege': siege,
         'data-niveau': j.ia ? nomNiveau(j.niveau) : null,
-        'aria-label': `${nom}${j.ia ? ', IA ' + niveauEnLettres(j.niveau) : ''}, ${nb} carte${nb > 1 ? 's' : ''}${actif ? ', à son tour' : ''}`,
+        'aria-label': `${nom}${j.ia ? ', IA ' + niveauEnLettres(j.niveau) : ''}${apercu ? '' : `, ${nb} carte${nb > 1 ? 's' : ''}`}${actif ? ', à son tour' : ''}`,
         transform: `translate(${place.x} ${place.y}) rotate(${place.angle})`,
       });
       const fond = s('rect', { class: 'fond-etiquette', x: 0, y: -4.4, width: 0, height: 8.8, rx: 4.4 });
       const pastille = s('circle', { class: 'pastille-plateau', cx: 0, cy: 0, r: 3.5, fill: couleurSiege(siege), stroke: couleurFonceeSiege(siege) });
-      const initiale = s('text', { class: 'pastille-texte' + (emoji ? ' emoji' : ''), x: 0, y: emoji ? 1.45 : 1.3 }, emoji || (nom.slice(0, 1).toUpperCase() || '?'));
+      const initiale = s('text', { class: 'pastille-texte' + (emoji ? ' emoji' : ''), x: 0, y: emoji ? 1.45 : 1.3 }, libre ? '?' : emoji || (nom.slice(0, 1).toUpperCase() || '?'));
       // Prénom, petite icône de cartes (deux dos), puis leur nombre et le reste (niveau, état).
-      const ICONE = 5.6; // largeur de l'icône
+      const ICONE = apercu ? 0 : 5.6; // largeur de l'icône
+      const ecart = apercu ? (morceaux.length ? 2.4 : 0) : ICONE + 3.2; // du prénom aux détails
       const prenom = s('tspan', { class: 'prenom' }, tronquer(nom, 14));
-      const details = s('tspan', { class: 'details', dx: (ICONE + 3.2).toFixed(2) }, morceaux.join(' · '));
+      const details = s('tspan', { class: 'details', dx: ecart.toFixed(2) }, morceaux.join(' · '));
       const texte = s('text', { class: 'nom-autour', x: 0, y: 1.75 }, prenom, details);
       const icone = s(
         'g',
@@ -429,7 +538,8 @@ export class Plateau {
         s('rect', { class: 'dos-carte', x: 0, y: -2.7, width: 3.3, height: 4.9, rx: 0.6, transform: 'rotate(-9 1.65 0)' }),
         s('rect', { class: 'dos-carte', x: 2.1, y: -2.5, width: 3.3, height: 4.9, rx: 0.6, transform: 'rotate(9 3.75 0)' }),
       );
-      g.append(fond, pastille, initiale, texte, icone);
+      g.append(fond, pastille, initiale, texte);
+      if (!apercu) g.append(icone);
       c.append(g);
       // Centrage : on mesure le texte une fois posé (repli approximatif s'il n'est pas encore affiché).
       const mesurer = (el, repli) => {
@@ -442,8 +552,8 @@ export class Plateau {
         return l || repli;
       };
       const lPrenom = mesurer(prenom, Math.min(nom.length, 14) * 3.1);
-      const lDetails = mesurer(details, morceaux.join(' · ').length * 2.75);
-      const largeur = Math.min(lPrenom + ICONE + 3.2 + lDetails, place.longueur - 12);
+      const lDetails = morceaux.length ? mesurer(details, morceaux.join(' · ').length * 2.75) : 0;
+      const largeur = Math.min(lPrenom + ecart + lDetails, place.longueur - 12);
       const total = 3.5 * 2 + 1.6 + largeur;
       const x0 = -total / 2;
       pastille.setAttribute('cx', (x0 + 3.5).toFixed(2));

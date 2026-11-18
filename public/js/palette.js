@@ -51,7 +51,8 @@ const voisines = (a, b) => VOISINES.some(([x, y]) => (x === a && y === b) || (x 
 /**
  * Couleur de chaque siège, toutes différentes. `joueurs` : les places de la partie (null pour un siège libre),
  * `nb` : le nombre de sièges (par défaut celui de la liste). Un choix valable est gardé ; si deux places ont choisi
- * la même couleur, la première dans l'ordre des sièges la garde. Les autres places reçoivent une couleur libre.
+ * la même couleur, la première dans l'ordre des sièges la garde. Les autres places reçoivent une couleur libre,
+ * les places occupées avant les places libres.
  */
 export function couleursDesSieges(joueurs, nb = joueurs?.length || 4) {
   const places = Array.from({ length: nb }, (_, s) => joueurs?.[s] || null);
@@ -63,7 +64,10 @@ export function couleursDesSieges(joueurs, nb = joueurs?.length || 4) {
       prises.add(p.couleur);
     }
   });
-  for (let s = 0; s < nb; s++) {
+  // Les places occupées d'abord : la couleur d'une IA ne dépend pas des places encore libres (dans une salle
+  // d'attente, elle ne change pas quand quelqu'un s'assoit ailleurs ou change de place).
+  const ordre = [...places.keys()].filter((s) => places[s]).concat([...places.keys()].filter((s) => !places[s]));
+  for (const s of ordre) {
     if (resultat[s]) continue;
     const candidates = [COULEURS_ORIGINE[s], ...IDS_COULEURS].filter((id) => id && !prises.has(id));
     const nette = candidates.find((id) => ![...prises].some((autre) => voisines(id, autre)));

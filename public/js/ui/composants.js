@@ -191,13 +191,14 @@ export function avatar({ uid = null, nom = '?', ia = false, fond = null, icone =
 }
 
 /**
- * Choix de la couleur de ses pions : une pastille par couleur de la palette. `indisponibles` : celles qu'un autre
- * joueur a déjà choisies (grisées). `surChoix(id)` à chaque toucher d'une couleur libre.
+ * Choix de la couleur de ses pions (ou de ceux d'une autre place : `libelle`) : une pastille par couleur de la
+ * palette. `indisponibles` : celles déjà choisies pour une autre place (grisées). `surChoix(id)` à chaque toucher
+ * d'une couleur libre.
  */
-export function choixCouleur({ actuelle, indisponibles = [], surChoix, inactif = false }) {
+export function choixCouleur({ actuelle, indisponibles = [], surChoix, inactif = false, libelle = 'Couleur de tes pions' }) {
   const groupe = h(
     'div',
-    { class: 'choix-couleur', role: 'radiogroup', 'aria-label': 'Couleur de tes pions' },
+    { class: 'choix-couleur', role: 'radiogroup', 'aria-label': libelle },
     PALETTE.map((c) => {
       const prise = indisponibles.includes(c.id);
       return h(
