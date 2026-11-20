@@ -140,6 +140,19 @@ Communes aux deux modes :
 - **Joker** : copie une carte posée depuis le début de la donne (jouée ou défaussée, y compris un joker
   qui a copié) ; injouable s'il n'y a rien à copier.
 
+## Regarder une partie en cours (en ligne)
+
+Tout joueur connecté peut regarder une partie en cours sans y jouer. « Mes parties » liste celles des autres joueurs
+sous « Parties en cours à regarder » (`surPartiesEnCours`, 50 au plus côté serveur, les 20 plus récemment jouées à
+l'écran) ; saisir le code d'une partie déjà lancée l'ouvre aussi pour la regarder.
+
+- L'écran est celui du jeu, en mode spectateur (`vue.spectateur`, `vue.siege = -1`) : le plateau vu du premier siège,
+  le journal et la revue des coups, à qui c'est de jouer ; ni main, ni bouton de jeu, ni abandon, ni analyse.
+- Le spectateur ne lit que le document de la partie : les règles Firestore ne lui montrent aucune main ni aucun don,
+  il n'écrit rien, ne fait pas jouer les IA, et rien n'est compté dans ses statistiques.
+- Cela demande les règles Firestore de ce dépôt (publiées à chaque fusion). Tant qu'elles ne le sont pas, la liste
+  reste vide et une partie des autres s'affiche comme « plus disponible », comme avant.
+
 ## Salles d'attente (en ligne)
 
 La table d'une salle d'attente est un aperçu du plateau tel qu'il sera joué (`Plateau.apercu` dans

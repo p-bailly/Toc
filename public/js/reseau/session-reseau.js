@@ -7,6 +7,8 @@
 //   plus rapide, la transaction est abandonnée sans bruit (ConflitIA). Le client qui vient d'agir
 //   passe en premier, les autres attendent un délai aléatoire, ce qui limite les courses.
 // - Compte la partie dans les statistiques du joueur quand elle se termine.
+// - Spectateur : un joueur connecté qui n'est pas assis à la table regarde la partie. Sa vue n'a aucune carte
+//   (les règles ne lui montrent ni main ni don), il ne joue pas, ne fait pas jouer les IA et rien n'est compté.
 
 import { donneurDon, nombreJoueurs, coteDeEtat } from '../moteur/index.js';
 import { ConflitIA, ErreurToc, chemins, couleurChoisie, enErreurToc, nbJoueursDe, niveauDe, reglagesPartie, siegeDe } from './commun.js';
@@ -43,6 +45,7 @@ export class SessionReseau {
     this.echecs = 0;
     this.iaEnCours = false;
     this.comptee = false;
+    this.spectateur = false; // pas assis à la table : on regarde (voir recevoir)
     this.ferme = false;
     this.attentes = []; // { n, fin } : actions en attente de la vue correspondante
     this.desabonner = null;
@@ -63,8 +66,8 @@ export class SessionReseau {
       throw enErreurToc(e);
     }
     if (!p) throw new ErreurToc("Cette partie n'existe plus.", 'not-found');
-    if (siegeDe(p, this.ctx.uid) < 0) throw new ErreurToc('Tu ne participes pas à cette partie.');
     if (p.statut === 'attente') throw new ErreurToc("La partie n'a pas encore commencé.");
+    if (p.statut === 'abandonnee' && siegeDe(p, this.ctx.uid) < 0) throw new ErreurToc('Cette partie a été abandonnée.');
     await this.recevoir(p);
     if (!this.vueCourante) throw new ErreurToc('Impossible de lire tes cartes : vérifie ta connexion.');
     this.desabonner = this.ctx.magasin.ecouter(
@@ -81,15 +84,19 @@ export class SessionReseau {
     if (this.partie && p.etat.numCoup < this.partie.etat.numCoup) return;
     const version = ++this.version;
     const siege = siegeDe(p, this.ctx.uid);
-    let prive;
-    try {
-      prive = await chargerMain(this.lire, this.id, p.etat, siege);
-    } catch (e) {
-      console.warn('Lecture des cartes impossible', e);
-      if (version === this.version) setTimeout(() => this.version === version && this.recevoir(p), 5000);
-      return;
+    // Pas assis à la table : on regarde. Aucune carte n'est lue (les règles n'en montrent aucune à un spectateur).
+    this.spectateur = siege < 0;
+    let prive = { main: [], don: null, recu: null };
+    if (!this.spectateur) {
+      try {
+        prive = await chargerMain(this.lire, this.id, p.etat, siege);
+      } catch (e) {
+        console.warn('Lecture des cartes impossible', e);
+        if (version === this.version) setTimeout(() => this.version === version && this.recevoir(p), 5000);
+        return;
+      }
+      if (this.ferme || version !== this.version) return; // un état plus récent est arrivé entre-temps
     }
-    if (this.ferme || version !== this.version) return; // un état plus récent est arrivé entre-temps
     this.partie = p;
     this.vueCourante = {
       id: this.id,
@@ -103,9 +110,11 @@ export class SessionReseau {
       recu: prive.recu,
       historique: p.historique || [],
       statut: p.statut,
+      ...(this.spectateur ? { spectateur: true } : {}),
     };
     for (const cb of this.abonnes) cb(this.vueCourante);
     this.libererAttentes();
+    if (this.spectateur) return; // ni IA à faire jouer, ni partie à compter
     // Une action d'IA prévue pour un état dépassé n'a plus lieu d'être : on replanifie sur l'état reçu
     // (sinon la minuterie périmée se déclenchait pour rien et ajoutait un second délai complet).
     if (this.minuterie && this.prevu !== p.etat.numCoup) {
@@ -130,15 +139,22 @@ export class SessionReseau {
   // un peu après la fin de la transaction) : sinon l'écran proposerait encore, un instant, de donner ou
   // de jouer, et un second toucher serait refusé.
   async donner(carte) {
+    this.exigerJoueur();
     const n = await donnerCarte(this.ctx, this.id, this.vueCourante.siege, carte, { lire: this.lire });
     this.apresAction(n);
     await this.attendreVue(n);
   }
 
   async jouer(coup) {
+    this.exigerJoueur();
     const n = await jouerCoup(this.ctx, this.id, this.vueCourante.siege, coup, { lire: this.lire });
     this.apresAction(n);
     await this.attendreVue(n);
+  }
+
+  /** Un spectateur regarde : il ne donne pas de carte et ne joue pas. */
+  exigerJoueur() {
+    if (this.spectateur) throw new ErreurToc('Tu regardes cette partie : tu n’y joues pas.');
   }
 
   /** Résout quand la vue publiée en est au coup n (10 s au plus). */
@@ -199,7 +215,7 @@ export class SessionReseau {
   }
 
   planifierIA() {
-    if (this.ferme || this.iaEnCours || this.minuterie || !this.ia) return;
+    if (this.ferme || this.spectateur || this.iaEnCours || this.minuterie || !this.ia) return;
     if (this.siegeIAEnAttente() < 0) return;
     const numCoup = this.partie.etat.numCoup;
     let delai = this.delaiIA;
@@ -266,6 +282,8 @@ export class SessionReseau {
       const p = await this.ctx.magasin.lire(chemins.partie(this.id));
       if (!p || !p.etat) throw new ErreurToc("Cette partie n'existe plus.", 'not-found');
       const siege = siegeDe(p, this.ctx.uid);
+      // L'analyse part des cartes qu'on a eues en main : un spectateur n'en a aucune.
+      if (siege < 0) throw new ErreurToc('L’analyse est réservée aux joueurs de la partie.');
       const { etat } = p;
       const lectures = [];
       for (let d = 0; d <= etat.donne; d++) {

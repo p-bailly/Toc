@@ -11,6 +11,9 @@
 //
 // Partie en cours : un joueur peut proposer de l'abandonner ; elle l'est quand tous les joueurs humains ont accepté.
 // Elle disparaît alors des listes et ne compte pas dans les statistiques.
+//
+// Partie en cours où l'on n'est pas assis : on la regarde (mode spectateur de l'écran de jeu), sans cartes ni
+// bouton de jeu, sans abandon ni analyse. Tout joueur connecté peut regarder une partie en cours.
 
 import { h, remplacer, messageErreur, pluriel } from './dom.js';
 import { enteteRetour, avatar, toast, retenirIcone, chargerIcone, iconeConnue, ouvrirFeuille, interrupteur, choixCouleur, segments } from './composants.js';
@@ -81,7 +84,7 @@ export function afficher(racine, app, { reste }) {
       return;
     }
     // Ma proposition d'abandon est tombée sans que je la retire : quelqu'un l'a refusée.
-    if (p && p.statut === 'encours') {
+    if (p && p.statut === 'encours' && p.monSiege >= 0) {
       if (jAvaisAccepte && !p.abandon && !jeRetire) toast('L’abandon a été refusé : la partie continue.');
       jAvaisAccepte = !!p.abandon?.jAiAccepte;
       jeRetire = false;
@@ -95,8 +98,8 @@ export function afficher(racine, app, { reste }) {
       couleurVoulue = null;
       couleurEnvoyee = false;
     }
-    // Salle supprimée (par n'importe quel joueur), ou partie lancée sans moi : il n'y a plus rien à voir ici.
-    if (p === null || (p.statut !== 'attente' && p.monSiege < 0)) {
+    // Salle supprimée (par n'importe quel joueur), ou partie devenue illisible : il n'y a plus rien à voir ici.
+    if (p === null) {
       if (!modeJeu) {
         remplacer(
           racine,
@@ -104,13 +107,14 @@ export function afficher(racine, app, { reste }) {
             'div',
             { class: 'contenu' },
             enteteRetour('Partie', '#/parties'),
-            h('div', { class: 'vide-etat' }, p === null ? 'Cette salle d’attente n’est plus disponible : elle a été supprimée, ou la partie a commencé sans toi.' : 'Cette partie a commencé sans toi.'),
+            h('div', { class: 'vide-etat' }, 'Cette partie n’est plus disponible : la salle d’attente a été supprimée, ou la partie a commencé sans toi.'),
             h('a', { class: 'bouton', href: '#/parties' }, 'Mes parties'),
           ),
         );
       }
       return;
     }
+    // Partie lancée : j'y joue si j'y suis assis, sinon je la regarde (ouvrirJeu : la session le sait).
     if (p.statut === 'attente') dessinerAttente();
     else if (!modeJeu) ouvrirJeu();
   });
@@ -132,13 +136,15 @@ export function afficher(racine, app, { reste }) {
       session.fermer();
       return;
     }
+    // Pas assis à la table : je regarde. Ni abandon à voter, ni analyse (elle part des cartes qu'on a eues en main).
+    const spectateur = !resume || resume.monSiege < 0;
     demonterJeu = monterJeu(racine, {
       session: avecIcones(session),
       retour: '#/parties',
       libelleRetour: 'Mes parties',
       essais: !!app.rapide,
-      analyse: '#/analyse/' + encodeURIComponent(id),
-      abandon: typeof api.voterAbandon === 'function' ? { bandeau: bandeauAbandon, proposer: proposerAbandon } : null,
+      analyse: spectateur ? null : '#/analyse/' + encodeURIComponent(id),
+      abandon: !spectateur && typeof api.voterAbandon === 'function' ? { bandeau: bandeauAbandon, proposer: proposerAbandon } : null,
     });
     majAbandon();
   }
@@ -172,7 +178,7 @@ export function afficher(racine, app, { reste }) {
 
   /** Le bandeau de l'écran de jeu : la proposition en cours, et de quoi y répondre. */
   function majAbandon() {
-    const a = resume?.statut === 'encours' ? resume.abandon : null;
+    const a = resume?.statut === 'encours' && resume.monSiege >= 0 ? resume.abandon : null;
     bandeauAbandon.hidden = !a;
     if (!a) {
       bandeauAbandon.replaceChildren();

@@ -23,6 +23,8 @@ import { SessionReseau } from './session-reseau.js';
 export const FINIES_GARDEES = 20;
 /** Salles d'attente listées au plus (borne exigée par les règles Firestore : request.query.limit <= 50). */
 export const SALLES_LISTEES = 50;
+/** Parties en cours listées au plus pour qui veut les regarder (même borne des règles). */
+export const PARTIES_EN_COURS_LISTEES = 50;
 
 /**
  * @param {Object} options
@@ -254,6 +256,29 @@ export function creerClient(options) {
             (e) => {
               // Règles Firestore pas encore republiées, par exemple : « Mes parties » marche sans cette liste.
               console.warn('Écoute des salles d’attente interrompue', e);
+              cb([]);
+            },
+          ),
+        () => cb([]),
+      );
+    },
+
+    surPartiesEnCours(cb) {
+      return ecoute(
+        (c) =>
+          c.magasin.ecouterEgal(
+            'parties',
+            'statut',
+            'encours',
+            PARTIES_EN_COURS_LISTEES,
+            (docs) => {
+              const r = docs.filter(({ donnees }) => donnees.statut === 'encours').map(({ id, donnees }) => resumePartie(id, donnees, c.uid));
+              r.sort((a, b) => b.majLe - a.majLe);
+              cb(r);
+            },
+            (e) => {
+              // Règles Firestore pas encore republiées, par exemple : « Mes parties » marche sans cette liste.
+              console.warn('Écoute des parties en cours interrompue', e);
               cb([]);
             },
           ),
