@@ -8,6 +8,7 @@
 //
 // 1. Une partie complète (3 humains + 1 IA) jouée par le vrai client : chaque opération du client
 //    (transactions, lectures dans les transactions, requêtes de liste, écoutes) passe par les règles.
+//    Un quatrième joueur, qui n'y est pas assis, la trouve dans les parties en cours et la regarde jusqu'au bout.
 // 2. Des tentatives de triche directes, qui doivent être refusées.
 
 import test from 'node:test';
@@ -152,7 +153,29 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   await c.client.quitterPartie(annexe.id);
   await b.client.quitterPartie(annexe.id);
 
+  // David n'est pas de la partie : il ne la voit pas tant qu'elle n'est pas lancée, puis il la regarde.
+  const d = nouveauClient(23);
+  d.joueur = await d.client.connecter('David');
+  let enCours = null;
+  const arretEnCours = d.client.surPartiesEnCours((l) => (enCours = l));
+  await attendre(() => enCours !== null, 10000, 'liste des parties en cours');
+  assert.deepEqual(enCours, []);
+
   await a.client.lancerPartie(id);
+  await attendre(() => enCours.length === 1, 10000, 'partie en cours listée pour un spectateur');
+  assert.equal(enCours[0].id, id);
+  assert.equal(enCours[0].monSiege, -1);
+  assert.deepEqual(await d.client.rejoindrePartie(code), { id, spectateur: true });
+  const spectateur = await d.client.ouvrirSession(id);
+  ouvertes.push(spectateur);
+  let vueSpectateur = null;
+  spectateur.abonner((v) => (vueSpectateur = v));
+  assert.equal(vueSpectateur.spectateur, true);
+  assert.equal(vueSpectateur.siege, -1);
+  assert.deepEqual(vueSpectateur.main, []);
+  await assert.rejects(spectateur.donner('AP'), /Tu regardes/);
+  await assert.rejects(spectateur.donneesAnalyse(), /réservée aux joueurs/);
+  await assert.rejects(d.client.voterAbandon(id, true), /Tu ne joues pas/);
   const listes = clients.map(() => null);
   const arrets = clients.map((x, i) => x.client.surMesParties((l) => (listes[i] = l)));
 
@@ -192,6 +215,12 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
   assert.ok(fin.gagnant === 0 || fin.gagnant === 1);
   assert.ok(fin.donne >= 3, 'au moins un remélange');
   await attendre(() => listes.every((l) => l?.find((r) => r.id === id)?.statut === 'finie'), 20000, 'liste');
+  // Le spectateur a suivi la partie jusqu'à la fin (sans cartes) ; terminée, elle sort des parties en cours.
+  await attendre(() => vueSpectateur.etat.phase === 'fini' && vueSpectateur.statut === 'finie', 20000, 'fin vue par le spectateur');
+  assert.equal(vueSpectateur.historique.length, vues[0].historique.length);
+  assert.deepEqual(vueSpectateur.main, []);
+  await attendre(() => enCours.length === 0, 20000, 'partie finie retirée des parties en cours');
+  arretEnCours();
   // Statistiques (mise à jour vérifiée par les règles).
   const { fs } = modules();
   // Analyse de fin de partie : toutes les donnes passées se relisent (règles comprises) et
@@ -208,6 +237,8 @@ test('émulateur : partie complète 3 humains + 1 IA avec le vrai SDK et les vra
     assert.deepEqual(et.pions, fin.pions);
     assert.equal(et.gagnant, fin.gagnant);
   }
+  // Rien n'est compté pour le spectateur.
+  assert.deepEqual((await fs.getDoc(fs.doc(d.services.db, 'joueurs', d.joueur.uid))).data().stats, { jouees: 0, gagnees: 0 });
   for (const x of clients) {
     let stats = null;
     const debutStats = Date.now();
@@ -361,8 +392,16 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertSucceeds(salles(D, limit(50)));
   await assertFails(salles(D)); // sans borne
   await assertFails(salles(D, limit(51)));
-  await assertFails(getDocs(query(collection(db(D), 'parties'), where('statut', '==', 'encours'), limit(50))));
+  // Les parties en cours se listent de la même façon (chacun peut les regarder) ; rien d'autre ne se liste.
+  const enCours = (u, ...bornes) => getDocs(query(collection(db(u), 'parties'), where('statut', '==', 'encours'), ...bornes));
+  await assertSucceeds(enCours(D, limit(50)));
+  await assertFails(enCours(D)); // sans borne
+  await assertFails(enCours(D, limit(51)));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), where('statut', '==', 'finie'), limit(50))));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), where('statut', '==', 'abandonnee'), limit(50))));
+  await assertFails(getDocs(query(collection(db(D), 'parties'), where('statut', 'in', ['attente', 'encours', 'finie']), limit(50))));
   await assertFails(getDocs(query(collection(db(D), 'parties'), limit(50))));
+  await assertFails(getDocs(query(collection(e.unauthenticatedContext().firestore(), 'parties'), where('statut', '==', 'encours'), limit(50))));
   await assertSucceeds(updateDoc(ref(D), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref(B), { reglages: { cinqAdverse: false }, majLe: serverTimestamp() }));
   await assertFails(updateDoc(ref(D), { reglages: { cinqAdverse: true, nbJoueurs: 3 }, majLe: serverTimestamp() })); // mode sans resserrer la table
@@ -395,7 +434,14 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   for (let d = 0; d < 3; d++) for (let s = 0; s < 4; s++) lancer.set(doc(db(A), 'parties', id, 'donnes', `${d}_${s}`), { donne: d, siege: s, cartes: cycle[d][s] });
   lancer.update(ref(A), { statut: 'encours', etat: etat0, historique: [], enAttente: [A, B, C], invites: [], majLe: serverTimestamp() });
   await assertSucceeds(lancer.commit());
-  await assertFails(getDoc(ref(X))); // non-membre : partie en cours illisible
+  // Non-membre : la partie en cours se lit (on peut la regarder) et se liste, mais rien ne s'y écrit, et sans
+  // connexion rien ne se lit.
+  await assertSucceeds(getDoc(ref(X)));
+  assert.equal((await enCours(X, limit(50))).docs.map((x) => x.id).includes(id), true);
+  await assertFails(getDoc(doc(e.unauthenticatedContext().firestore(), 'parties', id)));
+  await assertFails(updateDoc(ref(X), { etat: marquerEchange(etat0, 3), enAttente: [A, B, C], majLe: serverTimestamp() }));
+  await assertFails(updateDoc(ref(X), { nom: 'Vu', majLe: serverTimestamp() }));
+  await assertFails(getDocs(collection(db(X), 'parties', id, 'donnes')));
   await assertFails(updateDoc(ref(A), { reglages: { cinqAdverse: true }, majLe: serverTimestamp() })); // règle du 5 figée après le lancement
   await assertFails(deleteDoc(ref(A))); // une partie lancée ne se supprime plus, même par l'hôte
   await assertFails(updateDoc(ref(A), { nom: 'Trop tard', majLe: serverTimestamp() })); // nom figé après le lancement
@@ -421,7 +467,8 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertFails(getDoc(main(A, '0_1')));
   await assertFails(getDoc(main(A, '1_0')));
   await assertSucceeds(getDoc(main(A, '0_3')));
-  await assertFails(getDoc(main(X, '0_3')));
+  await assertFails(getDoc(main(X, '0_3'))); // qui regarde la partie ne lit aucune main, pas même celle de l'IA
+  await assertFails(getDoc(main(X, '0_0')));
   await assertFails(setDoc(main(A, '0_0'), { donne: 0, siege: 0, cartes: ['AP', 'RP', 'AC', 'RC', 'AK'] }));
   await assertFails(deleteDoc(main(A, '0_0')));
   await assertFails(setDoc(main(A, '3_0'), { donne: 3, siege: 0, cartes: ['AP', 'RP', 'AC', 'RC', 'AK'] })); // hors début de cycle
@@ -457,6 +504,8 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   etat = marquerEchange(etat, 3);
   assert.equal(etat.phase, 'jeu');
   await assertSucceeds(getDoc(doc(db(C), 'parties', id, 'dons', '0_0'))); // échange fini : le destinataire lit
+  await assertFails(getDoc(doc(db(X), 'parties', id, 'dons', '0_0'))); // qui regarde la partie ne lit aucun don
+  await assertFails(getDoc(doc(db(X), 'parties', id, 'dons', '0_3'))); // pas même celui d'une IA
   await assertFails(getDoc(doc(db(B), 'parties', id, 'dons', '0_0'))); // ni donneur ni destinataire
 
   const mainA = cycle[0][0].filter((x) => x !== cycle[0][0][0]).concat([cycle[0][2][0]]);
@@ -494,6 +543,9 @@ test('émulateur : les règles refusent la triche', { skip: !actif && 'émulateu
   await assertSucceeds(updateDoc(doc(db(B), 'joueurs', B), { stats: { jouees: 1, gagnees: 1 }, comptees: [id] }));
   await assertFails(updateDoc(ref(A), { statut: 'encours', majLe: serverTimestamp() })); // partie finie : figée
   await assertFails(deleteDoc(ref(A)));
+  // Finie ou abandonnée, elle se lit encore par son code (qui la regardait voit comment elle s'est terminée).
+  await assertSucceeds(getDoc(ref(X)));
+  await assertSucceeds(getDoc(refAb(X)));
 });
 
 test('émulateur : mode à 3 joueurs, partie complète et triche', { skip: !actif && 'émulateur absent', timeout: 600000 }, async () => {

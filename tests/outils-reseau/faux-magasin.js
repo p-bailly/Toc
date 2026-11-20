@@ -6,9 +6,10 @@
 //  - écoutes de documents et de requêtes (array-contains, ou égalité bornée), notifiées de façon asynchrone ;
 //  - heure du serveur et suppression de champ (valeurs sentinelles) ;
 //  - refus des valeurs `undefined` et des tableaux directement imbriqués (comme Firestore) ;
-//  - une partie des règles de sécurité (firestore.rules) : lecture des parties, des mains (donnes)
-//    et des dons, immuabilité des donnes et dons, liste des fiches bornée à 10. Cela vérifie que
-//    le client ne lit que ce que les vraies règles lui permettent ;
+//  - une partie des règles de sécurité (firestore.rules) : lecture des parties (ouverte à tout joueur connecté),
+//    liste des parties (les siennes, ses invitations, les salles d'attente, les parties en cours), lecture des
+//    mains (donnes) et des dons (réservée aux membres), immuabilité des donnes et dons, liste des fiches bornée
+//    à 10. Cela vérifie que le client ne lit que ce que les vraies règles lui permettent ;
 //  - le refus d'une transaction périmée sur une partie (comme le vrai serveur, dont les règles
 //    voient le document déjà modifié) ;
 //  - un client hors ligne (transactions et lectures non en cache refusées, code « unavailable »).
@@ -79,10 +80,9 @@ export class FauxServeur {
     if (m[0] === 'joueurs' && m.length === 4 && m[2] === 'prive') return m[1] === uid; // privé : son titulaire seul
     if (m[0] !== 'parties') return false;
     const p = this.docs.get(`parties/${m[1]}`)?.donnees;
-    if (m.length === 2) {
-      if (!donnees) return true;
-      return donnees.uids.includes(uid) || (donnees.invites || []).includes(uid) || donnees.statut === 'attente';
-    }
+    // Le document d'une partie se lit par tout joueur connecté (salle d'attente, partie qu'on regarde) ; les mains
+    // et les dons, par les seuls membres.
+    if (m.length === 2) return true;
     if (!p || p.statut === 'attente' || !p.uids.includes(uid)) return false;
     const [d, s] = m[3].split('_').map(Number);
     const e = p.etat;
@@ -95,6 +95,13 @@ export class FauxServeur {
       return p.joueurs[s].uid === uid || (fini && (p.joueurs[pour].uid === uid || p.joueurs[s].ia || p.joueurs[pour].ia));
     }
     return false;
+  }
+
+  /** Une partie se liste-t-elle pour `uid` ? Les siennes, ses invitations, les salles d'attente et les parties en cours. */
+  peutLister(uid, donnees) {
+    if (!uid) return false;
+    if (!Array.isArray(donnees.uids)) return true; // pas une partie
+    return donnees.uids.includes(uid) || (donnees.invites || []).includes(uid) || donnees.statut === 'attente' || donnees.statut === 'encours';
   }
 
   peutCreerSurExistant(chemin) {
@@ -197,7 +204,7 @@ export class FauxServeur {
           const m = chemin.split('/');
           const retenu = egal ? donnees[champ] === valeur : (donnees[champ] || []).includes(valeur);
           if (m.length === 2 && m[0] === collection && retenu) {
-            if (!serveur.peutLire(c.uid, chemin, donnees)) throw erreur('permission-denied');
+            if (!serveur.peutLire(c.uid, chemin, donnees) || !serveur.peutLister(c.uid, donnees)) throw erreur('permission-denied');
             r.push({ id: m[1], donnees: cloner(donnees) });
           }
         }

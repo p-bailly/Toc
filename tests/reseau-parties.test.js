@@ -346,8 +346,9 @@ test('surMesParties, surPartie et invitations directes', async () => {
   await attendre(() => salle.statut === 'encours');
   assert.equal(salle.invites.length, 0);
   await assert.rejects(c.client.accepterInvitation(id), /commencé/);
-  // Partie en cours dont on n'est pas membre : illisible, donc « déjà commencée ».
-  await assert.rejects(c.client.rejoindrePartie(id), /commencé/);
+  // Partie en cours dont on n'est pas membre : on ne s'y assoit plus, mais on peut la regarder.
+  assert.deepEqual(await c.client.rejoindrePartie(id), { id, spectateur: true });
+  assert.equal(serveur.get(`parties/${id}`).uids.includes(c.joueur.uid), false);
   await attendre(() => mes.find((r) => r.id === id)?.statut === 'encours');
   assert.equal(mes.find((r) => r.id === id).aMoiDeJouer, true);
   arrets.forEach((f) => f());
@@ -384,9 +385,82 @@ test('lancement : 12 mains distinctes, état initial, enAttente ; lectures rése
   await ma.lire(chemins.donne(id, 0, 3)); // main de l'IA : lisible par les membres
   await assert.rejects(ma.lire(chemins.donne(id, 0, 1)), { code: 'permission-denied' }); // main d'un autre humain
   await assert.rejects(ma.lire(chemins.donne(id, 1, 0)), { code: 'permission-denied' }); // donne future
-  // Un non-membre ne lit rien.
+  // Un non-membre lit la partie (il peut la regarder), mais aucune main, pas même celle de l'IA.
   await assert.rejects(serveur.client('intrus').lire(chemins.donne(id, 0, 3)), { code: 'permission-denied' });
-  await assert.rejects(serveur.client('intrus').lire(chemins.partie(id)), { code: 'permission-denied' });
+  await assert.rejects(serveur.client('intrus').lire(chemins.donne(id, 0, 0)), { code: 'permission-denied' });
+  assert.equal((await serveur.client('intrus').lire(chemins.partie(id))).statut, 'encours');
+});
+
+test('spectateur : tout joueur connecté liste les parties en cours et les regarde, sans cartes et sans y jouer', async () => {
+  const serveur = new FauxServeur();
+  const [a, b, c, d] = await quatre(serveur);
+  // David ne voit que les parties en cours : pas une salle d'attente.
+  let enCours = null;
+  const arret = d.client.surPartiesEnCours((l) => (enCours = l));
+  const { id } = await a.client.creerPartie({ nom: 'À regarder' });
+  await b.client.rejoindrePartie(id);
+  await c.client.rejoindrePartie(id);
+  await a.client.ajouterIA(id, 3);
+  await attendre(() => enCours !== null);
+  assert.deepEqual(enCours, []);
+  await assert.rejects(d.client.ouvrirSession(id), /pas encore commencé/);
+  await a.client.lancerPartie(id);
+  await attendre(() => enCours.length === 1, 2000, 'partie en cours listée');
+  assert.equal(enCours[0].id, id);
+  assert.equal(enCours[0].monSiege, -1);
+  assert.equal(enCours[0].aMoiDeJouer, false);
+  assert.deepEqual(enCours[0].joueurs.map((j) => j.pseudo), ['Alice', 'Bruno', 'Chloé', 'IA Ouest']);
+  // Les joueurs de la partie la voient aussi dans cette liste (l'écran ne montre que celles des autres).
+  let pourAlice = null;
+  const arretA = a.client.surPartiesEnCours((l) => (pourAlice = l));
+  await attendre(() => pourAlice?.length === 1);
+  assert.equal(pourAlice[0].monSiege, 0);
+  arretA();
+
+  // Session de spectateur : la partie, sans aucune carte.
+  const session = await d.client.ouvrirSession(id);
+  let vue = null;
+  session.abonner((v) => (vue = v));
+  assert.equal(vue.spectateur, true);
+  assert.equal(vue.siege, -1);
+  assert.deepEqual(vue.main, []);
+  assert.equal(vue.don, null);
+  assert.equal(vue.recu, null);
+  assert.equal(vue.etat.phase, 'echange');
+  assert.deepEqual(vue.joueurs.map((j) => j.pseudo), ['Alice', 'Bruno', 'Chloé', 'IA Ouest']);
+  await assert.rejects(session.donner('AP'), /Tu regardes/);
+  await assert.rejects(session.jouer({ t: 'defausse', carte: 'AP' }), /Tu regardes/);
+  await assert.rejects(session.donneesAnalyse(), /réservée aux joueurs/);
+  // Le spectateur ne fait pas jouer l'IA (il ne lit pas sa main) : rien ne bouge tant qu'aucun joueur n'est là.
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(serveur.get(`parties/${id}`).etat.numCoup, 0);
+  assert.deepEqual(serveur.journal.filter((w) => w.uid === d.joueur.uid && w.chemin.startsWith('parties/')), []);
+
+  // Les joueurs jouent : le spectateur suit la partie coup après coup.
+  const ctx = [a, b, c].map((x) => contexte(serveur, x.joueur.uid));
+  for (let s = 0; s < 3; s++) await P.donnerCarte(ctx[s], id, s, serveur.get(`parties/${id}/donnes/0_${s}`).cartes[0]);
+  await P.donnerCarte(ctx[0], id, 3, serveur.get(`parties/${id}/donnes/0_3`).cartes[0]); // l'IA, jouée par Alice
+  await attendre(() => vue.etat.phase === 'jeu', 2000, 'le spectateur voit la fin de l’échange');
+  assert.deepEqual(vue.main, []);
+  assert.equal(vue.recu, null);
+  const mainA = (await P.chargerMain(P.creerLecteurMains(ctx[0].magasin, id), id, serveur.get(`parties/${id}`).etat, 0)).main;
+  await P.jouerCoup(ctx[0], id, 0, coupsLegauxMain(serveur.get(`parties/${id}`).etat, 0, mainA)[0]);
+  await attendre(() => vue.historique.length === 1, 2000, 'le spectateur voit le coup');
+  assert.equal(vue.historique[0].siege, 0);
+  assert.equal(vue.etat.tour, 1);
+  // Il n'a toujours rien écrit, et les cartes restent illisibles pour lui.
+  assert.deepEqual(serveur.journal.filter((w) => w.uid === d.joueur.uid && w.chemin.startsWith('parties/')), []);
+  await assert.rejects(d.magasin.lire(chemins.donne(id, 0, 3)), { code: 'permission-denied' });
+  await assert.rejects(d.magasin.lire(chemins.don(id, 0, 0)), { code: 'permission-denied' });
+  // Voter l'abandon reste réservé aux joueurs.
+  await assert.rejects(d.client.voterAbandon(id, true), /Tu ne joues pas/);
+
+  // Abandonnée par ses joueurs : elle n'est plus à regarder.
+  for (const x of [a, b, c]) await x.client.voterAbandon(id, true);
+  await attendre(() => enCours.length === 0, 2000, 'partie abandonnée retirée de la liste');
+  await assert.rejects(d.client.ouvrirSession(id), /abandonnée/);
+  session.fermer();
+  arret();
 });
 
 test("échange : don, carte reçue cachée jusqu'à la fin de l'échange, IA jouée par un client", async () => {

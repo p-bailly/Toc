@@ -4,6 +4,10 @@
 // Agencement (comme l'écran de jeu de l'appli Scrabble) : barre du haut, plateau d'un bord à l'autre, main du
 // joueur dans le bac bleu, ligne de consigne (ce qu'il faut faire, à qui le tour), puis les boutons. Sur grand écran, le plateau
 // passe à gauche et le reste forme une colonne à droite.
+//
+// Spectateur (partie en ligne qu'on regarde sans y jouer : vue.spectateur, vue.siege = -1) : le même écran, sans
+// main ni bouton de jeu. Le plateau est vu du premier siège, personne n'y est « Toi », et la consigne dit à qui
+// c'est de jouer. Le journal et la revue des coups marchent comme pour un joueur.
 
 import { h, remplacer, messageErreur, pluriel, mouvementReduit, lire, ecrire } from './dom.js';
 import {
@@ -165,6 +169,9 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   /** Nombre de joueurs de la partie (3 ou 4). */
   const nb = () => nombreJoueurs(vue.etat);
+
+  /** Siège montré en bas du plateau : le sien ; pour un spectateur (aucun siège), le premier. */
+  const siegeBas = (v) => (v.siege >= 0 ? v.siege : 0);
 
   /**
    * Message bref de l'écran de jeu (carte reçue, commentaire, erreur) : il s'affiche dans la consigne, sous le
@@ -453,7 +460,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     if (!revue) return;
     revue.index = Math.max(0, Math.min(revue.tours.length - 1, i));
     const tour = revue.tours[revue.index];
-    const base = { siegeVue: vueReelle.siege, siegeLocal: vueReelle.siege, joueurs: vueReelle.joueurs };
+    const base = { siegeVue: siegeBas(vueReelle), siegeLocal: vueReelle.siege, joueurs: vueReelle.joueurs };
     clearTimeout(minuterieRevue);
     plateau.arreterAnimations();
     if (animationsActives()) {
@@ -461,7 +468,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       minuterieRevue = setTimeout(() => {
         if (!revue) return;
         plateau.maj({ ...base, etat: tour.apres });
-        plateau.animer(tour.apres.dernierCoup, vueReelle.siege, leRythme());
+        plateau.animer(tour.apres.dernierCoup, siegeBas(vueReelle), leRythme());
       }, 320);
     } else {
       plateau.maj({ ...base, etat: tour.apres });
@@ -478,7 +485,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     main.classList.add('inactive');
     zonePlateau.classList.remove('a-moi');
     const nouveaux = (reel.historique?.length || 0) - histo.length;
-    const aMonTour = (reel.etat.phase === 'jeu' && reel.etat.tour === reel.siege) || (reel.etat.phase === 'echange' && !reel.don);
+    const aMonTour = !reel.spectateur && ((reel.etat.phase === 'jeu' && reel.etat.tour === reel.siege) || (reel.etat.phase === 'echange' && !reel.don));
     remplacer(
       consigne,
       h(
@@ -648,7 +655,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       appliquerVue(intermediaire, { presentation: true });
       const r = leRythme();
       const mien = histo[i].siege === vueReelle.siege;
-      const duree = animationsActives() ? plateau.animer(tour.apres.dernierCoup, vueReelle.siege, r) : 0;
+      const duree = animationsActives() ? plateau.animer(tour.apres.dernierCoup, siegeBas(vueReelle), r) : 0;
       // Le coup d'un autre joueur reste affiché le temps de le lire ; le sien, juste le temps de l'animation.
       await attendre(duree + (mien ? Math.min(150, r.lecture) : r.lecture));
     }
@@ -727,7 +734,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
   }
 
   function aMoi() {
-    if (enPresentation) return false;
+    if (enPresentation || vue?.spectateur) return false;
     return !!vue && ((vue.etat.phase === 'jeu' && vue.etat.tour === vue.siege) || (vue.etat.phase === 'echange' && !vue.don));
   }
 
@@ -1040,27 +1047,38 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
       return;
     }
     const { etat, siege, joueurs } = vue;
+    const spectateur = !!vue.spectateur;
     // Les couleurs choisies par les joueurs, sur le plateau comme sur les puces du journal et de la consigne.
     appliquerCouleurs(ecran, couleursPartie(joueurs, joueurs.length));
     const jeu = etat.phase === 'jeu';
-    const monTour = jeu && etat.tour === siege && !enPresentation;
+    const monTour = !spectateur && jeu && etat.tour === siege && !enPresentation;
     ecran.toggleAttribute('data-presentation', enPresentation);
+    ecran.toggleAttribute('data-spectateur', spectateur);
     const coups = monTour ? coupsParCarte() : new Map();
     const jouable = monTour && mainJouable(etat, siege, vue.main);
-    const actifCouleur = couleurActive(etat, siege);
+    const actifCouleur = spectateur ? -1 : couleurActive(etat, siege);
 
     titre.textContent = vue.nom || 'Partie de Toc';
-    sousTitre.textContent = `Donne ${etat.donne + 1}`;
+    sousTitre.textContent = `Donne ${etat.donne + 1}${spectateur ? ' · tu regardes' : ''}`;
 
     // Plateau : candidats, cibles, aperçu.
     const choix = calculerChoix(monTour);
     const pionsAffiches = sept ? sept.pions : coupPret?.t === 'sept' ? destination(coupPret).pions || null : null;
-    plateau.maj({ siegeVue: siege, etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
+    plateau.maj({ siegeVue: siegeBas(vue), etat, joueurs, pions: pionsAffiches, choix, sousTitres: sousTitres(), siegeLocal: siege });
     rendreJournalPanneau();
     if (boutonAbandon) boutonAbandon.hidden = etat.phase === 'fini';
     boutonConseil.disabled = !aMoi() || envoi || vue.enLigne;
     boutonConseil.hidden = !conseilsDispo || !lireReglages().conseilsIA;
     zonePlateau.classList.toggle('a-moi', aMoi());
+
+    // Un spectateur n'a pas de main : le bac dit qu'il regarde (le plateau montre déjà combien de cartes il reste à chacun).
+    if (spectateur) {
+      remplacer(main, h('span', { class: 'main-vide main-spectateur' }, h('b', {}, 'Tu regardes cette partie.'), etat.phase === 'fini' ? '' : ' Les cartes des joueurs restent cachées.'));
+      main.setAttribute('aria-label', 'Tu regardes cette partie');
+      main.classList.add('inactive');
+      rendreConsigneSpectateur();
+      return;
+    }
 
     // Main.
     const recue = jeu && vue.recu && vue.main.includes(vue.recu) ? vue.recu : null;
@@ -1209,6 +1227,44 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
 
   function puceCouleur(si) {
     return h('span', { class: 'puce-pion', style: { '--c': couleurSiege(si) }, 'aria-hidden': 'true' }, NOMS_FORMES[PIONS[si].forme]);
+  }
+
+  /**
+   * Consigne d'un spectateur : le dernier coup, à qui c'est de jouer (ou qui doit encore donner sa carte), et à la fin
+   * qui a gagné. Aucun bouton de jeu : seulement de quoi passer les coups en retard, et le résultat.
+   */
+  function rendreConsigneSpectateur() {
+    const { etat, joueurs } = vue;
+    const lignes = [];
+    const boutons = [];
+    const derniere = (vue.historique || [])[vue.historique?.length - 1];
+    if (derniere && etat.phase !== 'fini') {
+      lignes.push(h('div', { class: 'derniere-action', 'data-n': vue.historique.length }, puceCouleur(derniere.siege), h('span', {}, ligneJournal(derniere, joueurs, -1))));
+    }
+    if (resume && resume.n === vue.historique?.length && !enPresentation) lignes.push(h('span', { class: 'note resume-retard' }, resume.texte));
+    if (avis) lignes.push(h('span', { class: 'avis-jeu' + (avis.erreur ? ' erreur' : ''), role: avis.erreur ? 'alert' : null }, avis.texte));
+    if (etat.phase === 'fini') {
+      const gagnants = siegesGagnants(etat);
+      lignes.push(h('b', {}, nb() === 3 ? `${nomSiege(gagnants[0])} a gagné.` : `Victoire de ${enumerer(gagnants.map(nomSiege))}.`));
+      if (!enPresentation) boutons.push(h('button', { type: 'button', class: 'bouton principal large', onclick: montrerFin }, 'Voir le résultat'));
+    } else if (etat.phase === 'echange') {
+      const attendus = Array.from({ length: nb() }, (_, si) => si).filter((si) => !etat.echanges[si]).map(nomSiege);
+      lignes.push(h('span', { class: 'tour-de' }, h('b', {}, 'Échange des cartes. '), attendus.length ? `On attend ${enumerer(attendus)}.` : ''));
+    } else {
+      lignes.push(h('span', { class: 'tour-de' }, 'C’est à ', puceCouleur(etat.tour), ' ', h('b', {}, nomSiege(etat.tour)), ' de jouer.'));
+    }
+    if (enPresentation && restants > 0) {
+      boutons.push(
+        h(
+          'button',
+          { type: 'button', class: 'bouton' + (restants >= 6 ? ' principal large' : ''), 'data-action': 'passer', onclick: passerPresentation },
+          restants >= 6 ? `Passer à la position actuelle (${pluriel(restants, 'coup')})` : `Passer (${pluriel(restants, 'coup')})`,
+        ),
+      );
+    }
+    remplacer(consigne, h('div', { class: 'mots' }, lignes));
+    remplacer(actions, boutons);
+    actions.hidden = !boutons.length;
   }
 
   function rendreConsigne(monTour, jouable, actifCouleur) {
@@ -1584,6 +1640,7 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
     const { etat, siege } = vue;
     const a3 = nb() === 3;
     const gagnants = siegesGagnants(etat);
+    const spectateur = !!vue.spectateur;
     const gagne = gagnants.includes(siege);
     const rentres = (si) => etat.pions.slice(si * 4, si * 4 + 4).filter((p) => p >= ALLEE).length;
     const boutons = [];
@@ -1613,14 +1670,14 @@ export function monterJeu(racine, { session, retour, libelleRetour = 'Retour', r
         h(
           'div',
           { class: 'ligne' + (e === etat.gagnant ? ' choisie' : '') },
-          h('div', { class: 'principal' }, h('div', { class: 'mot' }, enumerer(equipe(e))), h('div', { class: 'note' }, (e === siege % 2 ? 'Ton équipe' : 'Équipe adverse') + niveauDe(e) + niveauDe(e + 2))),
+          h('div', { class: 'principal' }, h('div', { class: 'mot' }, enumerer(equipe(e))), h('div', { class: 'note' }, (spectateur ? (e === 0 ? 'Équipe A' : 'Équipe B') : e === siege % 2 ? 'Ton équipe' : 'Équipe adverse') + niveauDe(e) + niveauDe(e + 2))),
           h('span', { class: 'pts' }, e === etat.gagnant ? 'Gagnant' : ''),
         ),
       );
     }
     feuilleFin = ouvrirFeuilleJeu(
       [
-        h('div', { class: 'fin-titre' + (gagne ? ' gagne' : '') }, h('span', { class: 'fin-embleme', 'aria-hidden': 'true' }, gagne ? '🏆' : '🎲'), h('h3', {}, gagne ? 'Victoire !' : 'Défaite')),
+        h('div', { class: 'fin-titre' + (gagne ? ' gagne' : '') }, h('span', { class: 'fin-embleme', 'aria-hidden': 'true' }, gagne ? '🏆' : spectateur ? '🏁' : '🎲'), h('h3', {}, gagne ? 'Victoire !' : spectateur ? 'Partie terminée' : 'Défaite')),
         explication,
         h('div', { class: 'liste' }, lignes),
         h('p', { class: 'note' }, `${pluriel(vue.historique?.length || 0, 'coup joué', 'coups joués')} en ${pluriel(etat.donne + 1, 'donne')}.`),

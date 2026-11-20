@@ -31,7 +31,7 @@
 //     nbJoueurs,         3 ou 4
 //     joueurs,           Place[nbJoueurs], indexé par siège (à 4 : 0 et 2 contre 1 et 3 ;
 //                        à 3 : chacun pour soi)
-//     monSiege,          siège de l'utilisateur connecté (ou -1)
+//     monSiege,          siège de l'utilisateur connecté (ou -1 : salle où il n'est pas assis, partie qu'il regarde)
 //     aMoiDeJouer,       true si la partie attend une action de l'utilisateur
 //                        (carte à donner pendant l'échange, ou coup à jouer)
 //     gagnant,           null | équipe 0 ou 1 à 4 joueurs | siège 0, 1 ou 2 à 3 joueurs (etat.gagnant)
@@ -179,13 +179,19 @@ export async function creerPartie({ nom, cinqAdverse, nbJoueurs } = {}) {
   return client.creerPartie({ nom, cinqAdverse, nbJoueurs });
 }
 
-/** Rejoint une partie en attente avec son code d'invitation (premier siège libre). → { id } */
+/**
+ * Rejoint une partie en attente avec son code d'invitation (premier siège libre). → { id }
+ * Partie déjà en cours : on ne s'y assoit plus, mais on peut la regarder → { id, spectateur: true }.
+ */
 export async function rejoindrePartie(code) {
   if (!reseauDisponible()) return nonConfigure();
   return client.rejoindrePartie(code);
 }
 
-/** Écoute une partie (salle d'attente). cb(ResumePartie | null). Renvoie le désabonnement. */
+/**
+ * Écoute une partie (salle d'attente, partie en cours ou terminée ; la sienne ou celle des autres, qu'on regarde).
+ * cb(ResumePartie | null). Renvoie le désabonnement.
+ */
 export function surPartie(id, cb) {
   if (!reseauDisponible()) {
     cb(null);
@@ -205,6 +211,19 @@ export function surSallesAttente(cb) {
     return () => {};
   }
   return client.surSallesAttente(cb);
+}
+
+/**
+ * Écoute les parties en cours (toutes, les miennes comprises ; 50 au plus), de la plus récemment jouée à la plus
+ * ancienne : tout joueur connecté peut regarder une partie en cours sans y jouer (voir ouvrirSession).
+ * cb(ResumePartie[]) ; monSiege vaut -1 pour les parties des autres. Renvoie le désabonnement.
+ */
+export function surPartiesEnCours(cb) {
+  if (!reseauDisponible()) {
+    cb([]);
+    return () => {};
+  }
+  return client.surPartiesEnCours(cb);
 }
 
 /**
@@ -327,13 +346,16 @@ export async function refuserInvitation(id) {
 // ─── Jeu ────────────────────────────────────────────────────────────────────
 
 /**
- * Ouvre une partie en cours (ou terminée) pour y jouer.
+ * Ouvre une partie en cours (ou terminée) pour y jouer, ou pour la regarder si l'on n'y joue pas.
  * → Session, même interface que SessionLocale (voir js/session-locale.js) :
  *   abonner(cb), donner(carte), jouer(coup), fermer(), avec vue.enLigne = true
  *   (la vue a en plus `statut`), et donneesAnalyse() (analyse de fin de partie).
  *   vue.joueurs[s] = { pseudo, ia } et, pour une IA, `niveau` (transmis à l'IA qui joue ce siège).
  *   À 3 joueurs, `vue.recu` est la carte reçue du voisin de la donne (donneurDon).
  * La session fait aussi jouer les IA de la partie.
+ * Spectateur (tout joueur connecté qui n'est pas assis à la table) : vue.spectateur = true, vue.siege = -1,
+ *   aucune carte (main vide, don et recu null) ; donner(), jouer() et donneesAnalyse() sont refusés, et la
+ *   session ne fait pas jouer les IA (elle ne lit aucune main).
  */
 export async function ouvrirSession(id) {
   if (!reseauDisponible()) return nonConfigure();

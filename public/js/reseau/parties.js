@@ -14,6 +14,10 @@
 //   parties/{code}/donnes/{donne}_{siege} = { donne, siege, cartes }   immuable
 //   parties/{code}/dons/{donne}_{siege}   = { donne, de, pour, carte } immuable
 //
+// Le document de la partie ne porte que ce que voit toute la table : tout joueur connecté le lit, et peut donc
+// regarder une partie en cours sans y jouer (session-reseau.js, mode spectateur). Les mains et les dons restent à
+// leurs titulaires.
+//
 // L'identifiant de la partie est son code d'invitation (comme dans l'appli Scrabble).
 
 import {
@@ -129,22 +133,28 @@ export async function creerPartie(ctx, { nom, cinqAdverse, nbJoueurs } = {}) {
   throw new ErreurToc('Impossible de créer la partie, réessaie.');
 }
 
-/** Entre dans une partie en attente (premier siège libre). Déjà membre : rien à faire. */
-async function entrer(ctx, id) {
+/**
+ * Entre dans une partie en attente (premier siège libre). Déjà membre : rien à faire. Avec `regarder`, une partie
+ * en cours dont on n'est pas membre ne refuse pas : on n'y entre pas, on la regardera ({ id, spectateur: true }).
+ */
+async function entrer(ctx, id, { regarder = false } = {}) {
+  let spectateur = false;
   try {
-    await entrerTransaction(ctx, id);
+    spectateur = await entrerTransaction(ctx, id, regarder);
   } catch (e) {
-    // Partie en cours dont on n'est pas membre : les règles en refusent la lecture.
+    // Règles Firestore d'avant les parties ouvertes aux spectateurs : la lecture même est refusée.
     if (e.cause?.code === 'permission-denied') throw new ErreurToc('La partie a déjà commencé.');
     throw e;
   }
-  return { id };
+  return spectateur ? { id, spectateur: true } : { id };
 }
 
-async function entrerTransaction(ctx, id) {
-  await transaction(ctx, async (tx) => {
+/** → true si la partie est en cours sans nous et qu'on vient seulement la regarder. */
+async function entrerTransaction(ctx, id, regarder) {
+  return transaction(ctx, async (tx) => {
     const p = await lirePartie(tx, id);
-    if (siegeDe(p, ctx.uid) >= 0) return;
+    if (siegeDe(p, ctx.uid) >= 0) return false;
+    if (regarder && p.statut === 'encours') return true;
     exigerAttente(p);
     const libre = p.joueurs.findIndex((x) => x === null);
     if (libre < 0) throw new ErreurToc(`La partie est complète (${p.joueurs.length} joueurs).`);
@@ -154,15 +164,19 @@ async function entrerTransaction(ctx, id) {
     const champs = { joueurs, uids: p.uids.concat([ctx.uid]), majLe: ctx.magasin.horodatage() };
     if ((p.invites || []).includes(ctx.uid)) champs.invites = p.invites.filter((u) => u !== ctx.uid);
     tx.maj(chemins.partie(id), champs);
+    return false;
   });
 }
 
-/** Rejoint une partie en attente avec son code d'invitation. → { id } */
+/**
+ * Rejoint une partie en attente avec son code d'invitation. → { id }. Si la partie est déjà en cours, on ne peut
+ * plus s'y asseoir mais on peut la regarder : → { id, spectateur: true }.
+ */
 export async function rejoindrePartie(ctx, code) {
   const id = normaliserCode(code);
   if (!codeValide(id)) throw new ErreurToc("Code d'invitation invalide.");
   try {
-    return await entrer(ctx, id);
+    return await entrer(ctx, id, { regarder: true });
   } catch (e) {
     if (e.code === 'not-found') throw new ErreurToc('Aucune partie avec ce code.', 'not-found');
     throw e;
@@ -176,8 +190,9 @@ export async function accepterInvitation(ctx, id) {
 
 /**
  * Transaction sur une salle d'attente ouverte à tous : `fn(tx, partie | null)`. Si la lecture même est
- * refusée, c'est que la partie a commencé sans nous (les règles ne la montrent plus qu'à ses membres) ;
- * un refus de l'écriture, lui, reste un refus (règles Firestore pas à jour, par exemple).
+ * refusée, c'est que la partie a commencé sans nous (les règles d'avant les parties ouvertes aux spectateurs ne la
+ * montraient plus qu'à ses membres) ; un refus de l'écriture, lui, reste un refus (règles Firestore pas à jour,
+ * par exemple).
  */
 async function transactionSalle(ctx, id, fn) {
   let lue = false;

@@ -208,15 +208,17 @@ service cloud.firestore {
       }
 
       // ── Lecture ──
-      // Une partie se lit par ses membres et ses invités ; en attente, par tout joueur connecté (une salle
-      // d'attente est ouverte à tous). Un document absent se « lit » (pour savoir qu'un code est libre ou inconnu).
-      allow get: if connecte()
-        && (resource == null || membre(resource.data) || invite(resource.data) || resource.data.statut == 'attente');
-      // Listes : ses parties (uids array-contains), ses invitations (invites array-contains), et les salles
-      // d'attente ouvertes (statut == 'attente', 50 au plus par requête).
+      // Le document d'une partie ne porte que ce que voit toute la table (places, plateau, cartes déjà jouées,
+      // historique) : tout joueur connecté le lit, pour s'asseoir dans une salle d'attente ou regarder une partie
+      // en cours sans y jouer. Les mains et les dons, eux, restent à leurs titulaires (voir plus bas). Un document
+      // absent se « lit » aussi (pour savoir qu'un code est libre ou inconnu).
+      allow get: if connecte();
+      // Listes : ses parties (uids array-contains), ses invitations (invites array-contains), les salles
+      // d'attente ouvertes (statut == 'attente') et les parties en cours, que chacun peut regarder
+      // (statut == 'encours') ; 50 au plus par requête pour ces deux dernières.
       allow list: if connecte()
         && (membre(resource.data) || invite(resource.data)
-          || (resource.data.statut == 'attente' && request.query.limit <= 50));
+          || ((resource.data.statut == 'attente' || resource.data.statut == 'encours') && request.query.limit <= 50));
 
       // ── Création : par son créateur (`hote`), seul joueur, au siège 0 ──
       allow create: if connecte() && creationValide(request.resource.data);
@@ -433,7 +435,8 @@ service cloud.firestore {
 
       // ── Mains privées, immuables : parties/{id}/donnes/{donne}_{siege} ──
       // Lisible par le titulaire du siège (ou par tout membre si le siège est une IA, puisque ce sont
-      // les clients qui la font jouer), et seulement une fois cette donne commencée.
+      // les clients qui la font jouer), et seulement une fois cette donne commencée. Qui regarde la partie
+      // sans y jouer ne lit aucune main ni aucun don.
       match /donnes/{cle} {
         function d() {
           return int(cle.split('_')[0]);

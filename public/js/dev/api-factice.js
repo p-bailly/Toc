@@ -63,6 +63,7 @@ const ecoutesAuth = new Set();
 const ecoutesListe = new Set();
 const ecoutesInvitations = new Set();
 const ecoutesSalles = new Set();
+const ecoutesEnCours = new Set();
 const ecoutesPartie = new Map(); // id → Set<cb>
 const sessions = new Set();
 
@@ -79,6 +80,7 @@ function diffuser() {
   for (const cb of ecoutesListe) cb(mesParties());
   for (const cb of ecoutesInvitations) cb(mesInvitations());
   for (const cb of ecoutesSalles) cb(sallesAttente());
+  for (const cb of ecoutesEnCours) cb(partiesEnCours());
   for (const [id, cbs] of ecoutesPartie) for (const cb of cbs) cb(resumeDe(db.parties[id]));
   for (const s of sessions) s.notifier();
 }
@@ -183,6 +185,15 @@ function sallesAttente() {
   if (!db.moi) return [];
   return Object.values(db.parties)
     .filter((p) => p.statut === 'attente')
+    .sort((a, b) => b.majLe - a.majLe)
+    .map(resumeDe);
+}
+
+/** Toutes les parties en cours (les miennes comprises) : tout le monde peut les regarder. */
+function partiesEnCours() {
+  if (!db.moi) return [];
+  return Object.values(db.parties)
+    .filter((p) => p.statut === 'encours')
     .sort((a, b) => b.majLe - a.majLe)
     .map(resumeDe);
 }
@@ -337,6 +348,12 @@ export function surSallesAttente(cb) {
   return () => ecoutesSalles.delete(cb);
 }
 
+export function surPartiesEnCours(cb) {
+  ecoutesEnCours.add(cb);
+  cb(partiesEnCours());
+  return () => ecoutesEnCours.delete(cb);
+}
+
 export function surPartie(id, cb) {
   if (!ecoutesPartie.has(id)) ecoutesPartie.set(id, new Set());
   ecoutesPartie.get(id).add(cb);
@@ -404,6 +421,8 @@ export async function rejoindrePartie(code) {
   const p = Object.values(db.parties).find((x) => x.code === cle);
   if (!p) throw new Error(`Aucune partie ne porte le code ${cle}.`);
   if (siegeDe(p, c.uid) >= 0) return { id: p.id };
+  // Partie déjà en cours : on ne s'y assoit plus, on la regarde.
+  if (p.statut === 'encours') return { id: p.id, spectateur: true };
   if (p.statut !== 'attente') throw new Error('Cette partie a déjà commencé.');
   asseoir(p, c.uid);
   reactionHote(p);
@@ -703,7 +722,7 @@ function reactionHote(p) {
   }, delai(2500));
 }
 
-/** Données de départ d'un nouveau compte : une invitation, une partie en cours, une terminée, une partie à code. */
+/** Données de départ d'un nouveau compte : une invitation, une partie en cours, une terminée, une partie à code, et une partie des autres à regarder. */
 function peupler(uid) {
   const camille = creer({ nom: 'Le Toc du jeudi', cinqAdverse: true, hote: 'f-camille' });
   camille.joueurs[1] = placeDe('f-malo');
@@ -729,6 +748,12 @@ function peupler(uid) {
   const aCode = creer({ nom: 'Partie de Jules', hote: 'f-jules', code: 'TOC42A' });
   aCode.joueurs[2] = placeDe('f-ines');
   aCode.majLe = Date.now() - 20 * 60e3;
+
+  // Une partie des autres joueurs, déjà en cours : on peut la regarder sans y jouer.
+  const desAutres = creer({ nom: 'Le Toc des cousins', hote: 'f-lena', code: 'TOC77B' });
+  desAutres.joueurs = [placeDe('f-lena'), placeDe('f-robert'), placeDe('f-ines'), { uid: null, pseudo: 'IA Ouest', ia: true, niveau: 'expert' }];
+  lancer(desAutres);
+  desAutres.majLe = Date.now() - 2 * 60e3;
 }
 
 /** Joue une partie entière au hasard (rapide) : sert à fournir une partie terminée. */
@@ -832,8 +857,12 @@ export async function ouvrirSession(id) {
   const c = exigerConnexion();
   const p = exigerPartie(id);
   if (!p.partie) throw new Error('La partie n’a pas encore commencé.');
+  // Pas assis à la table : on regarde la partie, sans cartes (vue.spectateur, voir reseau/api.js).
   const siege = siegeDe(p, c.uid);
-  if (siege < 0) throw new Error('Tu ne fais pas partie de cette partie.');
+  const spectateur = siege < 0;
+  const exigerJoueur = () => {
+    if (spectateur) throw new Error('Tu regardes cette partie : tu n’y joues pas.');
+  };
   const abonnes = new Set();
   let derniere = null;
   const vue = () => {
@@ -847,17 +876,18 @@ export async function ouvrirSession(id) {
       siege,
       joueurs: q.joueurs.map((j) => ({ pseudo: j.pseudo, ia: !!j.ia, uid: j.uid, ...(j.ia && j.niveau ? { niveau: j.niveau } : {}), ...(couleurValide(j.couleur) ? { couleur: j.couleur } : {}) })),
       etat: copie(etat),
-      main: mains[siege].slice(),
-      don: dons[siege],
-      recu: etat.phase === 'echange' ? null : dons[donneurDon(etat.donne, siege, nombreJoueurs(etat))],
+      main: spectateur ? [] : mains[siege].slice(),
+      don: spectateur ? null : dons[siege],
+      recu: spectateur || etat.phase === 'echange' ? null : dons[donneurDon(etat.donne, siege, nombreJoueurs(etat))],
       historique: copie(historique),
+      ...(spectateur ? { spectateur: true } : {}),
     };
   };
   const session = {
     notifier() {
       const q = db.parties[id];
       if (!q?.partie) return;
-      const cle = q.partie.etat.numCoup + '|' + q.partie.etat.phase + '|' + q.partie.mains[siege].join();
+      const cle = q.partie.etat.numCoup + '|' + q.partie.etat.phase + '|' + (spectateur ? '' : q.partie.mains[siege].join());
       if (cle === derniere) return;
       derniere = cle;
       const v = vue();
@@ -869,6 +899,7 @@ export async function ouvrirSession(id) {
       return () => abonnes.delete(cb);
     },
     async donner(carte) {
+      exigerJoueur();
       await attendre(80);
       const q = exigerPartie(id);
       q.partie = donnerCarte(q.partie, siege, carte);
@@ -877,6 +908,7 @@ export async function ouvrirSession(id) {
       changer();
     },
     async jouer(coup) {
+      exigerJoueur();
       await attendre(80);
       const q = exigerPartie(id);
       q.partie = jouerCoup(q.partie, siege, coup);
@@ -887,6 +919,7 @@ export async function ouvrirSession(id) {
     },
     /** Données pour l'analyse de fin de partie (voir session-locale.js). */
     async donneesAnalyse() {
+      if (spectateur) throw new Error('L’analyse est réservée aux joueurs de la partie.');
       const q = exigerPartie(id);
       return {
         reglages: { ...q.reglages, plateau: coteDeEtat(q.partie.etat) },

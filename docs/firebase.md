@@ -130,8 +130,11 @@ Firestore). Les règles vérifient tout ce qui se vérifie sans exécuter le mot
 - les parties contre l'IA gardées par le compte (`joueurs/{uid}/prive/…` : historique, parties entières, partie
   en cours) ne sont lues et écrites que par leur titulaire, dans une forme bornée (taille, noms des documents) ;
   leur contenu n'est pas vérifié (ces parties se jouent hors ligne, et ne regardent que lui) ;
-- une partie en cours n'est lisible que par ses membres (et ses invités) ; seules se listent ses parties,
-  ses invitations et les salles d'attente (parties pas encore lancées, 50 au plus par requête) ;
+- le document d'une partie (places, plateau, cartes déjà jouées, historique : ce que voit toute la table) est
+  lisible par tout joueur connecté, pour s'asseoir dans une salle d'attente ou **regarder une partie en cours**
+  sans y jouer ; seules se listent ses parties, ses invitations, les salles d'attente (parties pas encore
+  lancées) et les parties en cours (50 au plus par requête pour ces deux dernières). Qui regarde ne lit aucune
+  main ni aucun don, et n'écrit rien ;
 - une **salle d'attente est ouverte à tous** : tout joueur connecté la lit, s'y assoit sur une place libre
   (invité ou non), active ou désactive la règle du « 5 adverse » (rien d'autre dans les réglages : le nombre
   de joueurs reste figé) et peut la supprimer. Chacun ne déplace que sa propre place ; seul l'hôte place
@@ -157,6 +160,9 @@ Limites connues (modèle de confiance « entre amis ») :
   donc le partenaire humain d'une IA peut voir le jeu de celle-ci ;
 - n'importe quel joueur connecté peut **supprimer une salle d'attente** ou y changer la règle du 5, même sans
   y être assis : c'est voulu (chacun peut faire le ménage), et sans conséquence une fois la partie lancée ;
+- tout joueur connecté peut **regarder n'importe quelle partie en cours** (plateau, cartes jouées, journal ;
+  jamais les mains) : c'est voulu. Un joueur pourrait donc suivre sa propre partie depuis un second compte, mais il
+  n'y verrait rien de plus que depuis sa place ;
 - quiconque connaît un nom peut ouvrir ce compte (voir plus haut).
 
 ## Tester avec les émulateurs (développeurs)

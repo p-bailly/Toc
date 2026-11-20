@@ -1,7 +1,9 @@
 // « Mes parties » (écran d'ouverture, comme dans l'appli Scrabble) : connexion par simple nom d'utilisateur,
 // invitations reçues, parties classées (à toi de jouer, en attente, salles d'attente, terminées), nouvelle partie
 // d'un toucher, rejoindre avec un code. Les salles d'attente sont ouvertes à tous : on y voit aussi celles des
-// autres joueurs. Les statistiques sont dans l'onglet « Stats ». Gère aussi la route #/rejoindre/CODE.
+// autres joueurs. Les parties en cours des autres joueurs y sont aussi : tout le monde peut les regarder, sans y
+// jouer. Les statistiques sont dans l'onglet « Stats ». Gère aussi la route #/rejoindre/CODE (une partie déjà en
+// cours s'ouvre pour la regarder).
 
 import { h, remplacer, messageErreur, ilYa, lire, ecrire, pluriel } from './dom.js';
 import { entete, avatar, interrupteur, segments, toast, choixCouleur } from './composants.js';
@@ -13,6 +15,10 @@ import { conseilInstallation } from './installation.js';
 import { piPlus } from './pictos.js';
 import { emojiIcone } from './icones.js';
 import { nomNiveau } from './niveaux.js';
+import { enumerer } from './libelles.js';
+
+/** Parties en cours des autres joueurs montrées au plus (les plus récemment jouées). */
+const A_REGARDER_MAX = 20;
 
 const CLE_CODE = 'toc.codeARejoindre';
 const CLE_OPTIONS = 'toc.optionsEnLigne';
@@ -143,6 +149,8 @@ function afficherListe(racine, app) {
   let veille = { pret: false, parties: [], invitations: [] };
   // Salles d'attente ouvertes (celles des autres joueurs comprises) : on peut s'y asseoir sans invitation.
   let salles = [];
+  // Parties en cours (celles des autres joueurs comprises) : tout le monde peut les regarder.
+  let enCoursDeTous = [];
   let occupe = false;
   let erreur = '';
   // « Nom et options » reste ouvert quand la liste se redessine (une partie change en arrière-plan).
@@ -186,6 +194,8 @@ function afficherListe(racine, app) {
     const miennes = parties.filter((p) => p.statut === 'attente' && !p.aMoiDeJouer);
     const dejaVues = new Set([...parties, ...invitations].map((p) => p.id));
     const attente = miennes.concat(salles.filter((p) => p.statut === 'attente' && !dejaVues.has(p.id)));
+    // Les parties en cours des autres joueurs, à regarder (les miennes sont déjà plus haut).
+    const aRegarder = enCoursDeTous.filter((p) => p.statut === 'encours' && p.monSiege < 0 && !dejaVues.has(p.id)).slice(0, A_REGARDER_MAX);
     const finies = parties.filter((p) => p.statut === 'finie').slice(0, 20);
 
     const emoji = emojiIcone(j.icone);
@@ -258,12 +268,13 @@ function afficherListe(racine, app) {
       blocs.push(h('h2', {}, 'Invitations reçues'), h('div', { class: 'liste' }, invitations.map((p) => ligneInvitation(p, app))));
     }
     if (!pret) blocs.push(h('div', { class: 'vide-etat' }, 'Chargement…'));
-    else if (!parties.length && !invitations.length && !attente.length)
+    else if (!parties.length && !invitations.length && !attente.length && !aRegarder.length)
       blocs.push(h('div', { class: 'vide-etat' }, 'Aucune partie. Touche « Nouvelle partie », puis invite tes partenaires et adversaires.'));
     const section = (titre, liste) => liste.length && blocs.push(h('h2', {}, titre), h('div', { class: 'liste' }, liste.map((p) => lignePartie(p, app))));
     section('À toi de jouer', aMoi);
     section('En attente des autres', enCours);
     section('Salles d’attente', attente);
+    section('Parties en cours à regarder', aRegarder);
     section('Terminées', finies);
 
     // Rejoindre avec un code.
@@ -305,11 +316,19 @@ function afficherListe(racine, app) {
           if (!saisieEnCours()) dessiner();
         })
       : () => {};
+  const arretEnCours =
+    typeof api.surPartiesEnCours === 'function'
+      ? api.surPartiesEnCours((liste) => {
+          enCoursDeTous = liste || [];
+          if (!saisieEnCours()) dessiner();
+        })
+      : () => {};
   app.surJoueur = () => dessiner();
   app.surInstallation = dessiner;
   return () => {
     arret();
     arretSalles();
+    arretEnCours();
     app.surJoueur = null;
     app.surInstallation = null;
   };
@@ -407,6 +426,10 @@ function lignePartie(p, app) {
     sousTitre = (a3 ? '3 joueurs · ' : '') + (presents ? presents + ' · ' : '') + (libres ? `${pluriel(libres, 'place libre', 'places libres')}` : moi < 0 ? 'Complet' : 'Complet : prêt à lancer');
     if (p.reglages?.cinqAdverse) sousTitre += ' · 5 adverse';
     if (invites.length && moi >= 0) sousTitre += ` · invité${invites.length > 1 ? 's' : ''} : ${invites.map((i) => i.pseudo).join(', ')}`;
+  } else if (moi < 0) {
+    // Partie des autres joueurs, qu'on regarde : qui joue contre qui.
+    const noms = (sieges) => enumerer(sieges.map((si) => nomPlace(places[si])).filter(Boolean));
+    sousTitre = a3 ? `3 joueurs · ${noms([0, 1, 2])}` : `${noms([0, 2])} contre ${noms([1, 3])}`;
   } else {
     const avec = partenaire ? `Avec ${nomPlace(partenaire)}` : '';
     const contre = adversaires.filter(Boolean).map(nomPlace).join(' et ');
@@ -415,7 +438,9 @@ function lignePartie(p, app) {
   sousTitre += ' · ' + ilYa(p.majLe);
   let titre = p.nom || 'Partie de Toc';
   let badge = null;
-  if (p.statut === 'finie') {
+  if (p.statut === 'encours' && moi < 0) {
+    badge = h('span', { class: 'badge neutre' }, 'Regarder');
+  } else if (p.statut === 'finie') {
     const gagne = moi >= 0 && (a3 ? p.gagnant === moi : p.gagnant === moi % 2);
     badge = h('span', { class: 'badge ' + (gagne ? 'ok' : 'neutre') }, gagne ? 'Gagnée' : 'Perdue');
   } else if (p.abandon && !p.abandon.jAiAccepte) {
@@ -430,7 +455,7 @@ function lignePartie(p, app) {
   const premier = autres[0] || places.find((x) => x && x.uid !== app.joueur?.uid);
   const ligne = h(
     'a',
-    { class: 'ligne' + (p.aMoiDeJouer ? ' choisie' : ''), href: '#/partie/' + encodeURIComponent(p.id), 'data-partie': p.id },
+    { class: 'ligne' + (p.aMoiDeJouer ? ' choisie' : ''), href: '#/partie/' + encodeURIComponent(p.id), 'data-partie': p.id, ...(p.statut === 'encours' && moi < 0 ? { 'data-regarder': '' } : {}) },
     avatar({ uid: premier?.uid, nom: nomPlace(premier) || '?', ia: premier?.ia, fond: p.aMoiDeJouer ? 'var(--accent)' : 'var(--muted)' }),
     h('div', { class: 'principal' }, h('div', { class: 'mot' }, titre), h('div', { class: 'note' }, sousTitre)),
     badge,
